@@ -120,6 +120,19 @@ class PipelineTest(unittest.TestCase):
         res = AnswerPipeline(FakeSearcher(hits), p).answer("页目录号")
         self.assertTrue(res.refused)
 
+    def test_quote_label_prefix_is_tolerated(self):
+        hits = make_hits()
+        p = FakeProvider([payload(quote="答案：虚拟地址 2050 1225H")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("页目录号")
+        self.assertFalse(res.refused)
+
+    def test_answer_letter_alone_is_too_short(self):
+        hits = make_hits()
+        p = FakeProvider([payload(quote="答案：D"), payload(quote="答案：D")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("这道题选什么")
+        self.assertTrue(res.refused)
+        self.assertIn("过短", res.reason)
+
     def test_whitespace_insensitive_quote(self):
         from retrieval.chunk import Chunk
         from retrieval.search import SearchHit

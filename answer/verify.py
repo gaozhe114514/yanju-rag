@@ -7,6 +7,10 @@ from retrieval.search import SearchHit
 
 MIN_QUOTE_CHARS = 6
 
+# prompt 里的「答案：」「解析：」是标注行，不属于 chunk 原文；模型有时会连
+# 前缀一起抄下来，比对前去掉，避免把真句子误判成编造。
+_QUOTE_LABEL_RE = re.compile(r"^\s*(?:参考答案|答案|解析|题干|选项|原文)\s*[：:]\s*")
+
 
 def _norm(text: str) -> str:
     """去掉空白再比对。
@@ -49,7 +53,7 @@ def verify_payload(payload: Dict, hits: Sequence[SearchHit],
             errors.append("第 %d 条引用不是对象" % i)
             continue
         cid = str(c.get("chunk_id") or "")
-        quote = str(c.get("quote") or "")
+        quote = _QUOTE_LABEL_RE.sub("", str(c.get("quote") or ""))
         hit = by_id.get(cid)
         if hit is None:
             errors.append("第 %d 条引用的 chunk_id=%s 不在候选集中" % (i, cid))
