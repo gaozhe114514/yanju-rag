@@ -126,7 +126,7 @@
     /* ---------- pages ---------- */
     .page { display: none; flex: 1; min-height: 0; }
     .page.active { display: flex; flex-direction: column; }
-    #page-bank.active, #page-practice.active { display: block; overflow-y: auto; }
+    #page-bank.active, #page-practice.active, #page-knowledge.active { display: block; overflow-y: auto; }
     .page-inner { width: 100%; max-width: 1000px; margin: 0 auto; padding: 24px; }
     .page-inner.narrow { max-width: 780px; }
 
@@ -383,6 +383,68 @@
     .practice-note { margin-top: 8px; color: var(--muted); font-size: 11.5px; }
     .practice-empty { padding: 46px 10px; color: var(--muted); text-align: center; font-size: 13.5px; }
 
+    /* ---------- knowledge ---------- */
+    .knowledge-layout {
+      display: grid; grid-template-columns: 190px minmax(0, 1fr);
+      gap: 18px; align-items: start;
+    }
+    .knowledge-layout.no-nav { grid-template-columns: minmax(0, 1fr); }
+    .chapter-nav {
+      position: sticky; top: 0; display: flex; flex-direction: column; gap: 3px;
+      padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    }
+    .chapter-btn {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      width: 100%; padding: 7px 9px; border: 0; border-radius: 8px;
+      background: transparent; color: #475569; font-size: 12.5px; text-align: left;
+    }
+    .chapter-btn:hover { background: #f1f5f9; color: var(--brand); }
+    .chapter-btn.active { background: #e0ecff; color: var(--brand-dark); font-weight: 600; }
+    .chapter-count { color: var(--muted); font-size: 10.5px; }
+    .k-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .k-card {
+      display: flex; flex-direction: column; gap: 5px; padding: 14px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+      cursor: pointer; transition: border-color .15s, transform .15s, box-shadow .15s;
+    }
+    .k-card:hover {
+      border-color: #93c5fd; transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .06);
+    }
+    .k-title { font-size: 14.5px; font-weight: 700; line-height: 1.45; }
+    .k-summary {
+      display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; color: var(--muted);
+      font-size: 12.5px; line-height: 1.6;
+    }
+    .k-foot { margin-top: auto; padding-top: 5px; color: var(--muted); font-size: 10.5px; }
+    .k-tag { background: #eef2ff; color: #4338ca; }
+    .k-body { margin: 4px 0 12px; color: #334155; font-size: 14px; line-height: 1.85; white-space: pre-wrap; }
+    .k-formula {
+      margin: 5px 0; padding: 8px 10px; border-left: 3px solid #93c5fd;
+      border-radius: 0 7px 7px 0; background: #f8faff; font-size: 13px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .k-pitfall {
+      margin-top: 12px; padding: 10px 12px; border: 1px solid #fde68a;
+      border-radius: 9px; background: #fffbeb; color: #92400e;
+      font-size: 13px; line-height: 1.7; white-space: pre-wrap;
+    }
+    .related-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+    .related-q {
+      display: block; width: 100%; margin: 5px 0; padding: 8px 10px;
+      border: 1px solid var(--line); border-radius: 9px; background: #f8fafc;
+      color: #334155; font-size: 13px; line-height: 1.55; text-align: left;
+    }
+    .related-q:hover { border-color: #93c5fd; color: var(--brand); }
+    .related-q b { margin-right: 6px; color: var(--brand); font-weight: 700; }
+    .topic-banner {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 12px; padding: 9px 12px; border: 1px solid #c7d2fe;
+      border-radius: 10px; background: #eef2ff; color: #3730a3; font-size: 12.5px;
+    }
+    .topic-banner .link-btn { margin-left: auto; }
+
     /* ---------- modal / toast ---------- */
     .modal {
       position: fixed; inset: 0; z-index: 50; display: flex;
@@ -453,6 +515,12 @@
       .composer-hint { font-size: 10px; }
       .page-inner { padding: 16px; }
       .bank-list { grid-template-columns: 1fr; }
+      .knowledge-layout { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .chapter-nav {
+        position: static; flex-direction: row; overflow-x: auto; padding: 4px;
+      }
+      .chapter-btn { width: auto; white-space: nowrap; }
+      .k-list { grid-template-columns: 1fr; }
       .modal { padding: 12px; }
       .modal-body { padding: 14px; }
     }
@@ -472,6 +540,7 @@
     <nav class="nav" id="nav">
       <button data-page="chat" class="active"><span class="nav-ico">◉</span>问答</button>
       <button data-page="bank"><span class="nav-ico">▤</span>题库</button>
+      <button data-page="knowledge"><span class="nav-ico">▦</span>知识库</button>
       <button data-page="practice"><span class="nav-ico">✎</span>练习</button>
     </nav>
     <div class="side-section">
@@ -484,7 +553,7 @@
         <span id="token-label">未配置口令</span>
         <span class="token-gear">⚙</span>
       </button>
-      <div class="side-note">2019 真题 · 47 题<br>未覆盖的问题会明确拒答</div>
+      <div class="side-note">2019 真题 · 47 题 · 42 个考点<br>未覆盖的问题会明确拒答</div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -512,7 +581,7 @@
                     placeholder="问题目或知识点，例如：CSMA/CD 最小帧长怎么算"></textarea>
           <button class="send" id="send">发送</button>
         </div>
-        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用题库原文</div>
+        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用真题或考点原文</div>
       </div>
     </section>
 
@@ -531,8 +600,32 @@
       </div>
     </section>
 
+    <section class="page" id="page-knowledge">
+      <div class="page-inner">
+        <div class="bank-head">
+          <div class="search">
+            <input id="kn-q" placeholder="搜索考点标题、正文、公式或章节…">
+            <span class="search-ico">⌕</span>
+          </div>
+          <div class="chips" id="kn-subjects"></div>
+        </div>
+        <div class="bank-meta" id="kn-meta"></div>
+        <div class="knowledge-layout" id="kn-layout">
+          <aside class="chapter-nav" id="kn-chapters" hidden></aside>
+          <div class="knowledge-main">
+            <div class="k-list" id="kn-list"></div>
+            <div class="center"><button class="ghost" id="kn-more" hidden>加载更多</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="page" id="page-practice">
       <div class="page-inner narrow">
+        <div class="topic-banner" id="practice-topic" hidden>
+          <span id="practice-topic-text"></span>
+          <button class="link-btn" id="practice-topic-exit">退出考点练习</button>
+        </div>
         <div class="practice-top">
           <div class="practice-stats" id="practice-stats"></div>
           <select class="select" id="practice-subject"></select>
@@ -577,6 +670,7 @@
   const PAGE_META = {
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
     bank: {title: '题库', sub: '按科目和关键词浏览 2019 真题'},
+    knowledge: {title: '考点知识库', sub: '四科考点卡片 · 与真题双向关联'},
     practice: {title: '练习', sub: '先自己想，再展开答案'}
   };
 
@@ -602,7 +696,10 @@
     loadingStart: 0,
     loadingTimer: null,
     bank: {q: '', subject: '', items: [], total: 0, offset: 0, loading: false},
-    practice: {subject: '', current: null, detail: null, revealed: false, assessed: null, list: []},
+    knowledge: {q: '', subject: '', chapter: '', items: [], total: 0, offset: 0,
+                loading: false, subjects: [], chapters: []},
+    practice: {subject: '', current: null, detail: null, revealed: false, assessed: null,
+               list: [], queue: null, topic: ''},
     stats: loadJSON(STATS_KEY, {seen: 0, known: 0, unknown: 0})
   };
 
@@ -679,6 +776,17 @@
     return type === 'comprehensive' ? '综合题' : '选择题';
   }
 
+  function isKnowledge(item) {
+    return !!item && item.kind === 'knowledge';
+  }
+
+  function openSource(item) {
+    const id = item.chunk_id || item.id;
+    if (!id) return;
+    if (isKnowledge(item)) openKnowledge(id);
+    else openQuestion(id);
+  }
+
   /* ---------- sidebar / auth ---------- */
   function renderToken() {
     const dot = $('#token-dot');
@@ -721,7 +829,10 @@
     try {
       const h = await fetch('/health').then(r => r.json());
       state.health = h;
-      $('#health-pill').textContent = h.chunks + ' 题 · ' + (h.mode || '—');
+      const bits = [h.chunks + ' 题'];
+      if (h.knowledge != null) bits.push(h.knowledge + ' 考点');
+      bits.push(h.mode || '—');
+      $('#health-pill').textContent = bits.join(' · ');
       renderToken();
       if (state.token || !h.auth_required) {
         try {
@@ -827,16 +938,16 @@
   function emptyState() {
     const wrap = el('div', 'empty');
     wrap.appendChild(el('div', 'logo-lg', '408'));
-    wrap.appendChild(el('h2', null, '把真题当作唯一依据'));
+    wrap.appendChild(el('h2', null, '真题 + 考点，双库检索'));
     wrap.appendChild(el('p', null,
-      '直接问题目或知识点。答案只从题库原文里找依据，每条结论都带可核对的引用；' +
-      '题库没覆盖时会明确拒答，并记录缺口。'));
+      '直接问题目或知识点。答案只从真题原文和考点卡片里找依据，每条结论都带可核对的引用；' +
+      '两个库都没覆盖时会明确拒答，并记录缺口。'));
     const examples = el('div', 'examples');
     [
+      '快速排序的时间复杂度',
       'CSMA/CD 最小帧长怎么算',
       '二级页式存储的虚拟地址怎么拆成页目录号和页号',
-      'LRU 页置换 缺页次数',
-      '哈夫曼树 115 个结点 叶子结点'
+      'LRU 页置换 缺页次数'
     ].forEach(q => {
       const b = el('button', 'example', q);
       b.addEventListener('click', () => {
@@ -868,7 +979,7 @@
     if ((data.reason || '').indexOf('citation_failed') === 0) {
       return '生成的答案没能逐字对上题库原文，已按规则拒答。可以换个问法再试。';
     }
-    return '题库里没有足够依据回答这个问题。可以换个问法，或补充相关真题。';
+    return '真题和考点里都没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
   }
 
   function badgeFor(data) {
@@ -920,8 +1031,11 @@
         const cite = el('div', 'cite');
         const head = el('div', 'cite-head');
         head.appendChild(el('span', 'cite-id', '[' + c.chunk_id + ']'));
-        const btn = el('button', 'link-btn', '查看原题');
-        btn.addEventListener('click', () => openQuestion(c.chunk_id));
+        head.appendChild(el('span', 'q-tag' + (isKnowledge(c) ? ' k-tag' : ''),
+          isKnowledge(c) ? '考点' : '真题'));
+        if (isKnowledge(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
+        const btn = el('button', 'link-btn', isKnowledge(c) ? '查看考点' : '查看原题');
+        btn.addEventListener('click', () => openSource(c));
         head.appendChild(btn);
         cite.appendChild(head);
         cite.appendChild(el('div', 'cite-quote', '“' + (c.quote || '') + '”'));
@@ -937,8 +1051,11 @@
     }
 
     if (data.hits && data.hits.length) {
+      const kn = data.hits.filter(isKnowledge).length;
+      const qn = data.hits.length - kn;
+      const label = kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原题');
       const det = el('details');
-      det.appendChild(el('summary', null, '召回的原题（' + data.hits.length + '）'));
+      det.appendChild(el('summary', null, label + '（' + data.hits.length + '）'));
       const list = el('div', 'hit-list');
       data.hits.forEach(h => {
         const item = el('div', 'hit-item');
@@ -946,9 +1063,16 @@
         const main = el('div', 'hit-main');
         const btn = el('button');
         btn.appendChild(el('div', 'hit-stem', h.stem));
-        btn.appendChild(el('div', 'hit-meta',
-          h.chunk_id + ' · ' + subjectLabel(h.subject) + (h.answer ? ' · 参考答案 ' + h.answer : '')));
-        btn.addEventListener('click', () => openQuestion(h.chunk_id));
+        const bits = [h.chunk_id];
+        if (isKnowledge(h)) {
+          bits.push('考点');
+          if (h.chapter) bits.push(h.chapter);
+        } else {
+          bits.push(subjectLabel(h.subject));
+          if (h.answer) bits.push('参考答案 ' + h.answer);
+        }
+        btn.appendChild(el('div', 'hit-meta', bits.join(' · ')));
+        btn.addEventListener('click', () => openSource(h));
         main.appendChild(btn);
         item.appendChild(main);
         list.appendChild(item);
@@ -983,7 +1107,7 @@
     const body = el('div', 'bot-body');
     const box = el('div', 'typing');
     box.appendChild(el('span', 'spinner'));
-    const text = el('span', null, '正在检索真题并生成答案…');
+    const text = el('span', null, '正在检索真题与考点并生成答案…');
     text.id = 'loading-text';
     box.appendChild(text);
     body.appendChild(box);
@@ -998,7 +1122,7 @@
       const node = $('#loading-text');
       if (!node) return;
       const s = Math.floor((Date.now() - state.loadingStart) / 1000);
-      node.textContent = '正在检索真题并生成答案…已等待 ' + s + ' 秒（首次加载模型会更久）';
+      node.textContent = '正在检索真题与考点并生成答案…已等待 ' + s + ' 秒（首次加载模型会更久）';
     }, 1000);
   }
 
@@ -1214,6 +1338,218 @@
     return card;
   }
 
+  /* ---------- knowledge ---------- */
+  function renderKnowledgeSubjects() {
+    const box = $('#kn-subjects');
+    if (!box) return;
+    box.replaceChildren();
+    const k = state.knowledge;
+    const subjects = k.subjects.length
+      ? k.subjects
+      : ((state.meta && state.meta.knowledge_subjects) || []);
+    const total = subjects.reduce((n, s) => n + (s.count || 0), 0);
+    const items = [{key: '', label: '全部', count: total}].concat(subjects);
+    items.forEach(s => {
+      const chip = el('button', 'chip' + (k.subject === s.key ? ' active' : ''),
+        s.label + (s.count != null ? ' ' + s.count : ''));
+      chip.addEventListener('click', () => {
+        if (k.subject === s.key) return;
+        k.subject = s.key;
+        k.chapter = '';
+        fetchKnowledge(true);
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function renderKnowledgeChapters() {
+    const box = $('#kn-chapters');
+    const layout = $('#kn-layout');
+    if (!box || !layout) return;
+    const k = state.knowledge;
+    const show = !!k.subject && k.chapters.length > 0;
+    box.hidden = !show;
+    layout.classList.toggle('no-nav', !show);
+    box.replaceChildren();
+    if (!show) return;
+
+    const addChapter = (name, count) => {
+      const btn = el('button', 'chapter-btn' + (k.chapter === name ? ' active' : ''));
+      btn.appendChild(el('span', null, name || '全部章节'));
+      if (count != null) btn.appendChild(el('span', 'chapter-count', String(count)));
+      btn.addEventListener('click', () => {
+        if (k.chapter === name) return;
+        k.chapter = name;
+        fetchKnowledge(true);
+      });
+      box.appendChild(btn);
+    };
+    addChapter('', k.total);
+    k.chapters.forEach(c => addChapter(c.name, c.count));
+  }
+
+  async function fetchKnowledge(reset) {
+    const k = state.knowledge;
+    if (!state.meta) {
+      const meta = await ensureMeta();
+      if (!meta) { renderKnowledge(); return; }
+    }
+    if (reset) { k.offset = 0; k.items = []; k.chapters = []; }
+    // 连续输入时只采用最后一次请求的结果，避免旧响应覆盖新搜索
+    const seq = (k.seq || 0) + 1;
+    k.seq = seq;
+    k.loading = true;
+    renderKnowledge();
+    try {
+      const params = new URLSearchParams();
+      params.set('q', k.q);
+      params.set('subject', k.subject);
+      params.set('chapter', k.chapter);
+      params.set('limit', '100');
+      params.set('offset', String(k.offset));
+      const data = await api('/knowledge?' + params.toString());
+      if (seq !== state.knowledge.seq) return;
+      k.items = reset ? (data.items || []) : k.items.concat(data.items || []);
+      k.total = data.total;
+      k.offset = k.items.length;
+      k.subjects = data.subjects || [];
+      k.chapters = data.chapters || [];
+    } catch (e) {
+      if (seq !== state.knowledge.seq) return;
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+      else toast('考点加载失败：' + e.message, 'err');
+    } finally {
+      if (seq === state.knowledge.seq) {
+        k.loading = false;
+        renderKnowledge();
+      }
+    }
+  }
+
+  function renderKnowledge() {
+    const list = $('#kn-list');
+    if (!list) return;
+    const k = state.knowledge;
+    list.replaceChildren();
+    if (k.loading && !k.items.length) {
+      list.appendChild(el('div', 'empty-row', '正在加载考点…'));
+    } else if (!k.items.length) {
+      list.appendChild(el('div', 'empty-row', '没有匹配的考点。'));
+    } else {
+      k.items.forEach(item => list.appendChild(knowledgeCard(item)));
+    }
+    $('#kn-meta').textContent = '共 ' + k.total + ' 个考点 · 已显示 ' + k.items.length +
+      (k.q ? ' · 搜索“' + k.q + '”' : '');
+    $('#kn-more').hidden = !k.items.length || k.items.length >= k.total;
+    $('#kn-more').disabled = k.loading;
+    renderKnowledgeSubjects();
+    renderKnowledgeChapters();
+  }
+
+  function knowledgeCard(k) {
+    const card = el('div', 'k-card');
+    const meta = el('div', 'q-meta');
+    meta.appendChild(el('span', 'q-id', k.id));
+    meta.appendChild(el('span', 'q-tag', k.subject_label || subjectLabel(k.subject)));
+    if (k.chapter) meta.appendChild(el('span', 'q-tag', k.chapter));
+    meta.appendChild(el('span', 'q-tag k-tag', '考点'));
+    card.appendChild(meta);
+    card.appendChild(el('div', 'k-title', k.title));
+    card.appendChild(el('div', 'k-summary', k.summary || ''));
+    card.appendChild(el('div', 'k-foot', '关联真题 ' + (k.related_count || 0) + ' 道'));
+    card.addEventListener('click', () => openKnowledge(k.id));
+    return card;
+  }
+
+  async function openKnowledge(id) {
+    openModal('考点详情', el('div', 'empty-row', '正在加载考点…'));
+    try {
+      const k = await api('/knowledge/' + encodeURIComponent(id));
+      $('#modal-body').replaceChildren(renderKnowledgeDetail(k));
+    } catch (e) {
+      const box = el('div', 'empty-row');
+      box.textContent = e.status === 401 ? '需要访问口令。' : '考点加载失败：' + e.message;
+      $('#modal-body').replaceChildren(box);
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+    }
+  }
+
+  function renderKnowledgeDetail(k) {
+    const wrap = el('div');
+    const meta = el('div', 'detail-meta');
+    meta.appendChild(el('span', 'q-id', k.id));
+    meta.appendChild(el('span', 'q-tag', k.subject_label || subjectLabel(k.subject)));
+    if (k.chapter) meta.appendChild(el('span', 'q-tag', k.chapter));
+    meta.appendChild(el('span', 'q-tag k-tag', '考点'));
+    if (k.status) meta.appendChild(el('span', 'q-tag', k.status === 'draft' ? '草稿' : k.status));
+    wrap.appendChild(meta);
+    wrap.appendChild(el('div', 'k-title', k.title));
+    wrap.appendChild(el('div', 'k-body', k.body || ''));
+
+    if (k.formulas && k.formulas.length) {
+      wrap.appendChild(el('div', 'section-title', '关键公式'));
+      k.formulas.forEach(f => wrap.appendChild(el('div', 'k-formula', f)));
+    }
+    if (k.pitfalls) {
+      wrap.appendChild(el('div', 'section-title', '易错点'));
+      wrap.appendChild(el('div', 'k-pitfall', k.pitfalls));
+    }
+
+    wrap.appendChild(el('div', 'section-title', '关联真题（' + (k.related_questions || []).length + '）'));
+    if (k.related_questions && k.related_questions.length) {
+      k.related_questions.forEach(q => {
+        const btn = el('button', 'related-q');
+        btn.appendChild(el('b', null, q.id));
+        btn.appendChild(document.createTextNode((q.stem || '').replace(/\s+/g, ' ').slice(0, 90)));
+        btn.addEventListener('click', () => openQuestion(q.id));
+        wrap.appendChild(btn);
+      });
+    } else {
+      wrap.appendChild(el('div', 'practice-note', '暂无关联真题。'));
+    }
+    if (k.missing_questions && k.missing_questions.length) {
+      wrap.appendChild(el('div', 'practice-note',
+        '尚未收录的关联题目：' + k.missing_questions.join('、')));
+    }
+
+    const ref = k.source_ref || {};
+    wrap.appendChild(el('div', 'source-line',
+      '来源：' + (ref.file || '未知') + (ref.line ? ' · 第 ' + ref.line + ' 行' : '') +
+      (k.provenance ? ' · ' + k.provenance : '')));
+
+    const actions = el('div', 'btn-row');
+    if (k.related_questions && k.related_questions.length) {
+      const practice = el('button', 'primary', '练这个考点（' + k.related_questions.length + ' 题）');
+      practice.addEventListener('click', () => startKnowledgePractice(k));
+      actions.appendChild(practice);
+    }
+    const ask = el('button', 'ghost', '就这个考点提问');
+    ask.addEventListener('click', () => {
+      closeModal();
+      go('chat');
+      const composer = $('#composer');
+      composer.value = '请讲解这个考点：' + (k.title || '');
+      autoGrow();
+      composer.focus();
+    });
+    actions.appendChild(ask);
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  function startKnowledgePractice(k) {
+    const p = state.practice;
+    p.queue = (k.related_questions || []).slice();
+    p.topic = k.title || '';
+    p.subject = k.subject || '';
+    p.current = null;
+    p.detail = null;
+    p.revealed = false;
+    p.assessed = null;
+    closeModal();
+    go('practice');
+  }
+
   /* ---------- practice ---------- */
   function practiceStat(label, value) {
     const box = el('div', 'stat');
@@ -1223,6 +1559,17 @@
   }
 
   function renderPractice() {
+    const p = state.practice;
+    const banner = $('#practice-topic');
+    if (banner) {
+      banner.hidden = !p.topic;
+      if (p.topic) {
+        const left = p.queue ? p.queue.length : 0;
+        $('#practice-topic-text').textContent = '按考点练习：' + p.topic +
+          (left ? ' · 队列剩余 ' + left + ' 题' : '');
+      }
+    }
+
     const stats = $('#practice-stats');
     stats.replaceChildren(
       practiceStat('已练', state.stats.seen || 0),
@@ -1232,7 +1579,6 @@
 
     const box = $('#practice-card');
     box.replaceChildren();
-    const p = state.practice;
     if (!p.current) {
       box.appendChild(el('div', 'practice-empty', '当前科目还没有题目。'));
       return;
@@ -1311,9 +1657,23 @@
   }
 
   async function loadPractice() {
+    const p = state.practice;
+    // 从考点进来的题队列优先；队列空了再回到当前科目的随机练习
+    if (p.queue && p.queue.length) {
+      p.current = p.queue.shift();
+      p.detail = null;
+      p.revealed = false;
+      p.assessed = null;
+      renderPractice();
+      return;
+    }
+    if (p.queue) {
+      p.queue = null;
+      p.topic = '';
+    }
+
     const meta = await ensureMeta();
     if (!meta) return;
-    const p = state.practice;
     const params = new URLSearchParams();
     params.set('subject', p.subject);
     params.set('limit', '100');
@@ -1416,6 +1776,17 @@
       wrap.appendChild(el('div', 'warn-box', '题干涉及图形，题库暂未收录图片，请对照原卷。'));
     }
 
+    if (q.related_knowledge && q.related_knowledge.length) {
+      wrap.appendChild(el('div', 'section-title', '关联考点'));
+      const chips = el('div', 'related-chips');
+      q.related_knowledge.forEach(k => {
+        const chip = el('button', 'chip', k.title + ' · ' + (k.chapter || '考点'));
+        chip.addEventListener('click', () => openKnowledge(k.id));
+        chips.appendChild(chip);
+      });
+      wrap.appendChild(chips);
+    }
+
     const ref = q.source_ref || {};
     if (ref.file || ref.line) {
       wrap.appendChild(el('div', 'source-line',
@@ -1479,6 +1850,7 @@
     if (state.health) {
       wrap.appendChild(el('div', 'settings-note',
         '服务状态：' + (state.health.chunks || 0) + ' 题 · ' +
+        (state.health.knowledge || 0) + ' 个考点 · ' +
         (state.health.mode || '—') + ' · ' + (state.health.provider || '—')));
     }
 
@@ -1498,7 +1870,8 @@
         }
         renderSubjects();
         renderPracticeSubjects();
-        status.textContent = '连接正常：' + m.chunks + ' 题 · ' + m.mode;
+        status.textContent = '连接正常：' + m.chunks + ' 题 · ' +
+          (m.knowledge || 0) + ' 个考点 · ' + m.mode;
         if (saveIt) {
           setTimeout(() => { closeModal(); loadHealth(); }, 500);
         }
@@ -1554,6 +1927,12 @@
           renderBank(true);
         }
       });
+    } else if (page === 'knowledge') {
+      ensureMeta().then(m => {
+        if (!m) { renderKnowledge(); return; }
+        if (!state.knowledge.items.length) fetchKnowledge(true);
+        else renderKnowledge();
+      });
     } else if (page === 'practice') {
       ensureMeta().then(m => {
         if (m) {
@@ -1598,8 +1977,27 @@
       }, 320);
     });
     $('#bank-more').addEventListener('click', () => fetchBank(false));
+
+    let knTimer = null;
+    $('#kn-q').addEventListener('input', e => {
+      clearTimeout(knTimer);
+      knTimer = setTimeout(() => {
+        state.knowledge.q = e.target.value.trim();
+        fetchKnowledge(true);
+      }, 320);
+    });
+    $('#kn-more').addEventListener('click', () => fetchKnowledge(false));
+
     $('#practice-subject').addEventListener('change', e => {
       state.practice.subject = e.target.value;
+      state.practice.current = null;
+      state.practice.queue = null;
+      state.practice.topic = '';
+      loadPractice();
+    });
+    $('#practice-topic-exit').addEventListener('click', () => {
+      state.practice.queue = null;
+      state.practice.topic = '';
       state.practice.current = null;
       loadPractice();
     });

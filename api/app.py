@@ -32,12 +32,15 @@ from answer.agent import QueryAgent, chitchat_reply
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
-from retrieval.chunk import build_chunk, load_questions
+from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
 
 from .catalog import brief, detail, filter_questions, subject_counts
 from .gap import log_gap
 from .guard import AccessGuard
+from .knowledge import (filter_knowledge, know_detail, knowledge_chapters,
+                        knowledge_for_question, knowledge_subject_counts,
+                        load_knowledge, related_knowledge_by_question)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,16 +82,34 @@ def enforce_content(request: Request) -> None:
     _enforce(request, False)
 
 
+def _resolve(path: str) -> str:
+    return str((ROOT / path) if not os.path.isabs(path) else Path(path))
+
+
 def _load() -> None:
     raw = os.environ.get("KB_INPUT", "data/work/2019_draft.jsonl")
-    paths = [p.strip() for p in raw.split(",") if p.strip()]
-    paths = [str((ROOT / p) if not os.path.isabs(p) else Path(p)) for p in paths]
+    paths = [_resolve(p.strip()) for p in raw.split(",") if p.strip()]
     missing = [p for p in paths if not os.path.exists(p)]
     if missing:
         raise RuntimeError("题库文件不存在：%s" % ", ".join(missing))
 
     questions = load_questions(paths)
+
+    # 考点卡片默认从仓库里的 curated 目录读；显式设置 KB_KNOWLEDGE 时必须存在。
+    know_env = os.environ.get("KB_KNOWLEDGE")
+    know_path = _resolve(know_env or "data/curated/knowledge.jsonl")
+    if know_env and not os.path.exists(know_path):
+        raise RuntimeError("考点文件不存在：%s" % know_path)
+    knowledge = (load_knowledge(know_path, "data/curated/knowledge.jsonl")
+                 if os.path.exists(know_path) else [])
+
+    chunk_ids = {q["id"] for q in questions}
+    clash = [c["id"] for c in knowledge if c["id"] in chunk_ids]
+    if clash:
+        raise RuntimeError("考点 id 与题目 id 冲突：%s" % ", ".join(clash))
+
     chunks = [build_chunk(q) for q in questions]
+    chunks.extend(build_knowledge_chunk(c, c["_file"], c["_line"]) for c in knowledge)
     mode = os.environ.get("KB_MODE", "hybrid")
     # CPU 上精排 10 个候选约 7 秒/次；30 个要约 27 秒，R@1 只差 0 点。
     fuse_k = int(os.environ.get("KB_FUSE_K", "10"))
@@ -125,6 +146,9 @@ def _load() -> None:
         "chunks": chunks,
         "questions": questions,
         "questions_by_id": {q["id"]: q for q in questions},
+        "knowledge": knowledge,
+        "knowledge_by_id": {c["id"]: c for c in knowledge},
+        "knowledge_by_question": related_knowledge_by_question(knowledge),
         "mode": mode,
         "fuse_k": fuse_k,
         "provider": provider_name,
@@ -149,7 +173,10 @@ def _hit_payload(h) -> dict:
         "seq": c.seq,
         "score": round(float(h.score), 4),
         "subject": c.subject,
-        "stem": c.text.split("\n")[0][:120],
+        "kind": c.kind,
+        "title": c.title,
+        "chapter": c.chapter,
+        "stem": (c.title if c.kind == "knowledge" else c.text.split("\n")[0])[:120],
         "answer": c.answer,
         "source_ref": c.source_ref,
     }
@@ -172,8 +199,11 @@ def _steps(res, plan=None) -> list:
             detail_text = plan.note or "独立问题，无需改写"
         steps.append({"name": "理解问题", "ms": plan.ms, "detail": detail_text})
 
+    know_n = len(_state.get("knowledge", []))
+    corpus = ("真题 %d + 考点 %d" % (len(_state.get("questions", [])), know_n)
+              if know_n else "真题 %d" % len(_state.get("questions", [])))
     steps.append({"name": "检索", "ms": timings.get("retrieve", 0),
-                  "detail": "BM25 + 向量双路召回 → RRF → Cross-Encoder 精排"})
+                  "detail": "%s：BM25 + 向量双路召回 → RRF → Cross-Encoder 精排" % corpus})
 
     gate_ok = not (res.refused and gen_ms == 0)
     steps.append({"name": "拒答判断", "ms": timings.get("gate", 0),
@@ -203,6 +233,10 @@ def _answer_payload(res, t0: float, plan=None) -> dict:
         citations.append({
             "chunk_id": cid,
             "quote": c.get("quote"),
+            "kind": ch.kind if ch else "question",
+            "title": ch.title if ch else "",
+            "chapter": ch.chapter if ch else "",
+            "subject": ch.subject if ch else "",
             "source_ref": ch.source_ref if ch else {},
         })
     rewritten = plan.rewritten if plan and plan.rewritten != plan.query else ""
@@ -265,7 +299,9 @@ def _log_gap(query: str, res) -> None:
 def health() -> dict:
     return {
         "status": "ok",
-        "chunks": len(_state.get("chunks", [])),
+        # chunks 保持“题目数”的含义，新增 knowledge 单独计数，旧前端/脚本不受影响
+        "chunks": len(_state.get("questions", [])),
+        "knowledge": len(_state.get("knowledge", [])),
         "mode": _state.get("mode"),
         "fuse_k": _state.get("fuse_k"),
         "provider": _state.get("provider"),
@@ -317,14 +353,43 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 def meta(_: None = Depends(enforce_content)) -> dict:
     questions = _state.get("questions", [])
     years = sorted({int(q.get("year")) for q in questions if q.get("year")})
+    knowledge = _state.get("knowledge", [])
     return {
         "chunks": len(questions),
         "subjects": subject_counts(questions),
+        "knowledge": len(knowledge),
+        "knowledge_subjects": knowledge_subject_counts(knowledge),
         "years": years,
         "mode": _state.get("mode"),
         "provider": _state.get("provider"),
         "auth_required": GUARD.token_required,
     }
+
+
+@app.get("/knowledge")
+def knowledge_list(q: str = "", subject: str = "", chapter: str = "",
+                   limit: int = 100, offset: int = 0,
+                   _: None = Depends(enforce_content)) -> dict:
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    cards = _state.get("knowledge", [])
+    total, rows = filter_knowledge(cards, q, subject, chapter, limit, offset)
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [know_detail(c, _state.get("questions_by_id", {})) for c in rows],
+        "subjects": knowledge_subject_counts(cards),
+        "chapters": knowledge_chapters(cards, subject),
+    }
+
+
+@app.get("/knowledge/{card_id}")
+def knowledge_detail(card_id: str, _: None = Depends(enforce_content)) -> dict:
+    card = _state.get("knowledge_by_id", {}).get(card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="考点不存在")
+    return know_detail(card, _state.get("questions_by_id", {}))
 
 
 @app.get("/chunks")
@@ -348,7 +413,9 @@ def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
     row = _state.get("questions_by_id", {}).get(chunk_id)
     if row is None:
         raise HTTPException(status_code=404, detail="题目不存在")
-    return detail(row)
+    item = detail(row)
+    item["related_knowledge"] = _state.get("knowledge_by_question", {}).get(chunk_id, [])
+    return item
 
 
 @app.get("/")

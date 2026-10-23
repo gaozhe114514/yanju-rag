@@ -8,6 +8,7 @@ import unittest
 from api.gap import log_gap
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
+from answer.prompt import format_hits
 from answer.providers import ExtractiveProvider, ProviderError, parse_payload
 
 
@@ -155,6 +156,47 @@ class PipelineTest(unittest.TestCase):
                              retry=False).answer("页目录号")
         self.assertFalse(res.refused)
         self.assertEqual(res.citations[0]["chunk_id"], "2019-408-31")
+
+
+class KnowledgePromptTest(unittest.TestCase):
+    def _knowledge_hit(self):
+        from retrieval.chunk import Chunk
+        from retrieval.search import SearchHit
+        ch = Chunk(
+            "ds-quicksort", 0,
+            "快速排序\n章节：排序\n快速排序每一趟选一个枢轴，平均时间复杂度 O(n log n)。\n"
+            "易错点：快速排序不稳定。",
+            subject="ds", kind="knowledge", title="快速排序", chapter="排序",
+        )
+        return SearchHit(ch, 0.88)
+
+    def test_format_hits_marks_source_type(self):
+        from retrieval.chunk import Chunk
+        from retrieval.search import SearchHit
+        hits = [self._knowledge_hit(),
+                SearchHit(Chunk("2019-408-10", 10, "快速排序的题"), 0.5)]
+        text = format_hits(hits)
+        self.assertIn("类型=考点", text)
+        self.assertIn("章节=排序", text)
+        self.assertIn("类型=真题", text)
+        # 考点卡片没有“答案/解析”字段，不能凭空生成这两行
+        self.assertNotIn("答案：", text.split("类型=真题")[0])
+
+    def test_knowledge_citation_verified(self):
+        hits = [self._knowledge_hit()]
+        p = FakeProvider([payload(cid="ds-quicksort",
+                                  quote="平均时间复杂度 O(n log n)")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("快速排序时间复杂度")
+        self.assertFalse(res.refused)
+        self.assertEqual(res.citations[0]["chunk_id"], "ds-quicksort")
+
+    def test_knowledge_quote_must_be_verbatim(self):
+        hits = [self._knowledge_hit()]
+        p = FakeProvider([payload(cid="ds-quicksort", quote="快速排序是稳定排序"),
+                          payload(cid="ds-quicksort", quote="快速排序是稳定排序")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("快速排序稳定吗")
+        self.assertTrue(res.refused)
+        self.assertTrue(res.reason.startswith("citation_failed"))
 
 
 class GapLogTest(unittest.TestCase):

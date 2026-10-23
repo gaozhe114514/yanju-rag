@@ -20,6 +20,10 @@ class Chunk:
     subject: str = ""
     kp_ids: List[str] = field(default_factory=list)
     source_ref: Dict = field(default_factory=dict)
+    # 新增字段一律放在末尾：测试和外部代码用 Chunk(id, seq, text) 位置参数构造
+    kind: str = "question"       # question / knowledge
+    title: str = ""
+    chapter: str = ""
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -41,6 +45,41 @@ def build_chunk(q: Dict) -> Chunk:
         subject=q.get("subject") or "",
         kp_ids=list(q.get("kp_ids") or []),
         source_ref=dict(q.get("source_ref") or {}),
+    )
+
+
+def build_knowledge_chunk(card: Dict, source_file: str = "", line: int = 0) -> Chunk:
+    """一张考点卡片 = 一个 chunk。
+
+    召回文本把标题、正文、公式、易错点都放进去；引用校验只认这里的原文，
+    所以卡片正文必须写成可以直接引用的完整句子。
+    """
+    parts = [(card.get("title") or "").strip()]
+    chapter = (card.get("chapter") or "").strip()
+    if chapter:
+        parts.append("章节：%s" % chapter)
+    body = (card.get("body") or "").strip()
+    if body:
+        parts.append(body)
+    formulas = [f.strip() for f in (card.get("formulas") or []) if f and f.strip()]
+    if formulas:
+        parts.append("关键公式：%s" % "；".join(formulas))
+    pitfalls = (card.get("pitfalls") or "").strip()
+    if pitfalls:
+        parts.append("易错点：%s" % pitfalls)
+    return Chunk(
+        id=card["id"],
+        seq=0,
+        text="\n".join(p for p in parts if p),
+        subject=card.get("subject") or "",
+        source_ref={
+            "file": source_file,
+            "line": int(line),
+            "page": None,
+        },
+        kind="knowledge",
+        title=(card.get("title") or "").strip(),
+        chapter=chapter,
     )
 
 

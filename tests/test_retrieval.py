@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 from retrieval.bm25 import BM25
-from retrieval.chunk import Chunk, build_chunk
+from retrieval.chunk import Chunk, build_chunk, build_knowledge_chunk
 from retrieval.eval import evaluate
 from retrieval.fuse import rrf
 from retrieval.rerank import LexicalReranker
@@ -52,6 +52,29 @@ class ChunkTest(unittest.TestCase):
         self.assertNotIn("解析", c.text)
         self.assertEqual(c.answer, "A")
         self.assertEqual(c.analysis, "这段解析不该进召回文本")
+
+    def test_question_chunk_defaults(self):
+        c = Chunk("2019-408-01", 1, "题干")
+        self.assertEqual(c.kind, "question")
+        self.assertEqual(c.title, "")
+        self.assertEqual(c.chapter, "")
+
+    def test_knowledge_chunk_text_and_meta(self):
+        card = {
+            "id": "ds-quicksort", "subject": "ds", "chapter": "排序",
+            "title": "快速排序", "body": "快速排序平均时间复杂度 O(n log n)。",
+            "formulas": ["最坏 T(n)=O(n²)"], "pitfalls": "快速排序不稳定。",
+        }
+        c = build_knowledge_chunk(card, "data/curated/knowledge.jsonl", 8)
+        self.assertEqual(c.kind, "knowledge")
+        self.assertEqual(c.title, "快速排序")
+        self.assertEqual(c.chapter, "排序")
+        self.assertIn("快速排序平均时间复杂度 O(n log n)。", c.text)
+        self.assertIn("关键公式：最坏 T(n)=O(n²)", c.text)
+        self.assertIn("易错点：快速排序不稳定。", c.text)
+        self.assertEqual(c.source_ref["file"], "data/curated/knowledge.jsonl")
+        self.assertEqual(c.source_ref["line"], 8)
+        self.assertEqual(c.answer, "")
 
 
 class FakeEmbedder:

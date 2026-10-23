@@ -131,13 +131,16 @@ set KB_FUSE_K=10
 py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
-### 产品框架（v0.7）
+### 产品框架（v0.8）
 
-页面分成三块，共用左侧会话/导航：
+页面分成四块，共用左侧会话/导航：
 
-- **问答**：多轮对话；每条回答展示引用、召回原题、改写后的问题和执行耗时。引用和命中的原题都能点开看题干、答案、解析和原文行号。
-- **题库**：按科目筛选、按题干/选项/题号搜索，支持分页；题库接口只返回题干和选项，答案在详情里才出现。
-- **练习**：随机抽题，先作答再展开答案，用“会了/还不会”做本地统计。数据仍来自同一份 JSONL，补新卷后页面自动生效。
+- **问答**：多轮对话；每条回答展示引用、召回资料、改写后的问题和执行耗时。真题和考点都能被引用，引用上会标出来源类型。
+- **题库**：按科目筛选、按题干/选项/题号搜索，支持分页；题库接口只返回题干和选项，答案在详情里才出现。题目详情会列出关联考点。
+- **知识库**：四科 → 章节 → 考点卡片，支持全文搜索和章节筛选。卡片是项目自写的考点摘要，标了 `source: self` / `status: draft`，不冒充教材原文；详情里可跳关联真题。
+- **练习**：随机抽题，先作答再展开答案，用“会了/还不会”做本地统计；也可以从考点卡片直接进入“按考点练习”，只练该考点关联的真题。
+
+问答检索同时覆盖真题和考点两个库：BM25 + 向量召回 → RRF → Cross-Encoder 精排，引用校验对两类 chunk 用同一套逐字规则。考点只作为概念解释的补充，涉及具体题目答案时以真题解析为准。
 
 后端在原有单轮链路前加了一层轻量 Agent：
 
@@ -151,14 +154,19 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `POST /ask` | 单轮问答：`{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms |
 | `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}]}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
 | `GET /chunks` | 题库列表：`q` / `subject` / `year` / `limit` / `offset`，只返回题干和选项 |
-| `GET /chunks/{id}` | 题目详情：题干、选项、答案、解析、`source_ref` |
-| `GET /meta` | 题目数、科目分布、年份、检索模式 |
-| `GET /health` | chunk 数、检索模式、provider |
-| `GET /` | 三页前端，可直接在手机上打开 |
+| `GET /chunks/{id}` | 题目详情：题干、选项、答案、解析、`source_ref`、`related_knowledge` |
+| `GET /knowledge` | 考点列表：`q` / `subject` / `chapter` / `limit` / `offset`，附带科目计数和章节计数 |
+| `GET /knowledge/{id}` | 考点详情：正文、公式、易错点、来源行号、关联真题 |
+| `GET /meta` | 题目数、科目分布、年份、考点数、检索模式 |
+| `GET /health` | 题目数、考点数、检索模式、provider |
+| `GET /` | 四页前端，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/meta`）都必须带
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/knowledge`、`/meta`）都必须带
 `X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
-限额（刷题库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
+限额（刷题库/知识库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
+
+考点文件默认读 `data/curated/knowledge.jsonl`，可用 `KB_KNOWLEDGE` 指向别的 JSONL。启动时会校验
+`id / subject / chapter / title / body` 必填字段，并检查考点 id 不能和题目 id 冲突；同一 id 后出现的覆盖先出现的。
 
 引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。
 
@@ -242,6 +250,7 @@ py -m unittest discover -s tests -t . -v
 data/
   raw/      原始输入（试卷 txt + 答案 txt）
   curated/  人工整理 / 模型补全的内容（标 origin，待人工校对）
+            knowledge.jsonl 为项目自写的 42 张考点卡片（source=self, status=draft）
   eval/     检索评测 query 集（query → gold id）
   work/     中间产物，可随时重跑（已 gitignore）
   out/      定稿 JSONL
@@ -273,11 +282,12 @@ answer/
   eval_gate.py 拒答阈值标定
   eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
-api/app.py     FastAPI 服务（/ask、/chat、/chunks、/meta、/health、/）
+api/app.py     FastAPI 服务（/ask、/chat、/chunks、/knowledge、/meta、/health、/）
 api/catalog.py 题库筛选、列表/详情序列化（纯函数）
+api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
 api/gap.py     拒答缺口日志
-web/index.html 三页前端（问答 / 题库 / 练习），无构建步骤
+web/index.html 四页前端（问答 / 题库 / 知识库 / 练习），无构建步骤
 deploy/nginx.conf  反向代理 + 第二层限流
 tools/preload_models.py 构建期预下载模型
 Dockerfile / docker-compose.yml / .env.example
@@ -288,6 +298,7 @@ docs/       架构、数据管线、部署文档与配图
 ## 硬约束
 
 - **一道题 = 一个 chunk**：题干、选项、答案解析、图永远不拆开。
+- **一张考点卡片 = 一个 chunk**：正文写成可直接引用的完整句子；卡片标明 `source: self`，不冒充教材原文。
 - **E 级校验错误不归零，不许进检索库。**
 - **公式原样保留**，不让模型重写 LaTeX。
 - **引用必须逐字命中原文**：校验不过重试一次，仍不过就拒答。
