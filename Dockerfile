@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
-# 国内构建时把 PIP_INDEX_URL 换成清华/阿里镜像，模型下载走 HF_ENDPOINT
-ARG PIP_INDEX_URL=https://pypi.org/simple
+# 默认走清华镜像：files.pythonhosted.org 在国内经常 ReadTimeout
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 ARG HF_ENDPOINT=https://hf-mirror.com
 ARG PRELOAD_MODELS=1

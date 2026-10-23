@@ -13,6 +13,9 @@ services:
       # 放在 Nginx 后面，用 X-Forwarded-For 区分客户端 IP
       KB_TRUST_PROXY: "1"
       KB_GAP_LOG: /app/logs/gap_log.jsonl
+      # 模型已烘进镜像，运行时禁止联网检查；否则国内网络会卡在 HF 握手
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     ports:
       # 只监听回环：公网流量必须经过 Nginx（TLS + 第二层限流），不能直连 8000
       - "127.0.0.1:8000:8000"
