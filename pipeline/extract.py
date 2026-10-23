@@ -31,6 +31,7 @@ SECTION_SUBJECTS = (
 COMPREHENSIVE_SUBJECTS = {
     2019: ("ds", "ds", "os", "os", "co", "co", "cn"),
     2020: ("ds", "ds", "co", "co", "os", "os", "cn"),
+    2023: ("ds", "ds", "co", "co", "os", "os", "cn"),
 }
 
 

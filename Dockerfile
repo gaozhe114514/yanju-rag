@@ -49,7 +49,10 @@ RUN python -m pipeline.build --paper data/raw/2019_paper.txt \
         --apply-to data/work/2019_draft.jsonl \
  && python -m pipeline.build --paper data/raw/2020_paper.txt \
                              --answer data/raw/2020_answer.txt \
-                             --year 2020 --provider mock
+                             --year 2020 --provider mock \
+ && python -m pipeline.build --paper data/raw/2023_paper.txt \
+                             --answer data/raw/2023_answer.txt \
+                             --year 2023 --provider mock
 
 RUN useradd -m appuser && mkdir -p /app/logs && chown -R appuser:appuser /app/logs
 USER appuser
