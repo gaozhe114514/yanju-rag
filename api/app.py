@@ -27,6 +27,8 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from retrieval.chunk import load_chunks
 from retrieval.search import build_searcher
 
+from .gap import log_gap
+
 ROOT = Path(__file__).resolve().parents[1]
 
 _state = {}
@@ -63,11 +65,16 @@ def _load() -> None:
 
     gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", "0")),
                        float(os.environ.get("KB_MIN_MARGIN", "0")))
+    gap_path = Path(os.environ.get("KB_GAP_LOG", "data/work/gap_log.jsonl"))
+    if not gap_path.is_absolute():
+        gap_path = ROOT / gap_path
+    gap_path.parent.mkdir(parents=True, exist_ok=True)
     _state.update({
         "pipeline": AnswerPipeline(searcher, provider, gate=gate),
         "chunks": chunks,
         "mode": mode,
         "provider": provider_name,
+        "gap_log": str(gap_path),
     })
 
 
@@ -88,6 +95,7 @@ def _hit_payload(h) -> dict:
         "subject": c.subject,
         "stem": c.text.split("\n")[0][:120],
         "answer": c.answer,
+        "source_ref": c.source_ref,
     }
 
 
@@ -111,13 +119,27 @@ def ask(req: AskRequest) -> dict:
     # 模型推理是 CPU 密集的，单 worker 内串行，避免线程争抢
     with _lock:
         res = pipeline.answer(req.query)
+    if res.refused:
+        try:
+            log_gap(_state["gap_log"], req.query, res.reason,
+                    res.hits[0] if res.hits else None)
+        except OSError:
+            pass  # 日志写失败不能影响答题
+
+    by_id = {h.chunk.id: h.chunk for h in res.hits}
+    citations = []
+    for c in res.citations:
+        cid = c.get("chunk_id")
+        ch = by_id.get(cid)
+        citations.append({
+            "chunk_id": cid,
+            "quote": c.get("quote"),
+            "source_ref": ch.source_ref if ch else {},
+        })
     return {
         "refused": res.refused,
         "answer": res.answer,
-        "citations": [
-            {"chunk_id": c.get("chunk_id"), "quote": c.get("quote")}
-            for c in res.citations
-        ],
+        "citations": citations,
         "reason": res.reason,
         "hits": [_hit_payload(h) for h in res.hits],
         "attempts": res.attempts,

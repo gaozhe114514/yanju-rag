@@ -103,6 +103,8 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `GET /health` | chunk 数、检索模式、provider |
 | `GET /` | 单页前端，可直接在手机上打开 |
 
+引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。
+
 链路是：检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
 
 拒答阈值不能拍脑袋，默认 0 等于不拒答。用正负样本扫阈值：

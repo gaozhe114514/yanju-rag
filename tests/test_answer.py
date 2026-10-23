@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """问答链路测试：用假 provider，不联网、不加载模型。"""
 import json
+import os
+import tempfile
 import unittest
 
+from api.gap import log_gap
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import ExtractiveProvider, ProviderError, parse_payload
@@ -143,6 +146,19 @@ class PipelineTest(unittest.TestCase):
                              retry=False).answer("页目录号")
         self.assertFalse(res.refused)
         self.assertEqual(res.citations[0]["chunk_id"], "2019-408-31")
+
+
+class GapLogTest(unittest.TestCase):
+    def test_append_jsonl(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gap.jsonl")
+            log_gap(path, "资料外的问题", "no_hits")
+            log_gap(path, "第二个问题", "citation_failed")
+            with open(path, encoding="utf-8") as f:
+                rows = [json.loads(line) for line in f if line.strip()]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["query"], "资料外的问题")
+        self.assertEqual(rows[1]["reason"], "citation_failed")
 
 
 if __name__ == "__main__":
