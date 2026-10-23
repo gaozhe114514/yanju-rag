@@ -160,6 +160,12 @@ class ValidateTest(unittest.TestCase):
         errs, _ = check_paper([ok_single(), bad])  # 不应抛 TypeError
         self.assertTrue(any("非法题号" in m for _, m in errs))
 
+    def test_figure_reference_warns(self):
+        item = ok_single()
+        item["stem"] = "某网络拓扑如题 47 图所示，请回答以下问题"
+        errs = check_one(item)
+        self.assertTrue(any("需补图" in m for _, m in errs))
+
     def test_unmapped_pua_flagged(self):
         item = ok_single()
         item["stem"] = "公式 ab"

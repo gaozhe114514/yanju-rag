@@ -3,11 +3,13 @@
 
 校验器自己不能崩：模型返回缺字段、错类型是常态，这里要把它们变成错误项，而不是异常。
 """
+import re
 from typing import Dict, List, Tuple
 
 from .normalize import has_unmapped
 
 SUBJECTS = {"ds", "co", "os", "cn"}
+FIG_REF = re.compile(r'如图|图所示|题\s*\d+\s*图|下图|上图|图中')
 
 
 def check_one(item: Dict) -> List[Tuple[str, str]]:
@@ -73,6 +75,9 @@ def check_one(item: Dict) -> List[Tuple[str, str]]:
     for name, val in fields:
         if isinstance(val, str) and has_unmapped(val):
             errs.append(("E", "%s 含未映射的 PDF 私有区字符" % name))
+
+    if FIG_REF.search(stem) and not item.get("figures"):
+        errs.append(("W", "题干引用图但 figures 为空（需补图）"))
     return errs
 
 
