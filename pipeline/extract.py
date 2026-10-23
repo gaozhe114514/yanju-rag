@@ -20,6 +20,20 @@ SUBJECT_HINTS = [
     ("cn", ["TCP", "UDP", "IP", "路由", "以太网", "拥塞", "子网", "DNS", "CSMA"]),
 ]
 
+# 408 试卷的科目分区多年稳定，按题号定科比关键词猜测可靠（关键词会把「位图」
+# 里的「图」算成数据结构，也会漏掉没有术语的题）。
+SECTION_SUBJECTS = (
+    (1, 11, "ds"), (12, 22, "co"), (23, 32, "os"), (33, 40, "cn"),
+    (41, 42, "ds"), (43, 44, "os"), (45, 46, "co"), (47, 47, "cn"),
+)
+
+
+def subject_for_seq(seq: int):
+    for lo, hi, subj in SECTION_SUBJECTS:
+        if lo <= seq <= hi:
+            return subj
+    return None
+
 
 def _split_options(qtext: str):
     hits = []
@@ -69,7 +83,7 @@ def mock_extract(seq: int, qtext: str, atext: str, meta: Dict[str, Any]) -> Dict
     return {
         "seq": seq,
         "type": subtype,
-        "subject": _guess_subject(qtext + " " + (atext or "")),
+        "subject": subject_for_seq(seq) or _guess_subject(qtext + " " + (atext or "")),
         "score": score,
         "stem": stem,
         "options": opts,

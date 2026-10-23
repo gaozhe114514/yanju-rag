@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from pipeline.build import build_items
-from pipeline.extract import mock_extract
+from pipeline.extract import mock_extract, subject_for_seq
 from pipeline.normalize import has_unmapped, normalize_text
 from pipeline.review import apply_patch
 from pipeline.split import Block, parse_answer_table, split_answers, split_numbered
@@ -104,6 +104,31 @@ class ExtractTest(unittest.TestCase):
         self.assertEqual(rec["answer"], "")
         self.assertEqual(rec["score"], 13)
 
+    def test_subject_comes_from_section_not_keywords(self):
+        # 「位图」里的「图」不该把文件系统题判成 ds
+        rec = mock_extract(26, "可用于文件系统管理空闲磁盘块的数据结构是",
+                           "26.【答案】A\n【解析】位图", {})
+        self.assertEqual(rec["subject"], "os")
+        # TCP 题在 33–40 段，归网络
+        rec = mock_extract(38, "某客户通过一个 TCP 连接向服务器发送数据",
+                           "38.【答案】C", {})
+        self.assertEqual(rec["subject"], "cn")
+
+    def test_subject_boundaries(self):
+        self.assertEqual(subject_for_seq(1), "ds")
+        self.assertEqual(subject_for_seq(11), "ds")
+        self.assertEqual(subject_for_seq(12), "co")
+        self.assertEqual(subject_for_seq(22), "co")
+        self.assertEqual(subject_for_seq(23), "os")
+        self.assertEqual(subject_for_seq(32), "os")
+        self.assertEqual(subject_for_seq(33), "cn")
+        self.assertEqual(subject_for_seq(40), "cn")
+        self.assertEqual(subject_for_seq(41), "ds")
+        self.assertEqual(subject_for_seq(44), "os")
+        self.assertEqual(subject_for_seq(46), "co")
+        self.assertEqual(subject_for_seq(47), "cn")
+        self.assertIsNone(subject_for_seq(0))
+
 
 class FakeProvider:
     """故意返回错题号、错题型的模型，用来验证 build 不再信任模型。"""
@@ -135,6 +160,12 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(it["answer"], "")
         self.assertEqual(it["source_ref"]["line"], 7)
         self.assertEqual(it["status"], "draft")
+
+    def test_forces_subject_by_seq(self):
+        # provider 说是 ds，但 26 题在操作系统段
+        items = build_items([Block(seq=26, text="x", start_line=1)],
+                            {}, FakeProvider(), 2019, "2019_paper.txt")
+        self.assertEqual(items[0]["subject"], "os")
 
 
 class ValidateTest(unittest.TestCase):
