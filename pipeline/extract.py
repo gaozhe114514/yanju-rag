@@ -62,9 +62,10 @@ def mock_extract(seq: int, qtext: str, atext: str, meta: Dict[str, Any]) -> Dict
         opts = {}
         answer = ""
     score = 2 if subtype == "single" else None
-    ms = re.search(r'本题\s*(\d+)\s*分', qtext)
+    # 真题里既有「本题 13 分」，也有「（13 分）」
+    ms = re.search(r'本题\s*(\d+)\s*分|[（(]\s*(\d+)\s*分\s*[）)]', qtext)
     if subtype == "comprehensive" and ms:
-        score = int(ms.group(1))
+        score = int(ms.group(1) or ms.group(2))
     return {
         "seq": seq,
         "type": subtype,

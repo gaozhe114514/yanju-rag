@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List
 
 from .extract import get_provider
+from .normalize import normalize_text
 from .review import apply_patch, generate_html
 from .split import split_answers, split_numbered
 from .validate import report
@@ -68,12 +69,12 @@ def main() -> None:
     if not args.paper:
         raise SystemExit("需要 --paper（或使用 --apply-patch）")
 
-    paper = read(args.paper)
+    paper = normalize_text(read(args.paper))
     blocks, w1 = split_numbered(paper)
     ans: Dict[int, str] = {}
     w2: List[str] = []
     if args.answer and os.path.exists(args.answer):
-        ans, w2 = split_answers(read(args.answer))
+        ans, w2 = split_answers(normalize_text(read(args.answer)))
 
     print("切题：%d 道（题号 %s）" % (len(blocks), [b.seq for b in blocks]))
     for w in w1:

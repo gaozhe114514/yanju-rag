@@ -5,6 +5,8 @@
 """
 from typing import Dict, List, Tuple
 
+from .normalize import has_unmapped
+
 SUBJECTS = {"ds", "co", "os", "cn"}
 
 
@@ -63,6 +65,14 @@ def check_one(item: Dict) -> List[Tuple[str, str]]:
         errs.append(("E", "kp_ids 不是数组: %s" % type(kps).__name__))
     elif not kps:
         errs.append(("W", "kp_ids 为空（打标阶段补）"))
+
+    # PDF 抽取残留：未映射的私有区字符会污染原文和引用校验
+    fields = [("stem", stem), ("analysis", item.get("analysis")),
+              ("answer", item.get("answer"))]
+    fields += [("选项 %s" % k, v) for k, v in opts.items() if isinstance(v, str)]
+    for name, val in fields:
+        if isinstance(val, str) and has_unmapped(val):
+            errs.append(("E", "%s 含未映射的 PDF 私有区字符" % name))
     return errs
 
 

@@ -7,6 +7,7 @@ import unittest
 
 from pipeline.build import build_items
 from pipeline.extract import mock_extract
+from pipeline.normalize import has_unmapped, normalize_text
 from pipeline.review import apply_patch
 from pipeline.split import Block, parse_answer_table, split_answers, split_numbered
 from pipeline.validate import check_one, check_paper, report
@@ -67,6 +68,21 @@ class SplitTest(unittest.TestCase):
         self.assertEqual(ans[1], "B")
         self.assertEqual(ans[5], "A")
         self.assertEqual(ans[7], "B")
+
+
+class NormalizeTest(unittest.TestCase):
+    def test_symbol_font_mapping(self):
+        raw = "abcd"
+        self.assertEqual(normalize_text(raw), "a−b=c×d…′←")
+
+    def test_floor_brackets_pair_in_order(self):
+        raw = "a/b = c/d"
+        self.assertEqual(normalize_text(raw), "⌊a/b⌋ = ⌊c/d⌋")
+
+    def test_has_unmapped(self):
+        self.assertTrue(has_unmapped("x"))
+        # 已映射的符号经 normalize 后不应再被判定为残留
+        self.assertFalse(has_unmapped(normalize_text("x")))
 
 
 class ExtractTest(unittest.TestCase):
@@ -143,6 +159,12 @@ class ValidateTest(unittest.TestCase):
         bad["seq"] = None
         errs, _ = check_paper([ok_single(), bad])  # 不应抛 TypeError
         self.assertTrue(any("非法题号" in m for _, m in errs))
+
+    def test_unmapped_pua_flagged(self):
+        item = ok_single()
+        item["stem"] = "公式 ab"
+        errs = check_one(item)
+        self.assertTrue(any("私有区字符" in m for _, m in errs))
 
     def test_report_counts(self):
         n_err, rep, stat = report([ok_single()])
