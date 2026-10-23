@@ -9,8 +9,8 @@
   KB_MODE           bm25 / hybrid / hybrid-rerank / hybrid-ce，默认 hybrid
   KB_FUSE_K         进入精排的候选数，默认 10
   KB_PROVIDER       mock / deepseek；默认有 DEEPSEEK_API_KEY 就用 deepseek
-  KB_MIN_SCORE      拒答阈值；hybrid-ce 默认 0.05，其他模式默认 0
-  KB_MIN_MARGIN     top1/top2 最小分差；hybrid-ce 默认 0.05，其他模式默认 0
+  KB_MIN_SCORE      拒答阈值；hybrid-ce 默认 0.1，其他模式默认 0
+  KB_MIN_MARGIN     top1/top2 最小分差；默认 0（关闭分差过滤）
   KB_ACCESS_TOKEN   访问口令；设置后内容接口必须带 X-Access-Token
   KB_RATE_MAX       每个 IP 在 KB_RATE_WINDOW 秒内最多请求次数，默认 20
   KB_RATE_WINDOW    限流窗口秒数，默认 600
@@ -127,10 +127,11 @@ def _load() -> None:
     else:
         provider = ExtractiveProvider()
 
-    # 阈值来自 answer.eval_gate 在 32 条正样本 + 16 条负样本上的标定：
-    # 0.05/0.05 时负样本拒答 93.8%，正样本误拒 12.5%。
-    default_score = "0.05" if mode == "hybrid-ce" else "0"
-    default_margin = "0.05" if mode == "hybrid-ce" else "0"
+    # 阈值来自 answer.eval_gate 在「真题 47 + 考点 42」混合语料上的标定
+    # （32 条正样本 + 16 条负样本）：0.1/0 时负样本拒答 93.8%、正样本误拒 9.4%。
+    # 分差阈值会误伤「多个考点都相关」的问题，混合语料下默认关闭。
+    default_score = "0.1" if mode == "hybrid-ce" else "0"
+    default_margin = "0"
     gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", default_score)),
                        float(os.environ.get("KB_MIN_MARGIN", default_margin)))
     gap_path = Path(os.environ.get("KB_GAP_LOG", "data/work/gap_log.jsonl"))

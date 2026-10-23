@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """检索层测试：不加载真实模型。"""
+import json
+import os
+import tempfile
 import unittest
 
 import numpy as np
 
 from retrieval.bm25 import BM25
-from retrieval.chunk import Chunk, build_chunk, build_knowledge_chunk
+from retrieval.chunk import (Chunk, build_chunk, build_knowledge_chunk,
+                             load_knowledge_chunks)
 from retrieval.eval import evaluate
 from retrieval.fuse import rrf
 from retrieval.rerank import LexicalReranker
-from retrieval.search import HybridSearcher
+from retrieval.search import HybridSearcher, match_exact_question
 from retrieval.tokenize import tokenize
 
 
@@ -76,6 +80,22 @@ class ChunkTest(unittest.TestCase):
         self.assertEqual(c.source_ref["line"], 8)
         self.assertEqual(c.answer, "")
 
+    def test_load_knowledge_chunks(self):
+        rows = [
+            {"id": "ds-a", "subject": "ds", "chapter": "排序", "title": "A",
+             "body": "正文 A"},
+            {"id": "ds-b", "subject": "ds", "chapter": "排序", "title": "B",
+             "body": "正文 B"},
+        ]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "knowledge.jsonl")
+            with open(path, "w", encoding="utf-8") as f:
+                for row in rows:
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            chunks = load_knowledge_chunks(path)
+        self.assertEqual([c.id for c in chunks], ["ds-a", "ds-b"])
+        self.assertTrue(all(c.kind == "knowledge" for c in chunks))
+
 
 class FakeEmbedder:
     """按关键词计数造 3 维向量，只验证链路。"""
@@ -93,6 +113,56 @@ def sample_chunks():
         Chunk("2019-408-02", 2, "哈希表 散列冲突 线性探测"),
         Chunk("2019-408-03", 3, "快速排序 时间复杂度"),
     ]
+
+
+class ExactQuestionTest(unittest.TestCase):
+    def setUp(self):
+        self.chunks = [
+            Chunk("2019-408-10", 10, "2019 年第十题题干"),
+            Chunk("2020-408-10", 10, "2020 年第十题题干"),
+            Chunk("2019-408-11", 11, "2019 年第十一题题干"),
+        ]
+
+    def test_raw_id(self):
+        c = match_exact_question("看看 2019-408-10 的解析", self.chunks)
+        self.assertEqual(c.id, "2019-408-10")
+
+    def test_year_and_seq(self):
+        c = match_exact_question("2019 年第 10 题答案是什么", self.chunks)
+        self.assertEqual(c.id, "2019-408-10")
+
+    def test_yearless_seq_is_ambiguous(self):
+        self.assertIsNone(match_exact_question("第 10 题答案是什么", self.chunks))
+
+    def test_missing_number(self):
+        self.assertIsNone(match_exact_question("快速排序的时间复杂度", self.chunks))
+
+    def test_searcher_pins_exact_question_first(self):
+        s = HybridSearcher(self.chunks)
+        hits = s.search("2019 年第 11 题")
+        self.assertEqual(hits[0].chunk.id, "2019-408-11")
+        self.assertEqual(hits[0].score, 1.0)
+
+    def test_unknown_year_returns_no_hits(self):
+        s = HybridSearcher(self.chunks)
+        self.assertEqual(s.search("2024 年 408 第 1 题的答案是什么"), [])
+
+    def test_unknown_id_returns_no_hits(self):
+        s = HybridSearcher(self.chunks)
+        self.assertEqual(s.search("2024-408-10 的解析"), [])
+
+    def test_unknown_seq_returns_no_hits(self):
+        s = HybridSearcher(self.chunks)
+        self.assertEqual(s.search("2019 年第 99 题"), [])
+
+    def test_yearless_seq_ambiguous_returns_no_hits(self):
+        s = HybridSearcher(self.chunks)
+        self.assertEqual(s.search("第 10 题答案是什么"), [])
+
+    def test_yearless_seq_unique_is_pinned(self):
+        s = HybridSearcher([Chunk("2019-408-10", 10, "2019 年第十题题干")])
+        hits = s.search("第 10 题")
+        self.assertEqual(hits[0].chunk.id, "2019-408-10")
 
 
 class SearcherTest(unittest.TestCase):

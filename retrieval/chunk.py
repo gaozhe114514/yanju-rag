@@ -106,3 +106,18 @@ def load_questions(paths: Iterable[str]) -> List[Dict]:
 
 def load_chunks(paths: Iterable[str]) -> List[Chunk]:
     return [build_chunk(q) for q in load_questions(paths)]
+
+
+def load_knowledge_chunks(path: str, display_path: str = "") -> List[Chunk]:
+    """读考点 JSONL 并转成 chunk；用于评测脚本把两类语料拼在一起。"""
+    chunks: List[Chunk] = []
+    with open(path, encoding="utf-8") as f:
+        for lineno, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            card = json.loads(line)
+            if not card.get("id"):
+                continue
+            chunks.append(build_knowledge_chunk(card, display_path or path, lineno))
+    return chunks

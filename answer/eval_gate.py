@@ -12,7 +12,7 @@ import glob
 import json
 import sys
 
-from retrieval.chunk import load_chunks
+from retrieval.chunk import load_chunks, load_knowledge_chunks
 from retrieval.search import MODES, build_searcher
 
 from .gate import RefusalGate
@@ -44,6 +44,8 @@ def main() -> None:
     ap.add_argument("--negatives", nargs="+", required=True,
                     help="资料外的 query 集（JSONL，无 gold）")
     ap.add_argument("--input", nargs="+", required=True)
+    ap.add_argument("--knowledge", nargs="*", default=[],
+                    help="考点 JSONL；给了就把真题和考点放在同一个语料里评测")
     ap.add_argument("--mode", default="hybrid-ce", choices=list(MODES))
     ap.add_argument("--model", default="BAAI/bge-small-zh-v1.5")
     ap.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
@@ -61,7 +63,10 @@ def main() -> None:
     paths = []
     for p in args.input:
         paths.extend(sorted(glob.glob(p)) or [p])
-    searcher = build_searcher(load_chunks(paths), mode=args.mode,
+    chunks = load_chunks(paths)
+    for p in args.knowledge:
+        chunks.extend(load_knowledge_chunks(p))
+    searcher = build_searcher(chunks, mode=args.mode,
                               model_name=args.model,
                               reranker_model=args.reranker_model,
                               k_fuse=args.fuse_k, k_final=5)

@@ -124,7 +124,7 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 KB_MODE=hybrid KB_PROVIDER=mock py -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 
-# 接 DeepSeek；hybrid-ce 会自动启用标定过的拒答阈值 0.05/0.05
+# 接 DeepSeek；hybrid-ce 会自动启用标定过的拒答阈值 0.1/0
 set DEEPSEEK_API_KEY=sk-xxxx          # PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx"
 set KB_MODE=hybrid-ce
 set KB_FUSE_K=10
@@ -172,17 +172,20 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 链路是：理解问题（可选改写）→ 检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
 
-拒答阈值不能拍脑袋。用 32 条正样本 + 16 条资料外负样本扫网格：
+用户点名题号时（`2019-408-10`、`2019 年第 10 题`），检索会直接锁定该题并给 1.0 分，不依赖关键词召回；如果库里没有这个年份或题号，直接返回空结果拒答，不会拿别的题顶替。
+
+拒答阈值不能拍脑袋。用 32 条正样本 + 16 条资料外负样本扫网格（`--knowledge` 把考点卡片也放进同一语料）：
 
 ```bash
 py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
                        --negatives data/eval/out_of_scope.jsonl \
                        --input data/work/2019_draft.jsonl \
+                       --knowledge data/curated/knowledge.jsonl \
                        --mode hybrid-ce --fuse-k 10 \
-                       --sweep 0.02,0.05,0.1,0.2 --sweep-margin 0,0.01,0.05
+                       --sweep 0.05,0.08,0.1 --sweep-margin 0,0.05
 ```
 
-实测 `min_score=0.05, min_margin=0.05` 时负样本拒答 93.8%、正样本误拒 12.5%，所以 `hybrid-ce` 模式默认就用这组值；`KB_MIN_SCORE` / `KB_MIN_MARGIN` 可覆盖。
+实测混合语料上 `min_score=0.1, min_margin=0` 时负样本拒答 93.8%、正样本误拒 9.4%，同拒答率下比 `0.05/0.05` 少 3 条误拒，所以 `hybrid-ce` 默认用这组值；`KB_MIN_SCORE` / `KB_MIN_MARGIN` 可覆盖。分差阈值（`min_margin`）会误伤「多个考点都相关」的问题，混合语料下默认关闭。
 
 > `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义，默认不拒答；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数。
 
@@ -200,6 +203,7 @@ py -m answer.eval_answer --queries data/eval/2019_queries_hard.jsonl \
 输出包括：首次引用通过率、重试后通过数、闸门/模型/引用失败三类拒答、负样本拒答率、平均延迟。`--limit 5` 可先冒烟。
 
 32 条改写 query + 16 条资料外负样本，`hybrid-ce / k_fuse=10 / 0.05 / 0.05`，DeepSeek 真实生成。
+下表是补解析前后对比时测的历史数据（当时默认还是 0.05/0.05）；现行默认阈值是 `0.1/0`。
 同一套 query 下，只改语料里的解析：
 
 | 指标 | 未补解析（仅 7 题有） | 补全 40 题 |
