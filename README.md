@@ -83,6 +83,7 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 | 47 条贴近原文 | bm25 | 0.979 | 1.000 | 0.989 |
 | | hybrid | 1.000 | 1.000 | 1.000 |
 | | hybrid-rerank | 0.936 | 1.000 | 0.968 |
+| | hybrid-ce（精排 10 候选） | 0.979 | 1.000 | 0.983 |
 | 32 条改写提问 | bm25 | 0.750 | 0.938 | 0.820 |
 | | hybrid | 0.781 | 0.938 | 0.859 |
 | | hybrid-rerank | 0.812 | 0.938 | 0.865 |
