@@ -434,6 +434,13 @@
     }
     .wrong-actions { display: flex; gap: 6px; flex: none; }
     .wrong-actions .ghost { padding: 6px 11px; font-size: 12px; }
+    .quiz-opt { width: 100%; background: var(--card); color: inherit; text-align: left; }
+    .quiz-opt:hover { border-color: #93c5fd; }
+    .quiz-opt.selected { border-color: #93c5fd; background: #eff6ff; }
+    .quiz-opt.wrong-opt { border-color: #fca5a5; background: #fef2f2; }
+    .quiz-opt:disabled { cursor: default; color: inherit; }
+    .quiz-score { margin: 4px 0 2px; font-size: 30px; font-weight: 700; color: var(--brand); }
+    .quiz-sub { color: var(--muted); font-size: 12.5px; }
     .wrong-empty {
       padding: 34px 12px; border: 1px dashed var(--line); border-radius: 12px;
       color: var(--muted); font-size: 13px; text-align: center; background: var(--card);
@@ -684,6 +691,7 @@
         <div class="practice-tabs" id="practice-tabs">
           <button class="ptab active" data-mode="drill">随机练习</button>
           <button class="ptab" data-mode="wrong">错题本 <span class="ptab-count" id="wrong-count">0</span></button>
+          <button class="ptab" data-mode="quiz">10 题小测</button>
         </div>
         <div id="practice-drill">
           <div class="topic-banner" id="practice-topic" hidden>
@@ -703,6 +711,13 @@
             <button class="ghost" id="wrong-redo">重练全部错题</button>
           </div>
           <div class="wrong-list" id="wrong-list"></div>
+        </div>
+        <div id="practice-quiz" hidden>
+          <div class="practice-top">
+            <div class="practice-stats" id="quiz-stats"></div>
+            <select class="select" id="quiz-subject"></select>
+          </div>
+          <div id="quiz-card"></div>
         </div>
       </div>
     </section>
@@ -779,7 +794,7 @@
                 loading: false, subjects: [], chapters: []},
     practice: {subject: '', current: null, detail: null, revealed: false, assessed: null,
                list: [], queue: null, topic: '', mode: 'drill',
-               history: loadHistory(), map: null},
+               history: loadHistory(), map: null, quiz: null, quizSubject: ''},
     stats: loadJSON(STATS_KEY, {seen: 0, known: 0, unknown: 0})
   };
 
@@ -1342,10 +1357,7 @@
     });
   }
 
-  function renderPracticeSubjects() {
-    const sel = $('#practice-subject');
-    if (!sel) return;
-    const cur = state.practice.subject;
+  function fillSubjectSelect(sel, cur) {
     sel.replaceChildren();
     const optAll = el('option', null, '全部科目');
     optAll.value = '';
@@ -1356,6 +1368,16 @@
       sel.appendChild(o);
     });
     sel.value = cur;
+  }
+
+  function renderPracticeSubjects() {
+    const sel = $('#practice-subject');
+    if (sel) fillSubjectSelect(sel, state.practice.subject);
+  }
+
+  function renderQuizSubjects() {
+    const sel = $('#quiz-subject');
+    if (sel) fillSubjectSelect(sel, state.practice.quizSubject);
   }
 
   function bankParams() {
@@ -1667,13 +1689,18 @@
     return (d.getMonth() + 1) + '月' + d.getDate() + '日';
   }
 
+  // 题干里常有换行和代码块；收进列表时压成一行，避免行数截断后多出一个孤立的省略号。
+  function stemPreview(stem) {
+    return String(stem || '').replace(/\s+/g, ' ').trim();
+  }
+
   function recordAssessment(q, kind) {
     if (!q || !q.id) return;
     const h = state.practice.history;
     const rec = h[q.id] || {attempts: 0, wrong: 0};
     rec.subject = q.subject || '';
     rec.subject_label = q.subject_label || subjectLabel(q.subject);
-    rec.stem = (q.stem || '').slice(0, 500);
+    rec.stem = stemPreview(q.stem).slice(0, 500);
     rec.result = kind;
     rec.attempts = (rec.attempts || 0) + 1;
     if (kind === 'unknown') rec.wrong = (rec.wrong || 0) + 1;
@@ -1710,15 +1737,21 @@
 
   function renderPracticePage() {
     const p = state.practice;
-    const mode = p.mode === 'wrong' ? 'wrong' : 'drill';
+    const mode = (p.mode === 'wrong' || p.mode === 'quiz') ? p.mode : 'drill';
     $('#practice-drill').hidden = mode !== 'drill';
     $('#practice-wrong').hidden = mode !== 'wrong';
+    $('#practice-quiz').hidden = mode !== 'quiz';
     $$('#practice-tabs .ptab').forEach(b => {
       b.classList.toggle('active', b.dataset.mode === mode);
     });
     renderWrongCount();
     if (mode === 'wrong') renderWrongBook();
-    else renderPractice();
+    else if (mode === 'quiz') {
+      renderQuizSubjects();
+      renderQuiz();
+    } else {
+      renderPractice();
+    }
   }
 
   function renderWrongBook() {
@@ -1783,7 +1816,7 @@
       meta.appendChild(el('span', null,
         '错了 ' + (r.wrong || 1) + ' 次 · ' + formatWhen(r.last_at)));
       main.appendChild(meta);
-      main.appendChild(el('div', 'wrong-stem', r.stem));
+      main.appendChild(el('div', 'wrong-stem', stemPreview(r.stem)));
       main.addEventListener('click', () => openQuestion(r.id));
       row.appendChild(main);
 
@@ -1813,6 +1846,246 @@
     }
     p.map = map;
     return p.map;
+  }
+
+  function bumpStats(kind) {
+    state.stats.seen = (state.stats.seen || 0) + 1;
+    if (kind === 'known') state.stats.known = (state.stats.known || 0) + 1;
+    else state.stats.unknown = (state.stats.unknown || 0) + 1;
+    saveStats();
+  }
+
+  function shuffleCopy(list) {
+    const a = list.slice();
+    for (let i = a.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  async function startQuiz() {
+    const p = state.practice;
+    const subject = p.quizSubject || '';
+    p.quiz = {loading: true, subject};
+    renderQuiz();
+    try {
+      const map = await ensureQuestionMap();
+      const want = subject === 'none' ? '' : subject;
+      let pool = Object.values(map).filter(q =>
+        q && q.type === 'single' && q.has_options);
+      if (want) pool = pool.filter(q => (q.subject || '') === want);
+      if (!pool.length) {
+        p.quiz = {error: '这个科目还没有可判分的单选题', subject};
+        renderQuiz();
+        return;
+      }
+      const picked = shuffleCopy(pool).slice(0, 10);
+      const questions = await Promise.all(
+        picked.map(q => api('/chunks/' + encodeURIComponent(q.id))));
+      p.quiz = {
+        subject, questions, index: 0, picks: {}, submitted: {},
+        correct: 0, finished: false
+      };
+      renderQuiz();
+    } catch (e) {
+      p.quiz = {error: '组卷失败：' + e.message, subject};
+      renderQuiz();
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+    }
+  }
+
+  function renderQuizIntro(qz) {
+    const card = el('div', 'practice-card');
+    card.appendChild(el('h2', null, '10 题小测'));
+    card.appendChild(el('div', 'practice-note',
+      '每组最多 10 道选择题，提交后立即判分；做错的题会自动进错题本。'));
+    if (qz && qz.error) card.appendChild(el('div', 'warn-box', qz.error));
+    const row = el('div', 'btn-row');
+    const start = el('button', 'primary', '开始小测');
+    start.addEventListener('click', startQuiz);
+    row.appendChild(start);
+    card.appendChild(row);
+    return card;
+  }
+
+  function renderQuiz() {
+    const qz = state.practice.quiz;
+    const stats = $('#quiz-stats');
+    const box = $('#quiz-card');
+    box.replaceChildren();
+
+    if (!qz) {
+      stats.replaceChildren(practiceStat('题量', '最多 10 题'),
+                            practiceStat('判分', '自动'));
+      box.appendChild(renderQuizIntro(null));
+      return;
+    }
+    if (qz.loading) {
+      stats.replaceChildren(practiceStat('状态', '组卷中…'));
+      box.appendChild(el('div', 'practice-empty', '正在从题库抽题…'));
+      return;
+    }
+    if (qz.error) {
+      stats.replaceChildren(practiceStat('题量', '最多 10 题'));
+      box.appendChild(renderQuizIntro(qz));
+      return;
+    }
+    if (qz.finished) {
+      renderQuizResult(qz);
+      return;
+    }
+
+    const item = qz.questions[qz.index];
+    const correct = String(item.answer || '').trim().toUpperCase();
+    const submitted = !!qz.submitted[item.id];
+    const pick = qz.picks[item.id] || '';
+    stats.replaceChildren(
+      practiceStat('进度', (qz.index + 1) + ' / ' + qz.questions.length),
+      practiceStat('答对', qz.correct)
+    );
+
+    const card = el('div', 'practice-card');
+    const meta = el('div', 'q-meta');
+    meta.appendChild(el('span', 'q-id', item.id));
+    meta.appendChild(el('span', 'q-tag',
+      item.subject_label || subjectLabel(item.subject)));
+    meta.appendChild(el('span', 'q-tag', '第 ' + (qz.index + 1) + ' 题'));
+    card.appendChild(meta);
+    card.appendChild(el('h2', null, item.stem));
+
+    const opts = item.options || {};
+    Object.keys(opts).sort().forEach(k => {
+      const row = el('button', 'opt quiz-opt');
+      row.type = 'button';
+      if (pick === k) row.classList.add('selected');
+      if (submitted && correct === k) row.classList.add('correct');
+      if (submitted && pick === k && pick !== correct) row.classList.add('wrong-opt');
+      row.disabled = submitted;
+      row.appendChild(el('span', 'opt-letter', k + '.'));
+      row.appendChild(el('span', null, opts[k]));
+      row.addEventListener('click', () => {
+        qz.picks[item.id] = k;
+        renderQuiz();
+      });
+      card.appendChild(row);
+    });
+
+    const actions = el('div', 'btn-row');
+    if (!submitted) {
+      const submit = el('button', 'primary', '提交答案');
+      submit.disabled = !pick;
+      submit.addEventListener('click', submitQuizAnswer);
+      actions.appendChild(submit);
+    } else {
+      const next = el('button', 'primary',
+        qz.index + 1 >= qz.questions.length ? '查看结果' : '下一题');
+      next.addEventListener('click', nextQuizQuestion);
+      actions.appendChild(next);
+      const verdict = el('span', 'practice-note',
+        pick === correct ? '答对了' : '答错了，正确答案是 ' + correct);
+      verdict.style.margin = '8px 0 0';
+      actions.appendChild(verdict);
+    }
+    card.appendChild(actions);
+
+    if (submitted) {
+      const answerBox = el('div', 'answer-box');
+      answerBox.appendChild(el('div', 'section-title', '参考答案'));
+      answerBox.appendChild(el('div', 'detail-answer', item.answer || '见解析'));
+      if (item.analysis) {
+        answerBox.appendChild(el('div', 'section-title', '解析'));
+        answerBox.appendChild(el('div', 'analysis', item.analysis));
+      }
+      card.appendChild(answerBox);
+    }
+
+    box.appendChild(card);
+  }
+
+  function submitQuizAnswer() {
+    const qz = state.practice.quiz;
+    if (!qz || qz.finished) return;
+    const item = qz.questions[qz.index];
+    const pick = qz.picks[item.id];
+    if (!pick || qz.submitted[item.id]) return;
+    const correct = String(item.answer || '').trim().toUpperCase();
+    const ok = pick === correct;
+    qz.submitted[item.id] = true;
+    if (ok) qz.correct += 1;
+    bumpStats(ok ? 'known' : 'unknown');
+    recordAssessment(item, ok ? 'known' : 'unknown');
+    renderQuiz();
+    renderWrongCount();
+  }
+
+  function nextQuizQuestion() {
+    const qz = state.practice.quiz;
+    if (!qz || qz.finished) return;
+    if (qz.index + 1 >= qz.questions.length) {
+      qz.finished = true;
+    } else {
+      qz.index += 1;
+    }
+    renderQuiz();
+  }
+
+  function renderQuizResult(qz) {
+    const total = qz.questions.length;
+    const pct = Math.round(qz.correct / total * 100);
+    $('#quiz-stats').replaceChildren(
+      practiceStat('得分', pct + '%'),
+      practiceStat('答对', qz.correct + ' / ' + total)
+    );
+
+    const card = el('div', 'practice-card');
+    card.appendChild(el('h2', null, '本组完成'));
+    card.appendChild(el('div', 'quiz-score', pct + '%'));
+    card.appendChild(el('div', 'quiz-sub',
+      '答对 ' + qz.correct + ' / ' + total + ' 题' +
+      (qz.correct === total ? '，全对。' : '，错题已加入错题本。')));
+
+    const wrong = qz.questions.filter(q =>
+      qz.picks[q.id] !== String(q.answer || '').trim().toUpperCase());
+    if (wrong.length) {
+      const list = el('div', 'wrong-list');
+      list.style.marginTop = '14px';
+      wrong.forEach(q => {
+        const row = el('div', 'wrong-row');
+        const main = el('div', 'wrong-main');
+        const meta = el('div', 'wrong-meta');
+        meta.appendChild(el('span', 'q-id', q.id));
+        meta.appendChild(el('span', 'q-tag',
+          q.subject_label || subjectLabel(q.subject)));
+        meta.appendChild(el('span', null,
+          '你的答案 ' + (qz.picks[q.id] || '-') + ' · 正确 ' + (q.answer || '-')));
+        main.appendChild(meta);
+        main.appendChild(el('div', 'wrong-stem', stemPreview(q.stem)));
+        main.addEventListener('click', () => openQuestion(q.id));
+        row.appendChild(main);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+    }
+
+    const actions = el('div', 'btn-row');
+    const again = el('button', 'primary', '再来一组');
+    again.addEventListener('click', startQuiz);
+    const wrongBook = el('button', 'ghost', '查看错题本');
+    wrongBook.addEventListener('click', () => {
+      state.practice.mode = 'wrong';
+      renderPracticePage();
+    });
+    const drill = el('button', 'ghost', '回到随机练习');
+    drill.addEventListener('click', () => {
+      state.practice.mode = 'drill';
+      renderPracticePage();
+    });
+    actions.appendChild(again);
+    actions.appendChild(wrongBook);
+    actions.appendChild(drill);
+    card.appendChild(actions);
+    $('#quiz-card').replaceChildren(card);
   }
 
   async function startWrongPractice(ids) {
@@ -1997,11 +2270,8 @@
     const p = state.practice;
     if (p.assessed) return;
     p.assessed = kind;
-    state.stats.seen = (state.stats.seen || 0) + 1;
-    if (kind === 'known') state.stats.known = (state.stats.known || 0) + 1;
-    else state.stats.unknown = (state.stats.unknown || 0) + 1;
+    bumpStats(kind);
     recordAssessment(p.current, kind);
-    saveStats();
     renderPractice();
     renderWrongCount();
   }
@@ -2221,7 +2491,7 @@
         if (m) {
           renderPracticeSubjects();
           renderPracticePage();
-          if (state.practice.mode !== 'wrong' && !state.practice.current) loadPractice();
+          if (state.practice.mode === 'drill' && !state.practice.current) loadPractice();
         } else {
           renderPracticePage();
         }
@@ -2285,6 +2555,11 @@
       state.practice.topic = '';
       state.practice.current = null;
       loadPractice();
+    });
+    $('#quiz-subject').addEventListener('change', e => {
+      state.practice.quizSubject = e.target.value;
+      state.practice.quiz = null;
+      renderQuiz();
     });
     $$('#practice-tabs .ptab').forEach(b => {
       b.addEventListener('click', () => {
