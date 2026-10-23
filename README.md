@@ -51,6 +51,11 @@ py -m pipeline.build --year 2019 --apply-patch data/work/review_patch.json
 ```bash
 py -m pip install -r requirements.txt
 
+# 没有 API key 也能生成 2019 语料（规则抽取，kp_ids 为空）
+py -m pipeline.build --paper data/raw/2019_paper.txt \
+                     --answer data/raw/2019_answer.txt \
+                     --year 2019 --provider mock
+
 # 模型首次运行会自动下载；国内网络先设镜像
 set HF_ENDPOINT=https://hf-mirror.com     # PowerShell: $env:HF_ENDPOINT="https://hf-mirror.com"
 
@@ -81,8 +86,14 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 | 32 条改写提问 | bm25 | 0.750 | 0.938 | 0.820 |
 | | hybrid | 0.781 | 0.938 | 0.859 |
 | | hybrid-rerank | 0.812 | 0.938 | 0.865 |
+| | hybrid-ce（精排 30 候选） | 0.938 | 0.938 | 0.938 |
+| | hybrid-ce（精排 10 候选） | 0.938 | 0.969 | 0.945 |
 
-> 47 个 chunk 的语料太小，贴近原文的查询会饱和，**看改写集才有区分度**。改写集暴露了两个纯语义 case：Q36 在向量召回里排第 1、BM25 得分为 0，RRF 融合后掉到第 10；Q23 向量排第 12。词面精排对这类同义表达无效，要靠 Cross-Encoder 或更大的向量模型。
+> 47 个 chunk 的语料太小，贴近原文的查询会饱和，**看改写集才有区分度**。Cross-Encoder 把 R@1 从 0.781 拉到 0.938：Q36 在向量召回里排第 1、BM25 得分为 0，RRF 融合后掉到第 10，精排 30 候选时被拉回第 1；精排只留 10 候选时它仍在 top5，且整体 R@5 反而更高。
+>
+> CPU 延迟（32 条 query）：精排 30 候选约 14 分钟，10 候选约 3.6 分钟。**服务默认用 10**，生产环境建议上 GPU 或 ONNX 量化。
+>
+> Q23 是评测标签问题：query 问“线程共享哪些资源”，但 2019 年第 23 题只问“线程描述哪项错误”，选项没讲共享资源，CE 给 0.0001 是合理的。检索的 gold 应该是“能回答问题的 chunk”，不是“同知识点的 chunk”。
 
 ## 在线问答
 
@@ -91,9 +102,10 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 KB_MODE=hybrid KB_PROVIDER=mock py -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 
-# 接 DeepSeek（阈值标定后再开 hybrid-ce）
+# 接 DeepSeek；hybrid-ce 会自动启用标定过的拒答阈值 0.05/0.05
 set DEEPSEEK_API_KEY=sk-xxxx          # PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx"
-set KB_MODE=hybrid
+set KB_MODE=hybrid-ce
+set KB_FUSE_K=10
 py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -107,16 +119,19 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 链路是：检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
 
-拒答阈值不能拍脑袋，默认 0 等于不拒答。用正负样本扫阈值：
+拒答阈值不能拍脑袋。用 32 条正样本 + 16 条资料外负样本扫网格：
 
 ```bash
 py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
                        --negatives data/eval/out_of_scope.jsonl \
                        --input data/work/2019_draft.jsonl \
-                       --mode hybrid-ce --sweep 0.1,0.2,0.3,0.4,0.5
+                       --mode hybrid-ce --fuse-k 10 \
+                       --sweep 0.02,0.05,0.1,0.2 --sweep-margin 0,0.01,0.05
 ```
 
-> 当前 `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数标定。
+实测 `min_score=0.05, min_margin=0.05` 时负样本拒答 93.8%、正样本误拒 12.5%，所以 `hybrid-ce` 模式默认就用这组值；`KB_MIN_SCORE` / `KB_MIN_MARGIN` 可覆盖。
+
+> `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义，默认不拒答；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数。
 
 ## 运行测试
 

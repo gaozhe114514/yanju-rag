@@ -46,6 +46,8 @@ def main() -> None:
     ap.add_argument("--mode", default="hybrid", choices=list(MODES))
     ap.add_argument("--model", default="BAAI/bge-small-zh-v1.5")
     ap.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
+    ap.add_argument("--fuse-k", type=int, default=30,
+                    help="进入精排的候选数")
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--show-misses", action="store_true")
     args = ap.parse_args()
@@ -53,7 +55,8 @@ def main() -> None:
     chunks = load_chunks(args.input)
     queries = [json.loads(l) for l in open(args.queries, encoding="utf-8") if l.strip()]
     searcher = build_searcher(chunks, mode=args.mode, model_name=args.model,
-                              reranker_model=args.reranker_model, k_final=args.k)
+                              reranker_model=args.reranker_model,
+                              k_fuse=args.fuse_k, k_final=args.k)
     res = evaluate(searcher, queries, k=args.k)
     print("mode=%s  chunks=%d  queries=%d" % (args.mode, len(chunks), res["n"]))
     print("Recall@1=%.3f  Recall@%d=%.3f  MRR=%.3f" % (

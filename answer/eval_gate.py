@@ -47,10 +47,14 @@ def main() -> None:
     ap.add_argument("--mode", default="hybrid-ce", choices=list(MODES))
     ap.add_argument("--model", default="BAAI/bge-small-zh-v1.5")
     ap.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
+    ap.add_argument("--fuse-k", type=int, default=5,
+                    help="精排候选数；标定 top1/top2 时 5 足够，能省大量 CPU 时间")
     ap.add_argument("--min-score", type=float, default=0.0)
     ap.add_argument("--min-margin", type=float, default=0.0)
     ap.add_argument("--sweep", default="",
                     help="逗号分隔的 min_score，例如 0.1,0.2,0.3")
+    ap.add_argument("--sweep-margin", default="",
+                    help="逗号分隔的 min_margin，与 --sweep 组合成网格")
     ap.add_argument("--show", action="store_true")
     args = ap.parse_args()
 
@@ -59,7 +63,8 @@ def main() -> None:
         paths.extend(sorted(glob.glob(p)) or [p])
     searcher = build_searcher(load_chunks(paths), mode=args.mode,
                               model_name=args.model,
-                              reranker_model=args.reranker_model, k_final=5)
+                              reranker_model=args.reranker_model,
+                              k_fuse=args.fuse_k, k_final=5)
 
     pos = []
     for p in args.positives:
@@ -82,11 +87,14 @@ def main() -> None:
 
     thresholds = ([float(x) for x in args.sweep.split(",") if x.strip()]
                   if args.sweep else [args.min_score])
-    print("min_score  正样本误拒  负样本拒答")
+    margins = ([float(x) for x in args.sweep_margin.split(",") if x.strip()]
+               if args.sweep_margin else [args.min_margin])
+    print("min_score  min_margin  正样本误拒  负样本拒答")
     for t in thresholds:
-        print("%9.3f  %10.3f  %10.3f" % (
-            t, refuse_rate(pos_hits, t, args.min_margin),
-            refuse_rate(neg_hits, t, args.min_margin)))
+        for m in margins:
+            print("%9.4f  %10.4f  %10.3f  %10.3f" % (
+                t, m, refuse_rate(pos_hits, t, m),
+                refuse_rate(neg_hits, t, m)))
     print("正样本 %d 条，负样本 %d 条" % (len(pos), len(neg)))
 
 

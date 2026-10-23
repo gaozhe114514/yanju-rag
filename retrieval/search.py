@@ -59,7 +59,7 @@ MODES = ("bm25", "hybrid", "hybrid-rerank", "hybrid-ce")
 def build_searcher(chunks: Sequence[Chunk], mode: str = "hybrid",
                    model_name: str = "BAAI/bge-small-zh-v1.5",
                    reranker_model: str = "BAAI/bge-reranker-v2-m3",
-                   k_final: int = 5) -> HybridSearcher:
+                   k_fuse: int = 30, k_final: int = 5) -> HybridSearcher:
     if mode not in MODES:
         raise ValueError("未知 mode: %s" % mode)
     embedder = None
@@ -71,4 +71,5 @@ def build_searcher(chunks: Sequence[Chunk], mode: str = "hybrid",
     elif mode == "hybrid-ce":
         reranker = CrossEncoderReranker([c.text for c in chunks],
                                         model_name=reranker_model)
-    return HybridSearcher(chunks, embedder=embedder, reranker=reranker, k_final=k_final)
+    return HybridSearcher(chunks, embedder=embedder, reranker=reranker,
+                          k_fuse=k_fuse, k_final=k_final)

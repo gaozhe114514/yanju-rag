@@ -7,9 +7,10 @@
 环境变量：
   KB_INPUT          题库 JSONL，逗号分隔，默认 data/work/2019_draft.jsonl
   KB_MODE           bm25 / hybrid / hybrid-rerank / hybrid-ce，默认 hybrid
+  KB_FUSE_K         进入精排的候选数，默认 10
   KB_PROVIDER       mock / deepseek；默认有 DEEPSEEK_API_KEY 就用 deepseek
-  KB_MIN_SCORE      拒答阈值，默认 0（需用 answer.eval_gate 标定后调高）
-  KB_MIN_MARGIN     top1/top2 最小分差，默认 0
+  KB_MIN_SCORE      拒答阈值；hybrid-ce 默认 0.05，其他模式默认 0（RRF 分数没法用绝对阈值）
+  KB_MIN_MARGIN     top1/top2 最小分差；hybrid-ce 默认 0.05，其他模式默认 0
 """
 import os
 import threading
@@ -49,7 +50,9 @@ def _load() -> None:
 
     chunks = load_chunks(paths)
     mode = os.environ.get("KB_MODE", "hybrid")
-    searcher = build_searcher(chunks, mode=mode, k_final=5)
+    # CPU 上精排 10 个候选约 7 秒/次；30 个要约 27 秒，R@1 只差 0 点。
+    fuse_k = int(os.environ.get("KB_FUSE_K", "10"))
+    searcher = build_searcher(chunks, mode=mode, k_fuse=fuse_k, k_final=5)
 
     provider_name = os.environ.get("KB_PROVIDER", "")
     if not provider_name:
@@ -63,8 +66,12 @@ def _load() -> None:
     else:
         provider = ExtractiveProvider()
 
-    gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", "0")),
-                       float(os.environ.get("KB_MIN_MARGIN", "0")))
+    # 阈值来自 answer.eval_gate 在 32 条正样本 + 16 条负样本上的标定：
+    # 0.05/0.05 时负样本拒答 93.8%，正样本误拒 12.5%。
+    default_score = "0.05" if mode == "hybrid-ce" else "0"
+    default_margin = "0.05" if mode == "hybrid-ce" else "0"
+    gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", default_score)),
+                       float(os.environ.get("KB_MIN_MARGIN", default_margin)))
     gap_path = Path(os.environ.get("KB_GAP_LOG", "data/work/gap_log.jsonl"))
     if not gap_path.is_absolute():
         gap_path = ROOT / gap_path
@@ -73,6 +80,7 @@ def _load() -> None:
         "pipeline": AnswerPipeline(searcher, provider, gate=gate),
         "chunks": chunks,
         "mode": mode,
+        "fuse_k": fuse_k,
         "provider": provider_name,
         "gap_log": str(gap_path),
     })
@@ -105,6 +113,7 @@ def health() -> dict:
         "status": "ok",
         "chunks": len(_state.get("chunks", [])),
         "mode": _state.get("mode"),
+        "fuse_k": _state.get("fuse_k"),
         "provider": _state.get("provider"),
     }
 
