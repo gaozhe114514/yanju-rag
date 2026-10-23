@@ -21,6 +21,28 @@ def read(p: str) -> str:
         return f.read()
 
 
+def build_items(blocks, ans, prov, year: int, source_file: str) -> List[Dict[str, Any]]:
+    """逐题抽取。
+
+    题号与题型以切题器为准，不信任模型返回值：模型把 13 认成 18、或返回字符串，
+    会让 id 与 seq 分叉，整卷的连续性校验就失效了。
+    """
+    items: List[Dict[str, Any]] = []
+    for b in blocks:
+        rec = prov.extract(b.seq, b.text, ans.get(b.seq, ""), {"year": year})
+        rec["seq"] = b.seq
+        rec["type"] = "single" if b.seq <= 40 else "comprehensive"
+        if rec["type"] == "comprehensive":
+            rec["options"] = {}
+            rec["answer"] = ""
+        rec["id"] = "%d-408-%02d" % (year, b.seq)
+        rec["year"] = year
+        rec["source_ref"] = {"file": source_file, "line": b.start_line, "page": None}
+        rec["status"] = "draft"
+        items.append(rec)
+    return items
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--paper")
@@ -63,16 +85,7 @@ def main() -> None:
         print("  ! 无答案/解析的题号：%s" % no_ans)
 
     prov = get_provider(args.provider)
-    items: List[Dict[str, Any]] = []
-    for b in blocks:
-        rec = prov.extract(b.seq, b.text, ans.get(b.seq, ""), {"year": args.year})
-        rec["id"] = "%d-408-%02d" % (args.year, b.seq)
-        rec.setdefault("year", args.year)
-        rec["year"] = args.year
-        rec["source_ref"] = {"file": os.path.basename(args.paper),
-                             "line": b.start_line, "page": None}
-        rec["status"] = "draft"
-        items.append(rec)
+    items = build_items(blocks, ans, prov, args.year, os.path.basename(args.paper))
 
     with open(draft_path, "w", encoding="utf-8") as f:
         for r in items:
@@ -89,7 +102,7 @@ def main() -> None:
     generate_html(items, raws, hp, "%d 年 408 校对" % args.year)
     print("校对页：%s（浏览器打开，核对后导出 review_patch.json）" % hp)
     print("下一步：python -m pipeline.build --year %d --apply-patch data/work/review_patch.json" % args.year)
-    print("结果：%d 个错误，%d 条提示" % (n_err, len(rep.splitlines()) - 1))
+    print("结果：%d 个错误，%d 条提示" % (n_err, stat.get("warnings", 0)))
 
 
 if __name__ == "__main__":

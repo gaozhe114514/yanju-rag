@@ -44,6 +44,12 @@ py -m pipeline.build --year 2019 --apply-patch data/work/review_patch.json
 
 > Windows 上若 `python` 指向 Microsoft Store 的占位符，请使用 `py`。
 
+## 运行测试
+
+```bash
+py -m unittest discover -s tests -t . -v
+```
+
 ## 目录结构
 
 ```
@@ -58,6 +64,7 @@ pipeline/
   validate.py  字段级 + 整卷级校验
   review.py    生成校对页、合并 patch
   build.py     全流程 CLI
+tests/      标准库 unittest
 docs/       架构与数据管线文档、配图
 ```
 

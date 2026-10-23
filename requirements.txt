@@ -1,0 +1,7 @@
+# 当前离线管线（pipeline/）只依赖 Python 3.9+ 标准库，无需安装任何包。
+# 在线链路依赖随实现逐步补充，预计包括：
+# fastapi>=0.115
+# uvicorn[standard]>=0.30
+# psycopg[binary]>=3.2
+# pgvector>=0.3
+# transformers>=4.44
