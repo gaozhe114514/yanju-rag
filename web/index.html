@@ -44,6 +44,12 @@
     .hit:first-child { border-top:0; }
     .hit .meta { color:var(--muted); font-size:12px; }
     .err { color:#b91c1c; font-size:14px; }
+    .loading { display:flex; align-items:center; gap:9px; margin-top:14px;
+               color:var(--muted); font-size:14px; }
+    .spinner { width:15px; height:15px; border:2px solid var(--line);
+               border-top-color:var(--brand); border-radius:50%;
+               animation:spin .8s linear infinite; flex:none; }
+    @keyframes spin { to { transform:rotate(360deg); } }
     footer { color:var(--muted); font-size:12px; text-align:center; padding:0 20px 30px; }
   </style>
 </head>
@@ -65,6 +71,10 @@
       <span class="examples">试试：<a data-q="CSMA/CD 最小帧长和单向传播时延">CSMA/CD</a> ·
         <a data-q="LRU 页置换 缺页次数">LRU</a> ·
         <a data-q="哈夫曼树 115 个结点 叶子结点">哈夫曼</a></span>
+    </div>
+    <div id="loading" class="loading" style="display:none" aria-live="polite">
+      <span class="spinner"></span>
+      <span id="loading-text">正在检索真题并生成答案，通常需要 10~15 秒…</span>
     </div>
     <div id="err" class="err"></div>
   </div>
@@ -109,11 +119,31 @@
     }
   }).catch(() => {});
 
+  let loadingTimer = null;
+  function startLoading() {
+    $('loading').style.display = 'flex';
+    $('ask').textContent = '生成中…';
+    const started = Date.now();
+    $('loading-text').textContent = '正在检索真题并生成答案，通常需要 10~15 秒…';
+    loadingTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - started) / 1000);
+      $('loading-text').textContent =
+        '正在检索真题并生成答案…已等待 ' + s + ' 秒（首次加载模型会更久）';
+    }, 1000);
+  }
+  function stopLoading() {
+    clearInterval(loadingTimer);
+    loadingTimer = null;
+    $('loading').style.display = 'none';
+    $('ask').textContent = '提问';
+  }
+
   async function ask() {
     const query = $('q').value.trim();
     if (!query) return;
     $('ask').disabled = true;
     $('err').textContent = '';
+    startLoading();
     const headers = {'Content-Type': 'application/json'};
     const token = getToken();
     if (token) headers['X-Access-Token'] = token;
@@ -133,6 +163,7 @@
     } catch (e) {
       $('err').textContent = '请求失败：' + e.message;
     } finally {
+      stopLoading();
       $('ask').disabled = false;
     }
   }
