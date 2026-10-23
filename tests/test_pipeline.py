@@ -130,12 +130,19 @@ class ExtractTest(unittest.TestCase):
         # 2020 的综合题把组成原理排在操作系统前面
         self.assertEqual(subject_for_seq(43, 2020), "co")
         self.assertEqual(subject_for_seq(45, 2020), "os")
-        # 2023 沿用 2020 起的顺序
+        # 2023 / 2024 沿用 2020 起的顺序
         self.assertEqual(subject_for_seq(42, 2023), "ds")
         self.assertEqual(subject_for_seq(44, 2023), "co")
         self.assertEqual(subject_for_seq(46, 2023), "os")
         self.assertEqual(subject_for_seq(47, 2023), "cn")
-        self.assertIsNone(subject_for_seq(41, 2021))
+        self.assertEqual(subject_for_seq(44, 2024), "co")
+        self.assertEqual(subject_for_seq(46, 2024), "os")
+        # 2021 只有 43 是组成原理，44~46 都是操作系统
+        self.assertEqual(subject_for_seq(42, 2021), "ds")
+        self.assertEqual(subject_for_seq(44, 2021), "os")
+        self.assertEqual(subject_for_seq(46, 2021), "os")
+        self.assertEqual(subject_for_seq(47, 2021), "cn")
+        self.assertIsNone(subject_for_seq(41, 2022))
         self.assertIsNone(subject_for_seq(0))
 
 

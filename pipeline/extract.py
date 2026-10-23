@@ -26,12 +26,15 @@ SECTION_SUBJECTS = (
     (1, 11, "ds"), (12, 22, "co"), (23, 32, "os"), (33, 40, "cn"),
 )
 
-# 综合题的四科顺序逐年在变：2019 是 DS/OS/CO/CN，2020 是 DS/CO/OS/CN。
+# 综合题的四科顺序逐年在变：2019 是 DS/DS/OS/OS/CO/CO/CN，
+# 2021 是 DS/DS/CO/OS/OS/OS/CN，2020/2023/2024 是 DS/DS/CO/CO/OS/OS/CN。
 # 没有登记年份时返回 None，交给 provider 的关键词判断兜底。
 COMPREHENSIVE_SUBJECTS = {
     2019: ("ds", "ds", "os", "os", "co", "co", "cn"),
     2020: ("ds", "ds", "co", "co", "os", "os", "cn"),
+    2021: ("ds", "ds", "co", "os", "os", "os", "cn"),
     2023: ("ds", "ds", "co", "co", "os", "os", "cn"),
+    2024: ("ds", "ds", "co", "co", "os", "os", "cn"),
 }
 
 

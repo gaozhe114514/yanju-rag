@@ -22,6 +22,9 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 
 ## 修订记录
 
+- 2026-10：题库加入 2024 卷后，「2024 年 408 第 1 题」已不再是资料外问题，
+  改为「2022 年 408 第 1 题」——2022 年仍未入库，仍应触发结构化拒答。
+
 真实生成评测（`answer.eval_answer`）暴露了 3 条 query 的问题，已按「gold 必须是能回答该
 query 的题」这一原则改写措辞，gold 未动：
 

@@ -184,6 +184,8 @@ def main() -> None:
     ap.add_argument("--apply-to", help="合并结果写到的 draft 路径（一般就是原 draft）")
     ap.add_argument("--replace", action="store_true",
                     help="合并时覆盖已有 AI 解析（原卷解析不动）")
+    ap.add_argument("--merge-only", action="store_true",
+                    help="只合并已有产物，不调用模型（镜像构建时用）")
     args = ap.parse_args()
 
     items = []
@@ -204,7 +206,10 @@ def main() -> None:
         pending = [q for q in todo if q["id"] not in records]
     failed: List = []
 
-    if not pending:
+    if args.merge_only:
+        results = {}
+        print("--merge-only：跳过生成，只合并 %d 条已有产物" % len(records))
+    elif not pending:
         results = {}
         print("没有待生成的题，直接合并已有产物")
     elif args.provider == "mock":

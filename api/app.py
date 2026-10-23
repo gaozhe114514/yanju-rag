@@ -5,7 +5,7 @@
   py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 环境变量：
-  KB_INPUT          题库 JSONL，逗号分隔，默认 2019 + 2020 + 2023 三卷
+  KB_INPUT          题库 JSONL，逗号分隔，默认 2019/2020/2021/2023/2024 五卷
   KB_MODE           bm25 / hybrid / hybrid-rerank / hybrid-ce，默认 hybrid
   KB_FUSE_K         进入精排的候选数，默认 10
   KB_PROVIDER       mock / deepseek；默认有 DEEPSEEK_API_KEY 就用 deepseek
@@ -90,7 +90,8 @@ def _load() -> None:
     raw = os.environ.get(
         "KB_INPUT",
         "data/work/2019_draft.jsonl,data/work/2020_draft.jsonl,"
-        "data/work/2023_draft.jsonl")
+        "data/work/2021_draft.jsonl,data/work/2023_draft.jsonl,"
+        "data/work/2024_draft.jsonl")
     paths = [_resolve(p.strip()) for p in raw.split(",") if p.strip()]
     missing = [p for p in paths if not os.path.exists(p)]
     if missing:
@@ -130,10 +131,11 @@ def _load() -> None:
     else:
         provider = ExtractiveProvider()
 
-    # 阈值来自 answer.eval_gate 在「真题 141（2019+2020+2023）+ 考点 42」混合语料
-    # 上的标定（32 条正样本 + 16 条负样本）：0.1/0 时负样本拒答 93.8%、
-    # 正样本误拒 6.2%，负样本拒答率不变，误拒比两卷时更低。
-    # 分差阈值会误伤「多个考点都相关」的问题，混合语料下默认关闭。
+    # 阈值来自 answer.eval_gate 在「真题 235（2019/2020/2021/2023/2024 五卷）
+    # + 考点 42」混合语料上的标定（32 条正样本 + 16 条负样本）：0.1/0 时
+    # 负样本闸门拒答 87.5%、正样本误拒 6.2%；端到端（含生成与引用校验）
+    # 16 条负样本全部拒答。0.3/0 能把闸门拒答提到 93.8%，但误拒也升到
+    # 12.5%，所以仍用 0.1/0。分差阈值会误伤「多个考点都相关」的问题，默认关闭。
     default_score = "0.1" if mode == "hybrid-ce" else "0"
     default_margin = "0"
     gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", default_score)),

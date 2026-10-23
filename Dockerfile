@@ -52,7 +52,19 @@ RUN python -m pipeline.build --paper data/raw/2019_paper.txt \
                              --year 2020 --provider mock \
  && python -m pipeline.build --paper data/raw/2023_paper.txt \
                              --answer data/raw/2023_answer.txt \
-                             --year 2023 --provider mock
+                             --year 2023 --provider mock \
+ && python -m pipeline.build --paper data/raw/2021_paper.txt \
+                             --answer data/raw/2021_answer.txt \
+                             --year 2021 --provider mock \
+ && python -m pipeline.analysis --draft data/work/2021_draft.jsonl \
+        --out data/curated/2021_analysis.jsonl --merge-only \
+        --apply-to data/work/2021_draft.jsonl \
+ && python -m pipeline.build --paper data/raw/2024_paper.txt \
+                             --answer data/raw/2024_answer.txt \
+                             --year 2024 --provider mock \
+ && python -m pipeline.analysis --draft data/work/2024_draft.jsonl \
+        --out data/curated/2024_analysis.jsonl --merge-only \
+        --apply-to data/work/2024_draft.jsonl
 
 RUN useradd -m appuser && mkdir -p /app/logs && chown -R appuser:appuser /app/logs
 USER appuser
