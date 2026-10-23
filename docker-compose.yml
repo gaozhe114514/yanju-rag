@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
+    image: cs408-rag:latest
+    env_file: .env
+    environment:
+      KB_INPUT: data/work/2019_draft.jsonl
+      KB_MODE: ${KB_MODE:-hybrid-ce}
+      KB_FUSE_K: ${KB_FUSE_K:-10}
+      # 放在 Nginx 后面，用 X-Forwarded-For 区分客户端 IP
+      KB_TRUST_PROXY: "1"
+      KB_GAP_LOG: /app/logs/gap_log.jsonl
+    ports:
+      # 只监听回环：公网流量必须经过 Nginx（TLS + 第二层限流），不能直连 8000
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3

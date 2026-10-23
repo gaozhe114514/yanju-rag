@@ -20,6 +20,11 @@
                border-radius:8px; padding:10px 12px; font:inherit; outline:none; }
     textarea:focus { border-color:var(--brand); }
     .row { display:flex; gap:10px; align-items:center; margin-top:12px; flex-wrap:wrap; }
+    #auth { margin:0 0 10px; }
+    #auth input { flex:1; min-width:180px; border:1px solid var(--line); border-radius:8px;
+                  padding:7px 10px; font:inherit; outline:none; }
+    #auth input:focus { border-color:var(--brand); }
+    #auth label { font-size:13px; color:var(--muted); }
     button { background:var(--brand); color:#fff; border:0; border-radius:8px;
              padding:9px 18px; font:inherit; cursor:pointer; }
     button:disabled { opacity:.5; cursor:wait; }
@@ -49,6 +54,11 @@
 </header>
 <main>
   <div class="box">
+    <div class="row" id="auth" style="display:none;margin-top:0">
+      <label for="token">访问口令</label>
+      <input id="token" type="password" autocomplete="current-password"
+             placeholder="输入后自动保存在本机">
+    </div>
     <textarea id="q" placeholder="例如：二级页式存储的虚拟地址怎么拆成页目录号和页号？"></textarea>
     <div class="row">
       <button id="ask">提问</button>
@@ -85,18 +95,40 @@
   });
   $('ask').addEventListener('click', ask);
 
+  const TOKEN_KEY = '408-access-token';
+  const getToken = () => localStorage.getItem(TOKEN_KEY) || '';
+  $('token').value = getToken();
+  $('token').addEventListener('input', () => {
+    localStorage.setItem(TOKEN_KEY, $('token').value.trim());
+  });
+
+  fetch('/health').then(r => r.json()).then(h => {
+    if (h.auth_required) {
+      $('auth').style.display = 'flex';
+      if (!getToken()) $('token').focus();
+    }
+  }).catch(() => {});
+
   async function ask() {
     const query = $('q').value.trim();
     if (!query) return;
     $('ask').disabled = true;
     $('err').textContent = '';
+    const headers = {'Content-Type': 'application/json'};
+    const token = getToken();
+    if (token) headers['X-Access-Token'] = token;
     try {
       const resp = await fetch('/ask', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({query})
+        method: 'POST', headers, body: JSON.stringify({query})
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => null);
+        if (resp.status === 401) {
+          $('auth').style.display = 'flex';
+          $('token').focus();
+        }
+        throw new Error((data && data.detail) || ('HTTP ' + resp.status));
+      }
       render(await resp.json());
     } catch (e) {
       $('err').textContent = '请求失败：' + e.message;

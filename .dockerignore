@@ -1,0 +1,16 @@
+.git
+.gitignore
+.github
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+data/work/
+logs/
+models/
+docs/fig*.png
+_probe.txt

@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.5。离线数据管线、检索、拒答、真实生成、引用校验与 HTTP 服务已可跑通；2019 卷 47 题全部带解析（1–40 为 AI 生成，待人工校对）；数据库与生产级部署尚未接入。
+> 状态：v0.6。离线数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已可跑通；2019 卷 47 题全部带解析（1–40 为 AI 生成，待人工校对）；数据库、多实例与更大题库尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -10,6 +10,7 @@
 
 - [架构设计](docs/408-架构设计.md) — 在线链路、分层架构、选型理由、成本与落地顺序
 - [数据管线](docs/数据管线.md) — 真题 → 结构化题库的五步流程与验收门槛
+- [部署](docs/部署.md) — 云服务器 ECS 上的 Docker + Nginx + 口令 + 限流
 - `docs/fig1_online_pipeline.png` — 在线问答主链路
 - `docs/fig3_review_ui.png` — 人工校对页
 
@@ -136,6 +137,9 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `GET /health` | chunk 数、检索模式、provider |
 | `GET /` | 单页前端，可直接在手机上打开 |
 
+设置 `KB_ACCESS_TOKEN` 后，`/ask` 必须带 `X-Access-Token`；`KB_RATE_MAX` / `KB_RATE_WINDOW`
+控制每 IP 限额，`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
+
 引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。
 
 链路是：检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
@@ -186,6 +190,26 @@ py -m answer.eval_answer --queries data/eval/2019_queries_hard.jsonl \
 >
 > 更早一轮（补解析前、且 3 条 query 语义有误时）还测过 prompt 的效果：收紧引用要求把首次引用通过率从 0.545 提到 0.864。那组数字只说明 prompt 的作用，不与上表混用。
 
+## 部署
+
+单机 Docker 部署，公网只暴露 Nginx；应用侧带访问口令、每 IP 滑动窗口限流和每日总额度。
+
+```bash
+cp .env.example .env          # 填 DEEPSEEK_API_KEY 和 KB_ACCESS_TOKEN
+mkdir -p logs && sudo chown -R 1000:1000 logs
+docker compose up -d --build  # 首次 10~30 分钟，含 2.4GB 模型
+curl -s http://127.0.0.1:8000/health
+```
+
+```bash
+TOKEN=$(sed -n 's/^KB_ACCESS_TOKEN=//p' .env)
+curl -s http://127.0.0.1:8000/ask \
+  -H 'Content-Type: application/json' -H "X-Access-Token: $TOKEN" \
+  -d '{"query":"CSMA/CD 最小帧长怎么算"}'
+```
+
+完整步骤（安全组、Deploy Key、Nginx、HTTPS、更新与故障排查）见 [docs/部署.md](docs/部署.md)。
+
 ## 运行测试
 
 ```bash
@@ -229,9 +253,14 @@ answer/
   eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
 api/app.py     FastAPI 服务（/ask、/health、/）
+api/guard.py   访问口令 + 按 IP 限流 + 每日额度
+api/gap.py     拒答缺口日志
 web/index.html 单页前端
+deploy/nginx.conf  反向代理 + 第二层限流
+tools/preload_models.py 构建期预下载模型
+Dockerfile / docker-compose.yml / .env.example
 tests/      标准库 unittest
-docs/       架构与数据管线文档、配图
+docs/       架构、数据管线、部署文档与配图
 ```
 
 ## 硬约束

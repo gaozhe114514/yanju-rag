@@ -11,6 +11,11 @@
   KB_PROVIDER       mock / deepseek；默认有 DEEPSEEK_API_KEY 就用 deepseek
   KB_MIN_SCORE      拒答阈值；hybrid-ce 默认 0.05，其他模式默认 0（RRF 分数没法用绝对阈值）
   KB_MIN_MARGIN     top1/top2 最小分差；hybrid-ce 默认 0.05，其他模式默认 0
+  KB_ACCESS_TOKEN   访问口令；设置后 /ask 必须带 X-Access-Token 请求头
+  KB_RATE_MAX       每个 IP 在 KB_RATE_WINDOW 秒内最多请求次数，默认 20
+  KB_RATE_WINDOW    限流窗口秒数，默认 600
+  KB_DAILY_MAX      全局每日请求上限，默认 0（不限）
+  KB_TRUST_PROXY    设为 1 时从 X-Forwarded-For 取客户端 IP（放在 Nginx 后面时打开）
 """
 import os
 import threading
@@ -18,7 +23,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -29,15 +34,26 @@ from retrieval.chunk import load_chunks
 from retrieval.search import build_searcher
 
 from .gap import log_gap
+from .guard import AccessGuard
 
 ROOT = Path(__file__).resolve().parents[1]
 
 _state = {}
 _lock = threading.Lock()
+GUARD = AccessGuard.from_env()
 
 
 class AskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
+
+
+def enforce_guard(request: Request) -> None:
+    peer = request.client.host if request.client else ""
+    d = GUARD.check(request.headers, peer)
+    if not d.ok:
+        raise HTTPException(status_code=d.status, detail=d.message,
+                            headers={"Retry-After": str(d.retry_after)}
+                            if d.retry_after else None)
 
 
 def _load() -> None:
@@ -115,11 +131,12 @@ def health() -> dict:
         "mode": _state.get("mode"),
         "fuse_k": _state.get("fuse_k"),
         "provider": _state.get("provider"),
+        "auth_required": GUARD.token_required,
     }
 
 
 @app.post("/ask")
-def ask(req: AskRequest) -> dict:
+def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
     pipeline = _state.get("pipeline")
     if pipeline is None:
         return {"refused": True, "answer": "", "citations": [],

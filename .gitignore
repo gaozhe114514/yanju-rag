@@ -4,9 +4,10 @@ __pycache__/
 .venv/
 venv/
 
-# 环境变量 / 密钥
+# 环境变量 / 密钥（.env.example 是模板，要提交）
 .env
 .env.*
+!.env.example
 
 # 编辑器与系统
 .idea/
