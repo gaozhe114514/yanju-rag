@@ -93,15 +93,17 @@ class DeepSeekProvider:
         except (urllib.error.URLError, TimeoutError) as e:
             raise ProviderError("DeepSeek 请求失败：%s" % e)
 
-    def generate(self, messages: List[Dict], hits: Optional[Sequence[SearchHit]] = None,
-                 **_) -> str:
+    def complete(self, messages: List[Dict], temperature: float = 0.0,
+                 max_tokens: int = 200, json_mode: bool = False) -> str:
+        """通用补全，供查询改写等轻量任务使用。"""
         body = {
             "model": self.model,
             "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
         last = None
         for attempt in range(2):
             try:
@@ -115,3 +117,8 @@ class DeepSeekProvider:
                 if attempt == 0:
                     time.sleep(1.0)
         raise last
+
+    def generate(self, messages: List[Dict], hits: Optional[Sequence[SearchHit]] = None,
+                 **_) -> str:
+        return self.complete(messages, temperature=self.temperature,
+                             max_tokens=self.max_tokens, json_mode=True)

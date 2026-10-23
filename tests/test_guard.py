@@ -53,6 +53,18 @@ class TokenTest(unittest.TestCase):
         self.assertTrue(g.check(headers("k"), "1.1.1.1").ok)
         self.assertEqual(g.check(headers("k"), "1.1.1.1").status, 429)
 
+    def test_content_check_does_not_consume_quota(self):
+        g = AccessGuard(token="k", rate_max=1, clock=FakeClock())
+        for _ in range(10):
+            self.assertTrue(g.check(headers("k"), "1.1.1.1", limit=False).ok)
+        # 浏览不计数，问答的第一次仍然可用
+        self.assertTrue(g.check(headers("k"), "1.1.1.1").ok)
+        self.assertEqual(g.check(headers("k"), "1.1.1.1").status, 429)
+
+    def test_content_check_still_requires_token(self):
+        g = AccessGuard(token="k", rate_max=1, clock=FakeClock())
+        self.assertEqual(g.check({}, "1.1.1.1", limit=False).status, 401)
+
 
 class RateTest(unittest.TestCase):
     def test_window_limits_and_recovers(self):

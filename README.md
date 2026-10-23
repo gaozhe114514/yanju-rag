@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.6。离线数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已可跑通，并在腾讯云轻量（2核4G）实机验证；2019 卷 47 题全部带解析（1–40 为 AI 生成，待人工校对）；数据库、多实例与更大题库尚未接入。
+> 状态：v0.7。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版先把产品框架搭起来：多轮问答 Agent、题库浏览、练习三个页面 + 会话历史 + 执行过程展示；题库仍只有 2019 卷 47 题（1–40 解析为 AI 生成，待人工校对），2020–2025、答案正确率评测与数据库尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -131,18 +131,38 @@ set KB_FUSE_K=10
 py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
+### 产品框架（v0.7）
+
+页面分成三块，共用左侧会话/导航：
+
+- **问答**：多轮对话；每条回答展示引用、召回原题、改写后的问题和执行耗时。引用和命中的原题都能点开看题干、答案、解析和原文行号。
+- **题库**：按科目筛选、按题干/选项/题号搜索，支持分页；题库接口只返回题干和选项，答案在详情里才出现。
+- **练习**：随机抽题，先作答再展开答案，用“会了/还不会”做本地统计。数据仍来自同一份 JSONL，补新卷后页面自动生效。
+
+后端在原有单轮链路前加了一层轻量 Agent：
+
+1. 纯寒暄/“你能做什么”不检索，直接回固定说明；
+2. 检测到「它 / 这题 / 那为什么 / 还有呢」等指代时，用 DeepSeek 结合最近 4 条消息改写成独立问题；
+3. 改写失败或没有 key 时退回规则拼接，不影响答题；
+4. 指代实在补不出来时返回“需要补充”，而不是猜。
+
 | 接口 | 说明 |
 |---|---|
-| `POST /ask` | 入参 `{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms |
+| `POST /ask` | 单轮问答：`{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms |
+| `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}]}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
+| `GET /chunks` | 题库列表：`q` / `subject` / `year` / `limit` / `offset`，只返回题干和选项 |
+| `GET /chunks/{id}` | 题目详情：题干、选项、答案、解析、`source_ref` |
+| `GET /meta` | 题目数、科目分布、年份、检索模式 |
 | `GET /health` | chunk 数、检索模式、provider |
-| `GET /` | 单页前端，可直接在手机上打开 |
+| `GET /` | 三页前端，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，`/ask` 必须带 `X-Access-Token`；`KB_RATE_MAX` / `KB_RATE_WINDOW`
-控制每 IP 限额，`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/meta`）都必须带
+`X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
+限额（刷题库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
 
 引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。
 
-链路是：检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
+链路是：理解问题（可选改写）→ 检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
 
 拒答阈值不能拍脑袋。用 32 条正样本 + 16 条资料外负样本扫网格：
 
@@ -244,18 +264,20 @@ retrieval/
   eval.py      Recall@k / MRR
   cli.py       命令行检索
 answer/
+  agent.py     多轮意图识别 + 追问改写（LLM / 规则回退）
   gate.py      拒答闸门（分数 + 分差阈值）
   prompt.py    强制 JSON 的 system/user prompt
   providers.py DeepSeek / 离线抽取占位实现
   verify.py    引用逐字校验
-  pipeline.py  拒答 → 生成 → 校验 → 重试
+  pipeline.py  拒答 → 生成 → 校验 → 重试，并记录分阶段耗时
   eval_gate.py 拒答阈值标定
   eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
-api/app.py     FastAPI 服务（/ask、/health、/）
+api/app.py     FastAPI 服务（/ask、/chat、/chunks、/meta、/health、/）
+api/catalog.py 题库筛选、列表/详情序列化（纯函数）
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
 api/gap.py     拒答缺口日志
-web/index.html 单页前端
+web/index.html 三页前端（问答 / 题库 / 练习），无构建步骤
 deploy/nginx.conf  反向代理 + 第二层限流
 tools/preload_models.py 构建期预下载模型
 Dockerfile / docker-compose.yml / .env.example
