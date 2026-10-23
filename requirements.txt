@@ -1,7 +1,17 @@
-# 当前离线管线（pipeline/）只依赖 Python 3.9+ 标准库，无需安装任何包。
-# 在线链路依赖随实现逐步补充，预计包括：
+# 离线管线（pipeline/）只依赖 Python 3.9+ 标准库，无需安装任何包。
+#
+# 检索层已落地，需要以下依赖（Windows 上用 py -m pip 安装）：
+numpy>=1.24,<2
+torch>=2.2
+transformers>=4.44,<5
+
+# 模型（首次运行自动从 HuggingFace 下载，国内可设 HF_ENDPOINT=https://hf-mirror.com）：
+#   开发：BAAI/bge-small-zh-v1.5      约 92MB
+#   精排：BAAI/bge-reranker-v2-m3     约 2.3GB
+#   生产：BAAI/bge-m3                 约 2.2GB（替代 bge-small）
+
+# 在线服务与库（尚未实现，先留位）：
 # fastapi>=0.115
 # uvicorn[standard]>=0.30
 # psycopg[binary]>=3.2
 # pgvector>=0.3
-# transformers>=4.44
