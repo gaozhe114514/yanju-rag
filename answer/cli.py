@@ -23,6 +23,7 @@ def main() -> None:
     ap.add_argument("--provider", default="mock", choices=["mock", "deepseek"])
     ap.add_argument("--model", default="BAAI/bge-small-zh-v1.5")
     ap.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
+    ap.add_argument("--fuse-k", type=int, default=10)
     ap.add_argument("--min-score", type=float, default=0.0)
     ap.add_argument("--min-margin", type=float, default=0.0)
     ap.add_argument("--top-k", type=int, default=5)
@@ -35,7 +36,7 @@ def main() -> None:
     searcher = build_searcher(load_chunks(paths), mode=args.mode,
                               model_name=args.model,
                               reranker_model=args.reranker_model,
-                              k_final=args.top_k)
+                              k_fuse=args.fuse_k, k_final=args.top_k)
     if args.provider == "deepseek":
         try:
             provider = DeepSeekProvider()
@@ -59,6 +60,10 @@ def main() -> None:
         print("回答：%s" % res.answer)
         for c in res.citations:
             print("引用 [%s] %s" % (c.get("chunk_id"), c.get("quote")))
+    if res.errors:
+        print("首次校验未通过：")
+        for e in res.errors:
+            print("  - %s" % e)
     if res.hits:
         print("召回：")
         for h in res.hits:

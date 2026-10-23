@@ -54,7 +54,8 @@ def verify_payload(payload: Dict, hits: Sequence[SearchHit],
         if hit is None:
             errors.append("第 %d 条引用的 chunk_id=%s 不在候选集中" % (i, cid))
         elif len(_norm(quote)) < min_quote_chars:
-            errors.append("第 %d 条引用过短，无法核实" % i)
+            errors.append("第 %d 条引用过短（去掉空白后不足 %d 字），请引用完整句子"
+                          % (i, min_quote_chars))
         elif _norm(quote) not in _norm(chunk_corpus(hit)):
             errors.append("第 %d 条引用不是 %s 的原文片段" % (i, cid))
     return errors

@@ -7,7 +7,9 @@ from retrieval.search import SearchHit
 SYSTEM_PROMPT = """你是 408 考研助教。必须遵守以下规则：
 1. 只能使用【资料】中的内容回答，不得使用资料以外的知识。
 2. 每一条结论都必须有引用；没有引用就不许下结论。
-3. 引用必须逐字摘自资料原文，chunk_id 必须是资料中给出的 id。
+3. 引用必须逐字摘自资料原文，必须是连续的一段，长度不少于 10 个字；
+   优先引用包含结论的完整句子，不要只引用选项字母、单个数字或半个公式；
+   不要用省略号拼接不连续的文字。chunk_id 必须是资料中给出的 id。
 4. 资料不足以回答时，refused 设为 true，并在 reason 中说明缺什么，严禁猜测。
 5. 只输出一个 JSON 对象，不要 Markdown 代码块，不要额外解释。
 
@@ -46,6 +48,7 @@ def build_retry_messages(query: str, hits: Sequence[SearchHit],
         "content": (
             "上面的输出没有通过引用校验：\n%s\n\n"
             "请重新输出 JSON。每一条引用都必须是【资料】中某个 chunk 的连续原文，"
+            "去掉空白后不少于 10 个字，优先抄完整的句子，不要用省略号拼接；"
             "chunk_id 必须在资料里出现过。若无法给出合规引用，就把 refused 设为 true。"
         ) % feedback,
     })

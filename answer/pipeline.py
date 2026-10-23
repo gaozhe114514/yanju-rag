@@ -19,6 +19,7 @@ class AnswerResult:
     reason: str = ""
     hits: List[SearchHit] = field(default_factory=list)
     attempts: int = 0
+    errors: List[str] = field(default_factory=list)
 
 
 class AnswerPipeline:
@@ -37,13 +38,15 @@ class AnswerPipeline:
 
         messages = build_messages(query, hits)
         errors: List[str] = []
+        first_errors: List[str] = []
         raw = ""
         for attempt in (1, 2):
             try:
                 raw = self.provider.generate(messages, hits=hits)
             except ProviderError as e:
                 return AnswerResult(True, reason="provider_error: %s" % e,
-                                    hits=hits, attempts=attempt)
+                                    hits=hits, attempts=attempt,
+                                    errors=first_errors)
             try:
                 payload = parse_payload(raw)
             except ProviderError as e:
@@ -54,17 +57,19 @@ class AnswerPipeline:
                     if payload["refused"]:
                         return AnswerResult(
                             True, reason=str(payload.get("reason") or "模型判断资料不足"),
-                            hits=hits, attempts=attempt)
+                            hits=hits, attempts=attempt, errors=first_errors)
                     return AnswerResult(
                         False,
                         answer=str(payload.get("answer") or ""),
                         citations=list(payload.get("citations") or []),
-                        hits=hits, attempts=attempt)
+                        hits=hits, attempts=attempt, errors=first_errors)
 
             if attempt == 1 and self.retry:
+                first_errors = list(errors)
                 messages = build_retry_messages(query, hits, raw, errors)
                 continue
             return AnswerResult(True, reason="citation_failed: " + "; ".join(errors),
-                                hits=hits, attempts=attempt)
+                                hits=hits, attempts=attempt,
+                                errors=first_errors or list(errors))
 
         return AnswerResult(True, reason="unknown", hits=hits, attempts=2)

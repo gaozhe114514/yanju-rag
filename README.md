@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.3。离线数据管线、检索、拒答、引用校验与 HTTP 服务已可跑通；数据库与生产级部署尚未接入。
+> 状态：v0.4。离线数据管线、检索、拒答、真实生成、引用校验与 HTTP 服务已可跑通；数据库与生产级部署尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -134,6 +134,35 @@ py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
 
 > `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义，默认不拒答；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数。
 
+真实生成评测（需要 key，会调用几十次模型）：
+
+```bash
+set DEEPSEEK_API_KEY=sk-xxxx
+py -m answer.eval_answer --queries data/eval/2019_queries_hard.jsonl \
+                         --negatives data/eval/out_of_scope.jsonl \
+                         --input data/work/2019_draft.jsonl \
+                         --mode hybrid-ce --provider deepseek --fuse-k 10 \
+                         --min-score 0.05 --min-margin 0.05 --show
+```
+
+输出包括：首次引用通过率、重试后通过数、闸门/模型/引用失败三类拒答、负样本拒答率、平均延迟。`--limit 5` 可先冒烟。
+
+32 条改写 query + 16 条资料外负样本，`hybrid-ce / k_fuse=10 / 0.05 / 0.05`，DeepSeek 真实生成：
+
+| 指标 | 收紧引用要求前 | 收紧后 |
+|---|---:|---:|
+| 作答 | 19/32 = 0.594 | 22/32 = 0.688 |
+| 一次通过 / 重试通过 | 12 / 7 | 19 / 3 |
+| 首次引用通过率 | 0.545 | 0.864 |
+| 引用两次不过而拒答 | 3 | 0 |
+| 平均生成尝试（闸门拒答记 0 次） | 1.19 | 0.97 |
+| 平均延迟 | 7.6s | 7.1s |
+| 负样本拒答 | 0.938 | 0.938 |
+
+> 首轮 11 次校验失败里有 10 次是「引用过短」：模型把 `A`、`5` 这种选项字母、单个数字当成 quote。prompt 改成「引用必须是不少于 10 字的连续原文，不许用省略号拼接」后，首次引用通过率 0.545 → 0.864，剩下 3 次重试后全部通过，引用失败导致的拒答归零。
+>
+> 剩下的 10 条拒答不是检索问题：4 条是闸门误拒（Q18/Q23/Q26/Q40，和标定的 12.5% 吻合），6 条是模型判断资料不足。根因在语料——2019 卷 47 道题里只有 7 道带解析，其余 chunk 只有题干 + 选项 + 答案字母，问到「为什么」时模型只能拒答。**补解析（或导入带解析的年份）比继续调 prompt 收益大得多。**
+
 ## 运行测试
 
 ```bash
@@ -172,6 +201,7 @@ answer/
   verify.py    引用逐字校验
   pipeline.py  拒答 → 生成 → 校验 → 重试
   eval_gate.py 拒答阈值标定
+  eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
 api/app.py     FastAPI 服务（/ask、/health、/）
 web/index.html 单页前端
