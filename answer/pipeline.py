@@ -49,12 +49,12 @@ class AnswerPipeline:
             except ProviderError as e:
                 errors = [str(e)]
             else:
-                if payload.get("refused"):
-                    return AnswerResult(
-                        True, reason=str(payload.get("reason") or "模型判断资料不足"),
-                        hits=hits, attempts=attempt)
                 errors = verify_payload(payload, hits)
                 if not errors:
+                    if payload["refused"]:
+                        return AnswerResult(
+                            True, reason=str(payload.get("reason") or "模型判断资料不足"),
+                            hits=hits, attempts=attempt)
                     return AnswerResult(
                         False,
                         answer=str(payload.get("answer") or ""),

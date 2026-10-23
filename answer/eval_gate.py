@@ -5,7 +5,7 @@
   py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
                          --negatives data/eval/out_of_scope.jsonl \
                          --input data/work/2019_draft.jsonl \
-                         --mode hybrid-ce --min-score 0.3
+                         --mode hybrid-ce --sweep 0.1,0.2,0.3,0.4,0.5
 """
 import argparse
 import glob
@@ -23,19 +23,16 @@ def load_queries(path: str):
         return [json.loads(line) for line in f if line.strip()]
 
 
-def rate(rows, gate, searcher, show):
-    refused = 0
-    for item in rows:
-        hits = searcher.search(item["query"])
-        d = gate.check(item["query"], hits)
-        if d.refuse:
-            refused += 1
-        if show:
-            top = hits[0].chunk.id if hits else "-"
-            print("%s  top=%s  score=%.4f  margin=%.4f  %s" % (
-                "REFUSE" if d.refuse else "PASS  ", top, d.top_score,
-                d.margin, item["query"]))
-    return refused, len(rows)
+def collect(rows, searcher):
+    return [(item, searcher.search(item["query"])) for item in rows]
+
+
+def refuse_rate(scored, min_score: float, min_margin: float) -> float:
+    gate = RefusalGate(min_score, min_margin)
+    if not scored:
+        return 0.0
+    n = sum(1 for _, hits in scored if gate.check("", hits).refuse)
+    return n / len(scored)
 
 
 def main() -> None:
@@ -52,6 +49,8 @@ def main() -> None:
     ap.add_argument("--reranker-model", default="BAAI/bge-reranker-v2-m3")
     ap.add_argument("--min-score", type=float, default=0.0)
     ap.add_argument("--min-margin", type=float, default=0.0)
+    ap.add_argument("--sweep", default="",
+                    help="逗号分隔的 min_score，例如 0.1,0.2,0.3")
     ap.add_argument("--show", action="store_true")
     args = ap.parse_args()
 
@@ -61,7 +60,6 @@ def main() -> None:
     searcher = build_searcher(load_chunks(paths), mode=args.mode,
                               model_name=args.model,
                               reranker_model=args.reranker_model, k_final=5)
-    gate = RefusalGate(args.min_score, args.min_margin)
 
     pos = []
     for p in args.positives:
@@ -69,12 +67,27 @@ def main() -> None:
     neg = []
     for p in args.negatives:
         neg.extend(load_queries(p))
+    pos_hits = collect(pos, searcher)
+    neg_hits = collect(neg, searcher)
 
-    pos_ref, pos_n = rate(pos, gate, searcher, args.show)
-    neg_ref, neg_n = rate(neg, gate, searcher, args.show)
-    print("min_score=%.3f  min_margin=%.3f" % (args.min_score, args.min_margin))
-    print("正样本误拒：%d/%d = %.3f" % (pos_ref, pos_n, pos_ref / (pos_n or 1)))
-    print("负样本拒答：%d/%d = %.3f" % (neg_ref, neg_n, neg_ref / (neg_n or 1)))
+    if args.show:
+        gate = RefusalGate(args.min_score, args.min_margin)
+        for label, scored in (("POS", pos_hits), ("NEG", neg_hits)):
+            for item, hits in scored:
+                d = gate.check(item["query"], hits)
+                top = hits[0].chunk.id if hits else "-"
+                print("%s %s top=%s score=%.4f margin=%.4f  %s" % (
+                    label, "REFUSE" if d.refuse else "PASS  ", top,
+                    d.top_score, d.margin, item["query"]))
+
+    thresholds = ([float(x) for x in args.sweep.split(",") if x.strip()]
+                  if args.sweep else [args.min_score])
+    print("min_score  正样本误拒  负样本拒答")
+    for t in thresholds:
+        print("%9.3f  %10.3f  %10.3f" % (
+            t, refuse_rate(pos_hits, t, args.min_margin),
+            refuse_rate(neg_hits, t, args.min_margin)))
+    print("正样本 %d 条，负样本 %d 条" % (len(pos), len(neg)))
 
 
 if __name__ == "__main__":

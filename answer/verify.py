@@ -30,7 +30,9 @@ def verify_payload(payload: Dict, hits: Sequence[SearchHit],
     """
     if not isinstance(payload, dict):
         return ["输出不是 JSON 对象"]
-    if payload.get("refused"):
+    if not isinstance(payload.get("refused"), bool):
+        return ["refused 缺失或不是布尔值"]
+    if payload["refused"]:
         return []
 
     errors: List[str] = []

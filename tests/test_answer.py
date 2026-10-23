@@ -132,6 +132,15 @@ class PipelineTest(unittest.TestCase):
         self.assertTrue(res.refused)
         self.assertTrue(res.reason.startswith("provider_error"))
 
+    def test_refused_must_be_bool(self):
+        hits = make_hits()
+        raw = json.dumps({"refused": "false", "answer": "x", "citations": []},
+                         ensure_ascii=False)
+        p = FakeProvider([raw, raw])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("问题")
+        self.assertTrue(res.refused)
+        self.assertTrue(res.reason.startswith("citation_failed"))
+
     def test_model_refusal_is_passed_through(self):
         hits = make_hits()
         raw = json.dumps({"refused": True, "answer": "", "citations": [],

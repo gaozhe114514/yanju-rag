@@ -113,7 +113,7 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
                        --negatives data/eval/out_of_scope.jsonl \
                        --input data/work/2019_draft.jsonl \
-                       --mode hybrid-ce --min-score 0.30 --show
+                       --mode hybrid-ce --sweep 0.1,0.2,0.3,0.4,0.5
 ```
 
 > 当前 `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数标定。
