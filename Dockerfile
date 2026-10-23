@@ -15,8 +15,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# torch 的 manylinux wheel 依赖 libgomp
-RUN apt-get update \
+# torch 的 manylinux wheel 依赖 libgomp；Debian 官方源在境内容器里常连不上，换腾讯云镜像
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i -e 's|deb.debian.org|mirrors.cloud.tencent.com|g' \
+             -e 's|security.debian.org|mirrors.cloud.tencent.com|g' \
+             /etc/apt/sources.list.d/debian.sources; \
+    else \
+      sed -i -e 's|deb.debian.org|mirrors.cloud.tencent.com|g' \
+             -e 's|security.debian.org|mirrors.cloud.tencent.com|g' \
+             /etc/apt/sources.list; \
+    fi \
+ && apt-get update \
  && apt-get install -y --no-install-recommends libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
