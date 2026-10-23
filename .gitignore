@@ -17,6 +17,8 @@ Thumbs.db
 
 # 本机临时残留
 _probe.txt
+test-results/
+playwright-report/
 
 # 可重跑的中间产物（draft / 校验报告 / 校对页）
 data/work/

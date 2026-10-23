@@ -342,6 +342,7 @@
       gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
     }
     .practice-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+    .selects { display: flex; flex-wrap: wrap; gap: 8px; }
     .stat {
       padding: 6px 10px; border: 1px solid var(--line); border-radius: 9px;
       background: var(--card); color: var(--muted); font-size: 11.5px;
@@ -619,7 +620,7 @@
         <span id="token-label">未配置口令</span>
         <span class="token-gear">⚙</span>
       </button>
-      <div class="side-note">2019 真题 · 47 题 · 42 个考点<br>未覆盖的问题会明确拒答</div>
+      <div class="side-note"><span id="side-facts">正在读取题库…</span><br>未覆盖的问题会明确拒答</div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -659,6 +660,7 @@
             <span class="search-ico">⌕</span>
           </div>
           <div class="chips" id="bank-subjects"></div>
+          <div class="chips" id="bank-years"></div>
         </div>
         <div class="bank-meta" id="bank-meta"></div>
         <div class="bank-list" id="bank-list"></div>
@@ -700,7 +702,10 @@
           </div>
           <div class="practice-top">
             <div class="practice-stats" id="practice-stats"></div>
-            <select class="select" id="practice-subject"></select>
+            <div class="selects">
+              <select class="select" id="practice-year" aria-label="练习年份"></select>
+              <select class="select" id="practice-subject" aria-label="练习科目"></select>
+            </div>
           </div>
           <div id="practice-card"></div>
         </div>
@@ -715,7 +720,10 @@
         <div id="practice-quiz" hidden>
           <div class="practice-top">
             <div class="practice-stats" id="quiz-stats"></div>
-            <select class="select" id="quiz-subject"></select>
+            <div class="selects">
+              <select class="select" id="quiz-year" aria-label="小测年份"></select>
+              <select class="select" id="quiz-subject" aria-label="小测科目"></select>
+            </div>
           </div>
           <div id="quiz-card"></div>
         </div>
@@ -758,9 +766,9 @@
   };
   const PAGE_META = {
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
-    bank: {title: '题库', sub: '按科目和关键词浏览 2019 真题'},
+    bank: {title: '题库', sub: '按年份和科目浏览真题'},
     knowledge: {title: '考点知识库', sub: '四科考点卡片 · 与真题双向关联'},
-    practice: {title: '练习', sub: '随机练习 · 错题本与掌握度'}
+    practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'}
   };
 
   function loadJSON(key, fallback) {
@@ -789,12 +797,14 @@
     sending: false,
     loadingStart: 0,
     loadingTimer: null,
-    bank: {q: '', subject: '', items: [], total: 0, offset: 0, loading: false},
+    bank: {q: '', subject: '', year: '', items: [], total: 0, offset: 0, loading: false},
     knowledge: {q: '', subject: '', chapter: '', items: [], total: 0, offset: 0,
                 loading: false, subjects: [], chapters: []},
-    practice: {subject: '', current: null, detail: null, revealed: false, assessed: null,
-               list: [], queue: null, topic: '', mode: 'drill',
-               history: loadHistory(), map: null, quiz: null, quizSubject: ''},
+    practice: {subject: '', year: '', current: null, detail: null, revealed: false,
+               assessed: null, list: [], queue: null, topic: '', mode: 'drill',
+               history: loadHistory(), map: null, quiz: null, quizSubject: '',
+               quizYear: ''},
+    modalId: '',
     stats: loadJSON(STATS_KEY, {seen: 0, known: 0, unknown: 0})
   };
 
@@ -1320,16 +1330,22 @@
   }
 
   /* ---------- question bank ---------- */
-  async function ensureMeta() {
+  async function ensureMeta(silent) {
     if (state.meta) return state.meta;
     try {
       state.meta = await api('/meta');
       renderSubjects();
       renderPracticeSubjects();
+      const facts = $('#side-facts');
+      if (facts) {
+        facts.textContent = state.meta.years.join(' / ') + ' 真题 · ' +
+          state.meta.chunks + ' 题 · ' + state.meta.knowledge + ' 个考点';
+      }
       return state.meta;
     } catch (e) {
       if (e.status === 401) {
-        showAuthNeeded('输入访问口令后才能浏览题库。');
+        // 启动时静默尝试，口令保护下等用户主动操作再提示
+        if (!silent) showAuthNeeded('输入访问口令后才能浏览题库。');
       } else {
         toast('题库信息加载失败：' + e.message, 'err');
       }
@@ -1357,6 +1373,41 @@
     });
   }
 
+  function renderBankYears() {
+    const box = $('#bank-years');
+    if (!box) return;
+    box.replaceChildren();
+    const years = (state.meta && state.meta.years) || [];
+    const items = [{key: '', label: '全部年份'}].concat(
+      years.map(y => ({key: String(y), label: y + ' 年'})));
+    items.forEach(s => {
+      const chip = el('button', 'chip' + (state.bank.year === s.key ? ' active' : ''),
+        s.label);
+      chip.addEventListener('click', () => {
+        if (state.bank.year === s.key) return;
+        state.bank.year = s.key;
+        renderBankYears();
+        fetchBank(true);
+      });
+      box.appendChild(chip);
+    });
+    box.hidden = years.length < 2;
+  }
+
+  function fillYearSelect(sel, cur) {
+    sel.replaceChildren();
+    const optAll = el('option', null, '全部年份');
+    optAll.value = '';
+    sel.appendChild(optAll);
+    ((state.meta && state.meta.years) || []).forEach(y => {
+      const o = el('option', null, y + ' 年');
+      o.value = String(y);
+      sel.appendChild(o);
+    });
+    sel.value = cur;
+    sel.hidden = ((state.meta && state.meta.years) || []).length < 2;
+  }
+
   function fillSubjectSelect(sel, cur) {
     sel.replaceChildren();
     const optAll = el('option', null, '全部科目');
@@ -1373,11 +1424,15 @@
   function renderPracticeSubjects() {
     const sel = $('#practice-subject');
     if (sel) fillSubjectSelect(sel, state.practice.subject);
+    const year = $('#practice-year');
+    if (year) fillYearSelect(year, state.practice.year);
   }
 
   function renderQuizSubjects() {
     const sel = $('#quiz-subject');
     if (sel) fillSubjectSelect(sel, state.practice.quizSubject);
+    const year = $('#quiz-year');
+    if (year) fillYearSelect(year, state.practice.quizYear);
   }
 
   function bankParams() {
@@ -1385,6 +1440,7 @@
     const params = new URLSearchParams();
     params.set('q', b.q);
     params.set('subject', b.subject);
+    if (b.year) params.set('year', b.year);
     params.set('limit', '20');
     params.set('offset', String(b.offset));
     return params;
@@ -1427,7 +1483,9 @@
       b.items.forEach(q => list.appendChild(bankCard(q)));
     }
     $('#bank-meta').textContent = state.meta
-      ? '共 ' + b.total + ' 题 · 已显示 ' + b.items.length + ' 题' + (b.q ? ' · 搜索“' + b.q + '”' : '')
+      ? '共 ' + b.total + ' 题 · 已显示 ' + b.items.length + ' 题' +
+        (b.year ? ' · ' + b.year + ' 年' : '') +
+        (b.q ? ' · 搜索“' + b.q + '”' : '')
       : '';
     $('#bank-more').hidden = !b.items.length || b.items.length >= b.total;
     $('#bank-more').disabled = b.loading;
@@ -1568,7 +1626,9 @@
     return card;
   }
 
-  async function openKnowledge(id) {
+  async function openKnowledge(id, fromHash) {
+    state.modalId = id;
+    if (!fromHash) setHash('k', id);
     openModal('考点详情', el('div', 'empty-row', '正在加载考点…'));
     try {
       const k = await api('/knowledge/' + encodeURIComponent(id));
@@ -1867,7 +1927,8 @@
   async function startQuiz() {
     const p = state.practice;
     const subject = p.quizSubject || '';
-    p.quiz = {loading: true, subject};
+    const year = p.quizYear || '';
+    p.quiz = {loading: true, subject, year};
     renderQuiz();
     try {
       const map = await ensureQuestionMap();
@@ -1875,8 +1936,9 @@
       let pool = Object.values(map).filter(q =>
         q && q.type === 'single' && q.has_options);
       if (want) pool = pool.filter(q => (q.subject || '') === want);
+      if (year) pool = pool.filter(q => String(q.year || '') === year);
       if (!pool.length) {
-        p.quiz = {error: '这个科目还没有可判分的单选题', subject};
+        p.quiz = {error: '这个筛选条件下还没有可判分的单选题', subject, year};
         renderQuiz();
         return;
       }
@@ -1900,6 +1962,8 @@
     card.appendChild(el('h2', null, '10 题小测'));
     card.appendChild(el('div', 'practice-note',
       '每组最多 10 道选择题，提交后立即判分；做错的题会自动进错题本。'));
+    card.appendChild(el('div', 'practice-note',
+      '键盘操作：A–D 选择答案，Enter 提交或进入下一题。'));
     if (qz && qz.error) card.appendChild(el('div', 'warn-box', qz.error));
     const row = el('div', 'btn-row');
     const start = el('button', 'primary', '开始小测');
@@ -2230,6 +2294,7 @@
     if (!meta) return;
     const params = new URLSearchParams();
     params.set('subject', p.subject);
+    if (p.year) params.set('year', p.year);
     params.set('limit', '100');
     try {
       const data = await api('/chunks?' + params.toString());
@@ -2277,7 +2342,9 @@
   }
 
   /* ---------- question detail ---------- */
-  async function openQuestion(id) {
+  async function openQuestion(id, fromHash) {
+    state.modalId = id;
+    if (!fromHash) setHash('q', id);
     openModal('原题详情', el('div', 'empty-row', '正在加载原题…'));
     try {
       const q = await api('/chunks/' + encodeURIComponent(id));
@@ -2369,9 +2436,13 @@
     document.body.style.overflow = 'hidden';
   }
 
-  function closeModal() {
+  function closeModal(silent) {
+    const routeId = state.modalId;
+    state.modalId = '';
     $('#modal').hidden = true;
     document.body.style.overflow = '';
+    // 关闭详情时把地址栏退回当前页；用 replace 避免多出一条历史记录
+    if (routeId && !silent) history.replaceState(null, '', '#/' + state.page);
   }
 
   function openSettings(message) {
@@ -2459,13 +2530,53 @@
   }
 
   /* ---------- routing / events ---------- */
+  // 页面和详情都进地址栏：刷新、分享链接、浏览器后退都能回到原处。
+  function setHash(page, id) {
+    const target = '#/' + page + (id ? '/' + encodeURIComponent(id) : '');
+    if (location.hash === target) return;
+    history.pushState(null, '', target);
+  }
+
+  function parseHash() {
+    const raw = (location.hash || '').replace(/^#\/?/, '');
+    const parts = raw.split('/').filter(Boolean).map(p => {
+      try { return decodeURIComponent(p); } catch (e) { return p; }
+    });
+    const head = parts[0] || 'chat';
+    if (head === 'q') return {page: state.page, qid: parts[1] || ''};
+    if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
+    return {
+      page: Object.prototype.hasOwnProperty.call(PAGE_META, head) ? head : 'chat'
+    };
+  }
+
+  function pageSub(page) {
+    if (page === 'bank' && state.meta) {
+      return '按年份和科目浏览 ' + state.meta.chunks + ' 道真题';
+    }
+    return (PAGE_META[page] || PAGE_META.chat).sub;
+  }
+
+  function applyHash() {
+    const r = parseHash();
+    if (r.page !== state.page) renderPage(r.page);
+    if (r.qid && r.qid !== state.modalId) openQuestion(r.qid, true);
+    else if (r.kid && r.kid !== state.modalId) openKnowledge(r.kid, true);
+    else if (!r.qid && !r.kid && state.modalId) closeModal(true);
+  }
+
   function go(page) {
+    renderPage(page);
+    setHash(page);
+  }
+
+  function renderPage(page) {
     state.page = page;
     $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
     $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
     const meta = PAGE_META[page] || PAGE_META.chat;
     $('#page-title').textContent = meta.title;
-    $('#page-sub').textContent = meta.sub;
+    $('#page-sub').textContent = pageSub(page);
     closeSidebar();
     if (page === 'chat') {
       renderMessages();
@@ -2473,7 +2584,9 @@
     } else if (page === 'bank') {
       ensureMeta().then(m => {
         if (m) {
+          $('#page-sub').textContent = pageSub('bank');
           renderSubjects();
+          renderBankYears();
           if (!state.bank.items.length) fetchBank(true);
           else renderBank(false);
         } else {
@@ -2509,7 +2622,7 @@
     $('#scrim').addEventListener('click', closeSidebar);
     $('#settings-btn').addEventListener('click', () => openSettings(''));
     $('#auth-open').addEventListener('click', () => openSettings('这个站点需要访问口令。'));
-    $('#modal-close').addEventListener('click', closeModal);
+    $('#modal-close').addEventListener('click', () => closeModal());
     $('#modal').addEventListener('click', e => {
       if (e.target.id === 'modal') closeModal();
     });
@@ -2543,8 +2656,18 @@
     });
     $('#kn-more').addEventListener('click', () => fetchKnowledge(false));
 
+    window.addEventListener('popstate', applyHash);
+    window.addEventListener('hashchange', applyHash);
+
     $('#practice-subject').addEventListener('change', e => {
       state.practice.subject = e.target.value;
+      state.practice.current = null;
+      state.practice.queue = null;
+      state.practice.topic = '';
+      loadPractice();
+    });
+    $('#practice-year').addEventListener('change', e => {
+      state.practice.year = e.target.value;
       state.practice.current = null;
       state.practice.queue = null;
       state.practice.topic = '';
@@ -2558,6 +2681,11 @@
     });
     $('#quiz-subject').addEventListener('change', e => {
       state.practice.quizSubject = e.target.value;
+      state.practice.quiz = null;
+      renderQuiz();
+    });
+    $('#quiz-year').addEventListener('change', e => {
+      state.practice.quizYear = e.target.value;
       state.practice.quiz = null;
       renderQuiz();
     });
@@ -2576,6 +2704,25 @@
       if (e.key === 'Escape') {
         if (!$('#modal').hidden) closeModal();
         else closeSidebar();
+        return;
+      }
+      // 小测键盘操作：A–D 选项，Enter 提交/下一题
+      if (state.page !== 'practice' || state.practice.mode !== 'quiz') return;
+      if (!$('#modal').hidden || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      const qz = state.practice.quiz;
+      if (!qz || qz.loading || qz.error || qz.finished) return;
+      const item = qz.questions[qz.index];
+      const key = e.key.toLowerCase();
+      if (key === 'enter') {
+        if (qz.submitted[item.id]) nextQuizQuestion();
+        else if (qz.picks[item.id]) submitQuizAnswer();
+        e.preventDefault();
+      } else if ('abcd'.indexOf(key) >= 0 && !qz.submitted[item.id]) {
+        qz.picks[item.id] = key.toUpperCase();
+        renderQuiz();
+        e.preventDefault();
       }
     });
   }
@@ -2583,10 +2730,12 @@
   function init() {
     bind();
     renderToken();
+    applyHash();
     renderConvList();
     renderMessages();
     autoGrow();
     loadHealth();
+    ensureMeta(true);
   }
 
   init();
