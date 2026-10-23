@@ -20,18 +20,27 @@ SUBJECT_HINTS = [
     ("cn", ["TCP", "UDP", "IP", "路由", "以太网", "拥塞", "子网", "DNS", "CSMA"]),
 ]
 
-# 408 试卷的科目分区多年稳定，按题号定科比关键词猜测可靠（关键词会把「位图」
+# 408 试卷的单选题分区多年稳定，按题号定科比关键词猜测可靠（关键词会把「位图」
 # 里的「图」算成数据结构，也会漏掉没有术语的题）。
 SECTION_SUBJECTS = (
     (1, 11, "ds"), (12, 22, "co"), (23, 32, "os"), (33, 40, "cn"),
-    (41, 42, "ds"), (43, 44, "os"), (45, 46, "co"), (47, 47, "cn"),
 )
 
+# 综合题的四科顺序逐年在变：2019 是 DS/OS/CO/CN，2020 是 DS/CO/OS/CN。
+# 没有登记年份时返回 None，交给 provider 的关键词判断兜底。
+COMPREHENSIVE_SUBJECTS = {
+    2019: ("ds", "ds", "os", "os", "co", "co", "cn"),
+    2020: ("ds", "ds", "co", "co", "os", "os", "cn"),
+}
 
-def subject_for_seq(seq: int):
+
+def subject_for_seq(seq: int, year: int = None):
     for lo, hi, subj in SECTION_SUBJECTS:
         if lo <= seq <= hi:
             return subj
+    table = COMPREHENSIVE_SUBJECTS.get(year)
+    if table and 41 <= seq <= 47:
+        return table[seq - 41]
     return None
 
 
@@ -83,7 +92,8 @@ def mock_extract(seq: int, qtext: str, atext: str, meta: Dict[str, Any]) -> Dict
     return {
         "seq": seq,
         "type": subtype,
-        "subject": subject_for_seq(seq) or _guess_subject(qtext + " " + (atext or "")),
+        "subject": subject_for_seq(seq, meta.get("year")) or _guess_subject(
+            qtext + " " + (atext or "")),
         "score": score,
         "stem": stem,
         "options": opts,

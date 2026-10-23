@@ -123,10 +123,14 @@ class ExtractTest(unittest.TestCase):
         self.assertEqual(subject_for_seq(32), "os")
         self.assertEqual(subject_for_seq(33), "cn")
         self.assertEqual(subject_for_seq(40), "cn")
-        self.assertEqual(subject_for_seq(41), "ds")
-        self.assertEqual(subject_for_seq(44), "os")
-        self.assertEqual(subject_for_seq(46), "co")
-        self.assertEqual(subject_for_seq(47), "cn")
+        self.assertEqual(subject_for_seq(41, 2019), "ds")
+        self.assertEqual(subject_for_seq(44, 2019), "os")
+        self.assertEqual(subject_for_seq(46, 2019), "co")
+        self.assertEqual(subject_for_seq(47, 2019), "cn")
+        # 2020 的综合题把组成原理排在操作系统前面
+        self.assertEqual(subject_for_seq(43, 2020), "co")
+        self.assertEqual(subject_for_seq(45, 2020), "os")
+        self.assertIsNone(subject_for_seq(41, 2021))
         self.assertIsNone(subject_for_seq(0))
 
 

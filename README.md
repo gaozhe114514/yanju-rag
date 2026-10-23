@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.9。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库仍只有 2019 卷 47 题（1–40 解析为 AI 生成，待人工校对），2020–2025、答案正确率评测与数据库尚未接入。
+> 状态：v0.10。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020 两卷共 94 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。2021–2025、答案正确率评测与数据库尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -62,6 +62,11 @@ py -m pipeline.analysis --draft data/work/2019_draft.jsonl \
                         --out data/curated/2019_analysis.jsonl \
                         --apply-to data/work/2019_draft.jsonl
 
+# 2020 卷：答案与解析已经在答案文本里，同样离线生成
+py -m pipeline.build --paper data/raw/2020_paper.txt \
+                     --answer data/raw/2020_answer.txt \
+                     --year 2020 --provider mock
+
 # 模型首次运行会自动下载；国内网络先设镜像
 set HF_ENDPOINT=https://hf-mirror.com     # PowerShell: $env:HF_ENDPOINT="https://hf-mirror.com"
 
@@ -102,16 +107,21 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 >
 > Q23 是评测标签问题：query 问“线程共享哪些资源”，但 2019 年第 23 题只问“线程描述哪项错误”，选项没讲共享资源，CE 给 0.0001 是合理的。检索的 gold 应该是“能回答问题的 chunk”，不是“同知识点的 chunk”。
 
-### 选择题解析的来历
+### 题目与解析的来历
 
-2019 卷 1–40 原来只转写了答案字母。网上能找到的解析要么是扫描 PDF（没有文字层），要么是
-第三方版权内容，所以按「不搬运机构资料」的原则，用 DeepSeek 基于「题干 + 选项 + 正确答案」
-生成，落在 `data/curated/2019_analysis.jsonl`：
+两卷都只用于个人学习交流，原始文件头注明了出处；**没有一份被标成人工审过的定稿**。
 
-- 36 条 `origin: ai`，4 条 `origin: manual`（Q05/Q10/Q27/Q37 模型算错，人工改写）；
-- 合并后 `status` 仍是 `draft`，没有当成人审过的定稿；
-- 生成时自检字数、含糊表述和未映射字符；返工用 `--ids ... --replace`，只重跑指定题；
-- Q05、Q38 依赖原图，解析只给通用解法，具体数值需对照原卷。
+- **2019 卷**：试卷和答案来自 GitHub `xiaolei565/aimto408`（文字抽取后人工修复了第 31–34 题
+  双栏串行）。1–40 原卷只转写了答案字母，网上解析要么是扫描 PDF、要么不符合引用校验，
+  因此用 DeepSeek 基于「题干 + 选项 + 正确答案」生成，落在 `data/curated/2019_analysis.jsonl`：
+  36 条 `origin: ai`，4 条 `origin: manual`（Q05/Q10/Q27/Q37 模型算错，人工改写）；
+  生成时自检字数、含糊表述和未映射字符，返工用 `--ids ... --replace` 只重跑指定题。
+- **2020 卷**：试卷来自 GitHub `neville-studio/408-exam-paper` 的社区重制文字版（pypdf 抽取，
+  人工修复了第 1、13、19、27、31、41、43 题的转录问题）；答案和解析来自
+  `datastructure.ouxinyu.cn/PastPapers/Answer2020.pdf`，选择题答案与答案表逐题核对过。
+  第 10 题原解析为空，由项目补写并按 4 阶 B 树插入过程验算。
+- 两卷的 `status` 都是 `draft`；题干引用「下图」的题，图片尚未入库，解析只给通用解法，
+  具体数值需对照原卷。图片抽取和展示是下一步的数据工作。
 
 > 解析不进召回文本：`retrieval/chunk.py` 只索引题干和选项，避免学生问概念时被「某年某题
 > + 它的解析」占满候选集。解析只在生成阶段给模型看、并作为引用来源。所以补解析后检索指标
@@ -185,7 +195,7 @@ py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
                        --sweep 0.05,0.08,0.1 --sweep-margin 0,0.05
 ```
 
-实测混合语料上 `min_score=0.1, min_margin=0` 时负样本拒答 93.8%、正样本误拒 9.4%，同拒答率下比 `0.05/0.05` 少 3 条误拒，所以 `hybrid-ce` 默认用这组值；`KB_MIN_SCORE` / `KB_MIN_MARGIN` 可覆盖。分差阈值（`min_margin`）会误伤「多个考点都相关」的问题，混合语料下默认关闭。
+实测混合语料上 `min_score=0.1, min_margin=0` 时负样本拒答 93.8%、正样本误拒 9.4%，同拒答率下比 `0.05/0.05` 少 3 条误拒，所以 `hybrid-ce` 默认用这组值；加入 2020 卷后（94 题 + 42 考点）在同一组 32 正/16 负评测集上复测，两项比例不变。`KB_MIN_SCORE` / `KB_MIN_MARGIN` 可覆盖。分差阈值（`min_margin`）会误伤「多个考点都相关」的问题，混合语料下默认关闭。
 
 > `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义，默认不拒答；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数。
 

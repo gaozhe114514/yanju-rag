@@ -38,7 +38,7 @@ def build_items(blocks, ans, prov, year: int, source_file: str) -> List[Dict[str
             rec["answer"] = ""
         # 科目按题号分区定，不采用 provider 的判断：模型偶尔漏填，
         # 关键词法也会把「文件系统管理空闲磁盘块」判成数据结构。
-        rec["subject"] = subject_for_seq(b.seq) or rec.get("subject")
+        rec["subject"] = subject_for_seq(b.seq, year) or rec.get("subject")
         rec["id"] = "%d-408-%02d" % (year, b.seq)
         rec["year"] = year
         rec["source_ref"] = {"file": source_file, "line": b.start_line, "page": None}

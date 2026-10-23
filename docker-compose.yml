@@ -7,7 +7,7 @@ services:
     image: cs408-rag:latest
     env_file: .env
     environment:
-      KB_INPUT: data/work/2019_draft.jsonl
+      KB_INPUT: data/work/2019_draft.jsonl,data/work/2020_draft.jsonl
       KB_MODE: ${KB_MODE:-hybrid-ce}
       KB_FUSE_K: ${KB_FUSE_K:-10}
       # 放在 Nginx 后面，用 X-Forwarded-For 区分客户端 IP

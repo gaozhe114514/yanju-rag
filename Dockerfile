@@ -46,7 +46,10 @@ RUN python -m pipeline.build --paper data/raw/2019_paper.txt \
                              --year 2019 --provider mock \
  && python -m pipeline.analysis --draft data/work/2019_draft.jsonl \
         --out data/curated/2019_analysis.jsonl \
-        --apply-to data/work/2019_draft.jsonl
+        --apply-to data/work/2019_draft.jsonl \
+ && python -m pipeline.build --paper data/raw/2020_paper.txt \
+                             --answer data/raw/2020_answer.txt \
+                             --year 2020 --provider mock
 
 RUN useradd -m appuser && mkdir -p /app/logs && chown -R appuser:appuser /app/logs
 USER appuser
