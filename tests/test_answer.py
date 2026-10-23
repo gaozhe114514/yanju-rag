@@ -1,0 +1,149 @@
+# -*- coding: utf-8 -*-
+"""问答链路测试：用假 provider，不联网、不加载模型。"""
+import json
+import unittest
+
+from answer.gate import RefusalGate
+from answer.pipeline import AnswerPipeline
+from answer.providers import ExtractiveProvider, ProviderError, parse_payload
+
+
+class FakeSearcher:
+    def __init__(self, hits):
+        self.hits = hits
+
+    def search(self, query):
+        return list(self.hits)
+
+
+class FakeProvider:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+
+    def generate(self, messages, hits=None):
+        self.calls.append(messages)
+        return self.responses.pop(0)
+
+
+class FailingProvider:
+    def generate(self, messages, hits=None):
+        raise ProviderError("boom")
+
+
+def make_hits():
+    from retrieval.chunk import Chunk
+    from retrieval.search import SearchHit
+
+    return [
+        SearchHit(Chunk("2019-408-31", 31,
+                        "虚拟地址 2050 1225H 对应的页目录号、页号分别是\nA. 081H、101H"),
+                  0.92),
+        SearchHit(Chunk("2019-408-32", 32, "下列动态分区分配算法中，最容易产生内存碎片的是"),
+                  0.41),
+    ]
+
+
+def payload(answer="页目录号是 081H。", cid="2019-408-31",
+            quote="虚拟地址 2050 1225H"):
+    return json.dumps({"refused": False, "answer": answer,
+                       "citations": [{"chunk_id": cid, "quote": quote}],
+                       "reason": ""}, ensure_ascii=False)
+
+
+class ParseTest(unittest.TestCase):
+    def test_fenced_json(self):
+        obj = parse_payload('```json\n{"refused": true, "answer": ""}\n```')
+        self.assertTrue(obj["refused"])
+
+    def test_extra_text(self):
+        obj = parse_payload('好的，结果如下：{"refused": false, "answer": "x"}')
+        self.assertFalse(obj["refused"])
+
+    def test_bad_json(self):
+        with self.assertRaises(ProviderError):
+            parse_payload("没有 JSON")
+
+
+class PipelineTest(unittest.TestCase):
+    def test_valid_citation(self):
+        hits = make_hits()
+        p = FakeProvider([payload()])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("页目录号怎么算")
+        self.assertFalse(res.refused)
+        self.assertEqual(res.attempts, 1)
+        self.assertEqual(res.citations[0]["chunk_id"], "2019-408-31")
+        self.assertEqual(len(p.calls), 1)
+
+    def test_no_hits_refuses_without_calling_provider(self):
+        p = FakeProvider([])
+        res = AnswerPipeline(FakeSearcher([]), p).answer("任意问题")
+        self.assertTrue(res.refused)
+        self.assertEqual(res.reason, "no_hits")
+        self.assertEqual(p.calls, [])
+
+    def test_low_score_gate(self):
+        hits = make_hits()
+        p = FakeProvider([])
+        res = AnswerPipeline(FakeSearcher(hits), p,
+                             gate=RefusalGate(min_score=0.95)).answer("问题")
+        self.assertTrue(res.refused)
+        self.assertEqual(res.reason, "low_score")
+        self.assertEqual(p.calls, [])
+
+    def test_bad_quote_retries_then_accepts(self):
+        hits = make_hits()
+        p = FakeProvider([payload(quote="这句话不在原文里"),
+                          payload(quote="最容易产生内存碎片的是", cid="2019-408-32")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("内存碎片")
+        self.assertFalse(res.refused)
+        self.assertEqual(res.attempts, 2)
+        self.assertEqual(len(p.calls), 2)
+
+    def test_bad_quote_twice_refuses(self):
+        hits = make_hits()
+        p = FakeProvider([payload(quote="编造的引用一"),
+                          payload(quote="编造的引用二")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("页目录号")
+        self.assertTrue(res.refused)
+        self.assertTrue(res.reason.startswith("citation_failed"))
+        self.assertEqual(res.attempts, 2)
+
+    def test_unknown_chunk_id(self):
+        hits = make_hits()
+        p = FakeProvider([payload(cid="2019-408-99"),
+                          payload(cid="2019-408-99")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("页目录号")
+        self.assertTrue(res.refused)
+
+    def test_whitespace_insensitive_quote(self):
+        from retrieval.chunk import Chunk
+        from retrieval.search import SearchHit
+        hits = [SearchHit(Chunk("x", 1, "树转成二叉树后，后\n根遍历序列相同"), 0.9)]
+        p = FakeProvider([payload(cid="x", quote="后根遍历序列相同")])
+        res = AnswerPipeline(FakeSearcher(hits), p).answer("树的遍历")
+        self.assertFalse(res.refused)
+
+    def test_provider_error_refuses(self):
+        res = AnswerPipeline(FakeSearcher(make_hits()), FailingProvider()).answer("问题")
+        self.assertTrue(res.refused)
+        self.assertTrue(res.reason.startswith("provider_error"))
+
+    def test_model_refusal_is_passed_through(self):
+        hits = make_hits()
+        raw = json.dumps({"refused": True, "answer": "", "citations": [],
+                          "reason": "资料只给了选项，没有解析"}, ensure_ascii=False)
+        res = AnswerPipeline(FakeSearcher(hits), FakeProvider([raw])).answer("为什么")
+        self.assertTrue(res.refused)
+        self.assertIn("资料", res.reason)
+
+    def test_extractive_provider_quotes_top_hit(self):
+        hits = make_hits()
+        res = AnswerPipeline(FakeSearcher(hits), ExtractiveProvider(),
+                             retry=False).answer("页目录号")
+        self.assertFalse(res.refused)
+        self.assertEqual(res.citations[0]["chunk_id"], "2019-408-31")
+
+
+if __name__ == "__main__":
+    unittest.main()

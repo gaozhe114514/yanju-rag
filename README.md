@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.2。离线数据管线与检索链路可跑通（mock 模式无需 API key）；生成、拒答与服务层尚未实现。
+> 状态：v0.3。离线数据管线、检索、拒答、引用校验与 HTTP 服务已可跑通；数据库与生产级部署尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -84,6 +84,38 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 
 > 47 个 chunk 的语料太小，贴近原文的查询会饱和，**看改写集才有区分度**。改写集暴露了两个纯语义 case：Q36 在向量召回里排第 1、BM25 得分为 0，RRF 融合后掉到第 10；Q23 向量排第 12。词面精排对这类同义表达无效，要靠 Cross-Encoder 或更大的向量模型。
 
+## 在线问答
+
+```bash
+# 无 API key 先跑通链路：mock provider 只取 top-1 的答案，不是真生成
+KB_MODE=hybrid KB_PROVIDER=mock py -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+# 浏览器打开 http://127.0.0.1:8000
+
+# 接 DeepSeek（阈值标定后再开 hybrid-ce）
+set DEEPSEEK_API_KEY=sk-xxxx          # PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx"
+set KB_MODE=hybrid
+py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
+```
+
+| 接口 | 说明 |
+|---|---|
+| `POST /ask` | 入参 `{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms |
+| `GET /health` | chunk 数、检索模式、provider |
+| `GET /` | 单页前端，可直接在手机上打开 |
+
+链路是：检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
+
+拒答阈值不能拍脑袋，默认 0 等于不拒答。用正负样本扫阈值：
+
+```bash
+py -m answer.eval_gate --positives data/eval/2019_queries_hard.jsonl \
+                       --negatives data/eval/out_of_scope.jsonl \
+                       --input data/work/2019_draft.jsonl \
+                       --mode hybrid-ce --min-score 0.30 --show
+```
+
+> 当前 `hybrid` 模式的分数是 RRF（0.016~0.033），绝对阈值没有意义；要做可信拒答，必须用 `hybrid-ce` 的 Cross-Encoder 分数标定。
+
 ## 运行测试
 
 ```bash
@@ -115,6 +147,16 @@ retrieval/
   search.py    双路召回 → 融合 → 精排
   eval.py      Recall@k / MRR
   cli.py       命令行检索
+answer/
+  gate.py      拒答闸门（分数 + 分差阈值）
+  prompt.py    强制 JSON 的 system/user prompt
+  providers.py DeepSeek / 离线抽取占位实现
+  verify.py    引用逐字校验
+  pipeline.py  拒答 → 生成 → 校验 → 重试
+  eval_gate.py 拒答阈值标定
+  cli.py       命令行问答
+api/app.py     FastAPI 服务（/ask、/health、/）
+web/index.html 单页前端
 tests/      标准库 unittest
 docs/       架构与数据管线文档、配图
 ```
@@ -124,6 +166,7 @@ docs/       架构与数据管线文档、配图
 - **一道题 = 一个 chunk**：题干、选项、答案解析、图永远不拆开。
 - **E 级校验错误不归零，不许进检索库。**
 - **公式原样保留**，不让模型重写 LaTeX。
+- **引用必须逐字命中原文**：校验不过重试一次，仍不过就拒答。
 - **拒答优于硬编**：资料未覆盖时明说，并记录缺口日志。
 
 ## 版权
