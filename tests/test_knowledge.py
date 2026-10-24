@@ -5,10 +5,10 @@ import os
 import tempfile
 import unittest
 
-from api.knowledge import (filter_knowledge, know_brief, know_detail,
+from api.knowledge import (card_heat, filter_knowledge, know_brief, know_detail,
                            knowledge_chapters, knowledge_for_question,
-                           knowledge_subject_counts, load_knowledge,
-                           related_knowledge_by_question)
+                           knowledge_subject_counts, knowledge_tree,
+                           load_knowledge, related_knowledge_by_question)
 
 
 def card(cid="ds-quicksort", subject="ds", chapter="排序", **kw):
@@ -139,6 +139,82 @@ class FilterTest(unittest.TestCase):
     def test_chapters_only_for_selected_subject(self):
         chaps = knowledge_chapters(self.cards, "ds")
         self.assertEqual([c["name"] for c in chaps], ["查找", "排序"])
+
+
+class HeatTest(unittest.TestCase):
+    def setUp(self):
+        self.cards = [
+            card("ds-quicksort", "ds", "排序", title="快速排序",
+                 related_question_ids=["2019-408-10", "2020-408-10", "2023-408-11"]),
+            card("ds-hash", "ds", "查找", title="散列表", summary="线性探查",
+                 related_question_ids=["2019-408-10"]),
+            card("os-lru", "os", "内存管理", title="LRU 页面置换",
+                 related_question_ids=["2019-408-29", "2099-408-01"]),
+        ]
+        self.questions = {
+            "2019-408-10": {"id": "2019-408-10", "year": 2019},
+            "2020-408-10": {"id": "2020-408-10", "year": 2020},
+            "2023-408-11": {"id": "2023-408-11", "year": 2023},
+            "2019-408-29": {"id": "2019-408-29", "year": 2019},
+        }
+
+    def test_heat_counts_years_and_missing(self):
+        rows = {c["id"]: c for c in card_heat(self.cards, self.questions)}
+        self.assertEqual(rows["ds-quicksort"]["heat"], 3)
+        self.assertEqual(rows["ds-quicksort"]["years"], {"2019": 1, "2020": 1, "2023": 1})
+        self.assertEqual(rows["ds-quicksort"]["missing"], 0)
+        # 2099 那道题不在题库里，只计缺失，不计年份
+        self.assertEqual(rows["os-lru"]["heat"], 2)
+        self.assertEqual(rows["os-lru"]["missing"], 1)
+        self.assertEqual(rows["os-lru"]["years"], {"2019": 1})
+
+    def test_heat_sorted_desc(self):
+        order = [c["id"] for c in card_heat(self.cards, self.questions)]
+        self.assertEqual(order, ["ds-quicksort", "os-lru", "ds-hash"])
+
+    def test_chapter_question_count_is_distinct(self):
+        # 两张卡都关联 2019-408-10，章节题数不能重复累加
+        chaps = {c["name"]: c for c in knowledge_chapters(self.cards, "ds", self.questions)}
+        self.assertEqual(chaps["排序"]["question_count"], 3)
+        self.assertEqual(chaps["查找"]["question_count"], 1)
+
+    def test_chapter_without_questions_index_has_no_field(self):
+        chaps = knowledge_chapters(self.cards, "ds")
+        self.assertNotIn("question_count", chaps[0])
+
+    def test_dirty_id_not_counted_without_corpus(self):
+        # 没有传 questions_by_id 时无法校验，按原样计数
+        heat = {c["id"]: c for c in card_heat(self.cards)}["os-lru"]
+        self.assertEqual(heat["missing"], 0)
+        self.assertEqual(heat["heat"], 2)
+
+    def test_tree_aggregates_by_subject(self):
+        tree = knowledge_tree(self.cards, self.questions)
+        subjects = {s["key"]: s for s in tree["subjects"]}
+        self.assertEqual(subjects["ds"]["cards"], 2)
+        self.assertEqual(subjects["ds"]["questions"], 3)   # 2019-10 / 2020-10 / 2023-11
+        self.assertEqual(subjects["ds"]["question_heat"], 4)
+        self.assertEqual(subjects["os"]["cards"], 1)
+        self.assertEqual([c["name"] for c in subjects["ds"]["chapters"]], ["查找", "排序"])
+        self.assertEqual(tree["total_cards"], 3)
+        self.assertEqual(tree["linked_questions"], 4)
+        # 科目顺序固定为 ds/co/os/cn，缺的科目不出现
+        self.assertEqual([s["key"] for s in tree["subjects"]], ["ds", "os"])
+
+    def test_tree_heat_limit(self):
+        tree = knowledge_tree(self.cards, self.questions, limit=2)
+        self.assertEqual([c["id"] for c in tree["heat"]], ["ds-quicksort", "os-lru"])
+        self.assertEqual(tree["total_heat"], 6)
+
+    def test_cold_cards_stay_out_of_ranking(self):
+        cold = card("ds-graph", "ds", "图", title="最短路径", related_question_ids=[])
+        tree = knowledge_tree(self.cards + [cold], self.questions)
+        ids = [c["id"] for c in tree["heat"]]
+        self.assertNotIn("ds-graph", ids)
+        # 卡片还在树里，只是不进考频榜
+        subjects = {s["key"]: s for s in tree["subjects"]}
+        self.assertEqual(subjects["ds"]["cards"], 3)
+        self.assertEqual(tree["total_cards"], 4)
 
 
 class QuestionLinkTest(unittest.TestCase):

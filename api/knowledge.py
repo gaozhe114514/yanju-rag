@@ -5,6 +5,7 @@
 正文写成可以直接逐字引用的完整句子，引用校验沿用真题同一套逻辑。
 """
 import json
+from collections import Counter
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .catalog import SUBJECT_ORDER, brief, subject_label
@@ -152,17 +153,111 @@ def knowledge_subject_counts(cards: Iterable[Dict]) -> List[Dict]:
             for key in SUBJECT_ORDER if key]
 
 
-def knowledge_chapters(cards: Sequence[Dict], subject: str = "") -> List[Dict]:
+def _year_of(question: Dict) -> Optional[int]:
+    try:
+        return int(question.get("year"))
+    except (TypeError, ValueError):
+        return None
+
+
+def knowledge_chapters(cards: Sequence[Dict], subject: str = "",
+                       questions_by_id: Optional[Dict[str, Dict]] = None) -> List[Dict]:
+    """章节计数。传入 questions_by_id 时一并算该章节关联的真题数（考频）。"""
     counts: Dict[str, int] = {}
+    linked: Dict[str, set] = {}
+    by_id = questions_by_id or {}
     for card in cards:
         if subject and (card.get("subject") or "") != subject:
             continue
         chap = card.get("chapter") or "未分章"
         counts[chap] = counts.get(chap, 0) + 1
+        bucket = linked.setdefault(chap, set())
+        for qid in card.get("related_question_ids") or []:
+            # 只在题库里能对上的题才算考频，避免把脏 id 算进热度
+            if not by_id or qid in by_id:
+                bucket.add(qid)
     # 同一科目下按大纲章节顺序；未知章节排在最后
     order = CHAPTER_ORDER.get(subject or "", [])
     names = sorted(counts, key=lambda n: (order.index(n) if n in order else len(order), n))
-    return [{"name": chap, "count": counts[chap]} for chap in names]
+    rows = [{"name": chap, "count": counts[chap]} for chap in names]
+    if questions_by_id is not None:
+        for row in rows:
+            row["question_count"] = len(linked.get(row["name"], ()))
+    return rows
+
+
+def card_heat(cards: Sequence[Dict],
+              questions_by_id: Optional[Dict[str, Dict]] = None) -> List[Dict]:
+    """每张考点卡片的考频：关联真题数、年份分布、对不上的题目数。"""
+    by_id = questions_by_id or {}
+    out: List[Dict] = []
+    for card in cards:
+        ids = list(card.get("related_question_ids") or [])
+        years: Counter = Counter()
+        missing = 0
+        for qid in ids:
+            question = by_id.get(qid)
+            if by_id and question is None:
+                missing += 1
+                continue
+            year = _year_of(question or {})
+            if year is not None:
+                years[year] += 1
+        item = know_brief(card)
+        item["related_question_ids"] = ids
+        item["heat"] = len(ids)
+        item["years"] = {str(y): n for y, n in sorted(years.items())}
+        item["missing"] = missing
+        out.append(item)
+    # 考频高的在前；同频按科目、章节、标题排，保证结果稳定可复现
+    out.sort(key=lambda c: (-c["heat"],
+                            _subject_rank(c.get("subject") or ""),
+                            _chapter_rank(c.get("subject") or "", c.get("chapter") or ""),
+                            c.get("title") or ""))
+    return out
+
+
+def knowledge_tree(cards: Sequence[Dict],
+                   questions_by_id: Optional[Dict[str, Dict]] = None,
+                   limit: int = 20) -> Dict:
+    """科目 → 章节的考点树，附章节考频和考频榜。
+
+    考频的口径是「关联真题条数」，同一道题被两张卡片关联会各算一次；
+    章节层的 question_count 去重，反映该章节实际覆盖多少道真题。
+    """
+    by_id = questions_by_id or {}
+    heat = card_heat(cards, by_id)
+    ranked = [c for c in heat if c["heat"] > 0]
+    subjects: List[Dict] = []
+    for key in SUBJECT_ORDER:
+        if not key:
+            continue
+        rows = [c for c in cards if (c.get("subject") or "") == key]
+        if not rows:
+            continue
+        chapters = knowledge_chapters(rows, key, by_id)
+        covered = set()
+        for card in rows:
+            covered.update(qid for qid in (card.get("related_question_ids") or [])
+                           if not by_id or qid in by_id)
+        subjects.append({
+            "key": key,
+            "label": subject_label(key),
+            "cards": len(rows),
+            "questions": len(covered),
+            "question_heat": sum(c["heat"] for c in heat if c.get("subject") == key),
+            "chapters": chapters,
+        })
+    return {
+        "subjects": subjects,
+        "heat": ranked[:max(0, int(limit))],
+        "total_cards": len(cards),
+        "total_heat": sum(c["heat"] for c in heat),
+        "linked_questions": len(set(
+            qid for card in cards for qid in (card.get("related_question_ids") or [])
+            if not by_id or qid in by_id)),
+        "questions": len(by_id),
+    }
 
 
 def knowledge_for_question(cards: Sequence[Dict], question_id: str) -> List[Dict]:

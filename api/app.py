@@ -44,8 +44,8 @@ from .gap import log_gap
 from .guard import AccessGuard
 from .knowledge import (filter_knowledge, know_brief, know_detail,
                         knowledge_chapters, knowledge_for_question,
-                        knowledge_subject_counts, load_knowledge,
-                        related_knowledge_by_question)
+                        knowledge_subject_counts, knowledge_tree,
+                        load_knowledge, related_knowledge_by_question)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -429,8 +429,24 @@ def knowledge_list(q: str = "", subject: str = "", chapter: str = "",
         "offset": offset,
         "items": [know_detail(c, _state.get("questions_by_id", {})) for c in rows],
         "subjects": knowledge_subject_counts(cards),
-        "chapters": knowledge_chapters(cards, subject),
+        "chapters": knowledge_chapters(cards, subject, _state.get("questions_by_id", {})),
     }
+
+
+@app.get("/knowledge/tree")
+def knowledge_tree_view(subject: str = "", limit: int = 20,
+                        _: None = Depends(enforce_content)) -> dict:
+    """考点树 + 考频榜。
+
+    必须注册在 /knowledge/{card_id} 之前，否则 "tree" 会被当成卡片 id。
+    """
+    limit = max(0, min(int(limit), 100))
+    store = _state.get("store")
+    cards = store.all_knowledge() if store is not None else _state.get("knowledge", [])
+    sub = (subject or "").strip()
+    if sub:
+        cards = [c for c in cards if (c.get("subject") or "") == sub]
+    return knowledge_tree(cards, _state.get("questions_by_id", {}), limit=limit)
 
 
 @app.get("/knowledge/{card_id}")

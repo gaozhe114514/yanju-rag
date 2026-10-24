@@ -465,6 +465,40 @@
     .chapter-btn:hover { background: #f1f5f9; color: var(--brand); }
     .chapter-btn.active { background: #e0ecff; color: var(--brand-dark); font-weight: 600; }
     .chapter-count { color: var(--muted); font-size: 10.5px; }
+    .kn-heat-toggle { flex: 0 0 auto; padding: 7px 12px; font-size: 12.5px; }
+    .kn-heat-toggle.active {
+      border-color: #93c5fd; color: var(--brand); background: #eef4ff;
+    }
+    .heat-board {
+      display: flex; flex-direction: column; gap: 5px;
+      margin: 2px 0 14px; padding: 12px 14px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    }
+    .heat-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 10px; margin-bottom: 4px;
+    }
+    .heat-title { font-size: 12.5px; font-weight: 700; color: #334155; }
+    .heat-sub { color: var(--muted); font-size: 11px; }
+    .heat-row {
+      display: grid; grid-template-columns: minmax(72px, 150px) minmax(0, 1fr) 42px;
+      align-items: center; gap: 8px; width: 100%; padding: 2px 0;
+      border: 0; background: transparent; text-align: left; cursor: pointer;
+    }
+    .heat-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: #475569; font-size: 12px;
+    }
+    .heat-row:hover .heat-name { color: var(--brand); }
+    .heat-bar { height: 8px; border-radius: 999px; background: #eef2f8; overflow: hidden; }
+    .heat-bar > span {
+      display: block; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #7fb0ff, #2f6bff);
+    }
+    .heat-num {
+      color: var(--muted); font-size: 11.5px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .k-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .k-card {
       display: flex; flex-direction: column; gap: 5px; padding: 14px;
@@ -676,8 +710,10 @@
             <span class="search-ico">⌕</span>
           </div>
           <div class="chips" id="kn-subjects"></div>
+          <button class="ghost kn-heat-toggle" id="kn-heat-toggle" aria-expanded="false">考频榜</button>
         </div>
         <div class="bank-meta" id="kn-meta"></div>
+        <div class="heat-board" id="kn-heat" hidden></div>
         <div class="knowledge-layout" id="kn-layout">
           <aside class="chapter-nav" id="kn-chapters" hidden></aside>
           <div class="knowledge-main">
@@ -800,7 +836,9 @@
     bank: {q: '', subject: '', year: '', items: [], total: 0, offset: 0,
            loading: false, token: 0},
     knowledge: {q: '', subject: '', chapter: '', items: [], total: 0, offset: 0,
-                loading: false, subjects: [], chapters: []},
+                loading: false, subjects: [], chapters: [],
+                heat: {open: false, loaded: false, loading: false, items: [],
+                       total: 0, totalHeat: 0, linked: 0}},
     practice: {subject: '', year: '', current: null, detail: null, revealed: false,
                assessed: null, list: [], queue: null, topic: '', mode: 'drill',
                history: loadHistory(), map: null, quiz: null, quizSubject: '',
@@ -1529,7 +1567,10 @@
         if (k.subject === s.key) return;
         k.subject = s.key;
         k.chapter = '';
+        k.heat.loaded = false;
+        k.heat.items = [];
         fetchKnowledge(true);
+        if (k.heat.open) fetchHeat();
       });
       box.appendChild(chip);
     });
@@ -1546,10 +1587,13 @@
     box.replaceChildren();
     if (!show) return;
 
-    const addChapter = (name, count) => {
+    const addChapter = (name, count, qcount) => {
       const btn = el('button', 'chapter-btn' + (k.chapter === name ? ' active' : ''));
       btn.appendChild(el('span', null, name || '全部章节'));
-      if (count != null) btn.appendChild(el('span', 'chapter-count', String(count)));
+      if (count != null) {
+        const label = qcount ? count + ' · ' + qcount + '题' : String(count);
+        btn.appendChild(el('span', 'chapter-count', label));
+      }
       btn.addEventListener('click', () => {
         if (k.chapter === name) return;
         k.chapter = name;
@@ -1557,8 +1601,9 @@
       });
       box.appendChild(btn);
     };
-    addChapter('', k.total);
-    k.chapters.forEach(c => addChapter(c.name, c.count));
+    const totalQ = k.chapters.reduce((n, c) => n + (c.question_count || 0), 0);
+    addChapter('', k.total, totalQ || null);
+    k.chapters.forEach(c => addChapter(c.name, c.count, c.question_count));
   }
 
   async function fetchKnowledge(reset) {
@@ -1617,6 +1662,83 @@
     $('#kn-more').disabled = k.loading;
     renderKnowledgeSubjects();
     renderKnowledgeChapters();
+  }
+
+  /* 考频榜：按考点关联的真题数排序，数据来自 /knowledge/tree */
+  function toggleHeat() {
+    const h = state.knowledge.heat;
+    h.open = !h.open;
+    renderHeat();
+    if (h.open) fetchHeat();
+  }
+
+  async function fetchHeat() {
+    const k = state.knowledge;
+    const h = k.heat;
+    h.loading = true;
+    renderHeat();
+    try {
+      const params = new URLSearchParams();
+      params.set('subject', k.subject);
+      params.set('limit', '20');
+      const data = await api('/knowledge/tree?' + params.toString());
+      h.items = data.heat || [];
+      h.total = data.total_heat || 0;
+      h.totalHeat = data.total_heat || 0;
+      h.linked = data.linked_questions || 0;
+      h.loaded = true;
+    } catch (e) {
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+      else toast('考频加载失败：' + e.message, 'err');
+    } finally {
+      h.loading = false;
+      renderHeat();
+    }
+  }
+
+  function renderHeat() {
+    const box = $('#kn-heat');
+    const btn = $('#kn-heat-toggle');
+    const k = state.knowledge;
+    const h = k.heat;
+    if (!box) return;
+    box.hidden = !h.open;
+    if (btn) {
+      btn.classList.toggle('active', h.open);
+      btn.setAttribute('aria-expanded', h.open ? 'true' : 'false');
+    }
+    box.replaceChildren();
+    if (!h.open) return;
+
+    const head = el('div', 'heat-head');
+    head.appendChild(el('span', 'heat-title',
+      k.subject ? subjectLabel(k.subject) + ' 考频榜' : '全科考频榜'));
+    head.appendChild(el('span', 'heat-sub', h.loaded
+      ? '覆盖真题 ' + h.linked + ' 道 · 关联 ' + h.totalHeat + ' 次'
+      : '按关联真题数排序'));
+    box.appendChild(head);
+    if (h.loading && !h.items.length) {
+      box.appendChild(el('div', 'empty-row', '正在统计…'));
+      return;
+    }
+    if (!h.items.length) {
+      box.appendChild(el('div', 'empty-row', '暂无关联真题的考点。'));
+      return;
+    }
+    const max = Math.max(1, h.items[0].heat || 1);
+    h.items.forEach(item => {
+      const row = el('button', 'heat-row');
+      row.title = (item.title || '') + '（关联 ' + (item.heat || 0) + ' 道真题）';
+      row.appendChild(el('span', 'heat-name', item.title || item.id));
+      const bar = el('span', 'heat-bar');
+      const fill = el('span');
+      fill.style.width = Math.max(4, Math.round((item.heat || 0) * 100 / max)) + '%';
+      bar.appendChild(fill);
+      row.appendChild(bar);
+      row.appendChild(el('span', 'heat-num', (item.heat || 0) + ' 道'));
+      row.addEventListener('click', () => openKnowledge(item.id));
+      box.appendChild(row);
+    });
   }
 
   function knowledgeCard(k) {
@@ -2663,6 +2785,7 @@
       }, 320);
     });
     $('#kn-more').addEventListener('click', () => fetchKnowledge(false));
+    $('#kn-heat-toggle').addEventListener('click', toggleHeat);
 
     window.addEventListener('popstate', applyHash);
     window.addEventListener('hashchange', applyHash);
