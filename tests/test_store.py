@@ -2,7 +2,7 @@
 """存储层纯函数测试：不需要 PostgreSQL。"""
 import unittest
 
-from db.store import corpus_fingerprint, vector_literal
+from db.store import SCHEMA_PATH, corpus_fingerprint, vector_literal
 
 
 class VectorLiteralTest(unittest.TestCase):
@@ -11,6 +11,13 @@ class VectorLiteralTest(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(vector_literal([]), "[]")
+
+
+class SchemaTest(unittest.TestCase):
+    def test_dim_replaced_and_braces_kept(self):
+        sql = SCHEMA_PATH.read_text(encoding="utf-8").replace("{dim}", "512")
+        self.assertIn("vector(512)", sql)
+        self.assertIn("DEFAULT '{}'", sql)
 
 
 class FingerprintTest(unittest.TestCase):

@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.12。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测与数据库也尚未接入。
+> 状态：v0.13。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -47,7 +47,7 @@ py -m pipeline.build --year 2019 --apply-patch data/work/review_patch.json
 
 ## 检索链路
 
-检索层不依赖数据库，直接读 JSONL，先用小语料把召回和评测跑顺。需要 `numpy / torch / transformers`：
+JSONL 是构建产物，也是数据库的语料种子；线上由 Postgres 承载题目、考点和向量。没有数据库时（单测、离线开发）自动退回内存索引，两条路径共用同一套检索代码。需要 `numpy / torch / transformers`：
 
 ```bash
 py -m pip install -r requirements.txt
@@ -123,6 +123,27 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 > CPU 延迟（32 条 query）：精排 30 候选约 14 分钟，10 候选约 3.6 分钟。**服务默认用 10**，生产环境建议上 GPU 或 ONNX 量化。
 >
 > Q23 是评测标签问题：query 问“线程共享哪些资源”，但 2019 年第 23 题只问“线程描述哪项错误”，选项没讲共享资源，CE 给 0.0001 是合理的。检索的 gold 应该是“能回答问题的 chunk”，不是“同知识点的 chunk”。
+
+## 存储层（PostgreSQL + pgvector）
+
+线上只有一个数据库服务，不做过度拆分：
+
+| 表 | 内容 |
+|---|---|
+| `chunks` | 235 道题 + 42 张考点卡；题干/选项/解析、原始 JSONL、`vector(512)` 向量 |
+| `meta` | 语料指纹、embedding 模型名与维度 |
+| `gap_logs` | 拒答日志（query / 原因 / top1 命中 / 分数），用来反哺资料补充 |
+
+启动时 `api.app` 读 JSONL → 计算「语料 + 模型」指纹 → 和 `meta` 里的比对，只有变了才重新 embedding 并 upsert；没变直接复用库里的向量。浏览接口的筛选分页、科目统计走 SQL，向量召回是 `ORDER BY embedding <=> query LIMIT k`。
+
+**为什么 BM25 还留在应用进程**：Postgres 的中文全文检索离不开 zhparser 一类扩展，换来的只是「少一个内存索引」，却多一个编译安装的扩展和一个要调试的分词器。所以关键词召回继续用项目里的 bigram + BM25 Okapi，向量召回交给 pgvector——数据库承担的是存储、过滤和向量检索，不是硬塞所有检索逻辑。
+
+手工重建或核对数据：
+
+```bash
+DATABASE_URL=postgresql://rag:***@127.0.0.1:5432/rag py -m db.load
+docker compose exec db psql -U rag -d rag -c "SELECT kind, count(*) FROM chunks GROUP BY kind"
+```
 
 ### 题目与解析的来历
 
@@ -263,11 +284,14 @@ py -m answer.eval_answer --queries data/eval/2019_queries_hard.jsonl \
 单机 Docker 部署，公网只暴露 Nginx；应用侧带访问口令、每 IP 滑动窗口限流和每日总额度。
 
 ```bash
-cp .env.example .env          # 填 DEEPSEEK_API_KEY 和 KB_ACCESS_TOKEN
+cp .env.example .env          # 填 DEEPSEEK_API_KEY / KB_ACCESS_TOKEN / POSTGRES_PASSWORD
 mkdir -p logs && sudo chown -R 1000:1000 logs
 docker compose up -d --build  # 首次 10~30 分钟，含 2.4GB 模型
 curl -s http://127.0.0.1:8000/health
+# {"status":"ok",...,"storage":"postgres",...}
 ```
+
+`db` 用 `pgvector/pgvector:pg16` 镜像，数据落在 `pgdata` 卷；API 等 `pg_isready` 通过后才启动。首次启动会 embedding 277 个 chunk 写库（CPU 约十几秒），之后语料没变就跳过。
 
 ```bash
 TOKEN=$(sed -n 's/^KB_ACCESS_TOKEN=//p' .env)
@@ -326,7 +350,12 @@ api/app.py     FastAPI 服务（/ask、/chat、/chunks、/knowledge、/meta、/h
 api/catalog.py 题库筛选、列表/详情序列化（纯函数）
 api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
-api/gap.py     拒答缺口日志
+api/gap.py     拒答缺口日志（JSONL，仅内存模式）
+db/
+  schema.sql   chunks / meta / gap_logs 表与 pgvector 索引
+  store.py     语料同步、向量召回、SQL 筛选、拒答日志
+  load.py      手工重建语料（python -m db.load）
+  wait.py      容器启动前等 Postgres 就绪
 web/index.html 四页前端（问答 / 题库 / 知识库 / 练习），无构建步骤
 deploy/nginx.conf  反向代理 + 第二层限流
 tools/preload_models.py 构建期预下载模型

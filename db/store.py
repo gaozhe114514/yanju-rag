@@ -68,7 +68,9 @@ class Store:
     # ---------- schema ----------
 
     def init_schema(self) -> None:
-        sql = SCHEMA_PATH.read_text(encoding="utf-8").format(dim=self.dim)
+        # 不用 str.format：schema 里有 text[] DEFAULT '{}'，会被当成占位符
+        sql = SCHEMA_PATH.read_text(encoding="utf-8").replace(
+            "{dim}", str(self.dim))
         with self.connect() as conn:
             for stmt in (s.strip() for s in sql.split(";")):
                 if stmt:
