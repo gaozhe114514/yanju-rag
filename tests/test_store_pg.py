@@ -58,6 +58,7 @@ class StorePgTest(unittest.TestCase):
             conn.execute("DROP TABLE IF EXISTS meta")
             conn.execute("DROP TABLE IF EXISTS gap_logs")
             conn.execute("DROP TABLE IF EXISTS answer_cache")
+            conn.execute("DROP TABLE IF EXISTS answer_feedback")
             conn.commit()
         cls.store.init_schema()
         chunks = [build_chunk(q) for q in QUESTIONS]
@@ -152,6 +153,47 @@ class StorePgTest(unittest.TestCase):
                 "SELECT count(*)::int AS n FROM answer_cache"
                 " WHERE cache_key = %s", (key,)).fetchone()["n"]
         self.assertEqual(n, 1)
+
+    def test_feedback_log(self):
+        rec = {"query": "页目录号怎么算", "answer": "081H", "helpful": False,
+               "reason": "bad_citation", "note": "引用对不上",
+               "citations": ["2019-408-01"], "cached": True}
+        self.store.log_feedback(rec)
+        with self.store.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM answer_feedback ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        self.assertEqual(row["query"], "页目录号怎么算")
+        self.assertFalse(row["helpful"])
+        self.assertEqual(row["citations"], ["2019-408-01"])
+        self.assertTrue(row["cached"])
+
+    def test_feedback_stats(self):
+        with self.store.connect() as conn:
+            conn.execute("DELETE FROM answer_feedback")
+            conn.execute(
+                "INSERT INTO answer_feedback (created_at, query, answer,"
+                " helpful, reason, note, citations, cached) VALUES"
+                " (now() - interval '1 hour', '最新差评', '...', false,"
+                "  'wrong_answer', '答到别的题上了', '{2019-408-01}', true),"
+                " (now() - interval '2 hours', '好评', '...', true, '', '',"
+                "  '{}', false),"
+                " (now() - interval '3 hours', '次新差评', '...', false,"
+                "  'bad_citation', '', '{}', false),"
+                " (now() - interval '40 days', '窗口外', '...', false,"
+                "  'other', '', '{}', false)")
+            conn.commit()
+        stats = self.store.feedback_stats(days=30, limit=1)
+        self.assertEqual(stats["storage"], "postgres")
+        self.assertEqual(stats["total"], 3)
+        self.assertEqual(stats["helpful"], 1)
+        self.assertEqual(stats["not_helpful"], 2)
+        self.assertAlmostEqual(stats["helpful_rate"], 0.3333, places=4)
+        by_reason = {r["reason"]: r["count"] for r in stats["by_reason"]}
+        self.assertEqual(by_reason, {"wrong_answer": 1, "bad_citation": 1})
+        self.assertEqual([r["query"] for r in stats["recent"]], ["最新差评"])
+        self.assertEqual(stats["recent"][0]["citations"], ["2019-408-01"])
+        self.assertTrue(stats["recent"][0]["cached"])
 
     def test_gap_stats(self):
         with self.store.connect() as conn:

@@ -53,6 +53,25 @@ CREATE INDEX IF NOT EXISTS gap_logs_created_idx
 CREATE INDEX IF NOT EXISTS gap_logs_reason_idx
     ON gap_logs (reason);
 
+-- 用户对回答的反馈：👎 的原因和补充说明是补资料/改检索的直接输入。
+-- query/answer 最多各留 500/2000 字，便于定位；不存 IP、UA 等标识。
+CREATE TABLE IF NOT EXISTS answer_feedback (
+    id          bigserial PRIMARY KEY,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    query       text NOT NULL,
+    answer      text NOT NULL DEFAULT '',
+    helpful     boolean NOT NULL,
+    reason      text NOT NULL DEFAULT '',
+    note        text NOT NULL DEFAULT '',
+    citations   text[] NOT NULL DEFAULT '{}',
+    cached      boolean NOT NULL DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS answer_feedback_created_idx
+    ON answer_feedback (created_at DESC);
+CREATE INDEX IF NOT EXISTS answer_feedback_helpful_idx
+    ON answer_feedback (helpful, created_at DESC);
+
 -- 应答缓存：只存已作答的回答，拒答不入库。
 -- cache_key 由 answer.cache.cache_key() 生成，命名空间里带检索模式、
 -- provider 与语料指纹，语料更新后旧缓存自然失效。

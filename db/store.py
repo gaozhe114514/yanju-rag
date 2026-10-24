@@ -345,6 +345,60 @@ class Store:
                 (cache_key, query, body))
             conn.commit()
 
+    # ---------- 回答反馈 ----------
+
+    def log_feedback(self, rec: Dict) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO answer_feedback (query, answer, helpful, reason,"
+                " note, citations, cached)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (rec["query"], rec["answer"], bool(rec["helpful"]),
+                 rec["reason"], rec["note"], list(rec["citations"]),
+                 bool(rec["cached"])))
+            conn.commit()
+
+    def feedback_stats(self, days: int = 30, limit: int = 10) -> Dict:
+        """有用率、差评原因和最近差评；正反馈只计数，不占列表。"""
+        days = max(1, min(int(days), 365))
+        limit = max(1, min(int(limit), 100))
+        window = "created_at >= now() - (%s::int * interval '1 day')"
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT count(*)::int AS total,"
+                " count(*) FILTER (WHERE helpful)::int AS helpful"
+                " FROM answer_feedback WHERE " + window, (days,)).fetchone()
+            reasons = conn.execute(
+                "SELECT reason, count(*)::int AS n FROM answer_feedback"
+                " WHERE helpful = false AND " + window +
+                " GROUP BY reason ORDER BY n DESC, reason",
+                (days,)).fetchall()
+            recent = conn.execute(
+                "SELECT created_at, query, answer, reason, note, citations, cached"
+                " FROM answer_feedback WHERE helpful = false AND " + window +
+                " ORDER BY created_at DESC, id DESC LIMIT %s",
+                (days, limit)).fetchall()
+        total, helpful = int(row["total"]), int(row["helpful"])
+        return {
+            "storage": "postgres",
+            "window_days": days,
+            "total": total,
+            "helpful": helpful,
+            "not_helpful": total - helpful,
+            "helpful_rate": round(helpful / total, 4) if total else 0.0,
+            "by_reason": [{"reason": r["reason"], "count": r["n"]}
+                          for r in reasons],
+            "recent": [{
+                "ts": r["created_at"].isoformat(timespec="seconds"),
+                "query": r["query"],
+                "reason": r["reason"],
+                "note": r["note"],
+                "answer": r["answer"],
+                "citations": list(r["citations"] or []),
+                "cached": bool(r["cached"]),
+            } for r in recent],
+        }
+
     # ---------- 拒答日志 ----------
 
     def log_gap(self, query: str, reason: str,

@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.15。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。这一版新增 **应答缓存**（`answer_cache`，默认 24h，拒答不缓存）与 **缺口统计接口** `/stats/gaps`。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。
+> 状态：v0.16。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是五页（问答 / 题库 / 知识库 / 练习 / 质量）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。此前已有 **应答缓存**（`answer_cache`，默认 24h，拒答不缓存）与 **缺口统计** `/stats/gaps`；这一版补上 **回答反馈闭环**：回答/拒答下方的「有帮助 / 没帮助」与差评原因写入 `answer_feedback`，质量页展示有帮助率与最近差评，接口为 `POST /feedback`、`GET /stats/feedback`。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -134,6 +134,7 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 | `meta` | 语料指纹、embedding 模型名与维度 |
 | `gap_logs` | 拒答日志（query / 原因 / top1 命中 / 分数），用来反哺资料补充 |
 | `answer_cache` | 应答缓存（缓存键 / 原问题 / 完整响应 JSON / 写入时间）；只存作答成功的回答 |
+| `answer_feedback` | 回答反馈（原问题 / 回答 / 是否有帮助 / 差评原因 / 备注 / 引用 id / 是否命中缓存） |
 
 启动时 `api.app` 读 JSONL → 计算「语料 + 模型」指纹 → 和 `meta` 里的比对，只有变了才重新 embedding 并 upsert；没变直接复用库里的向量。浏览接口的筛选分页、科目统计走 SQL，向量召回是 `ORDER BY embedding <=> query LIMIT k`。
 
@@ -196,11 +197,11 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 页面分成五块，共用左侧会话/导航：
 
-- **问答**：多轮对话；每条回答展示引用、召回资料、改写后的问题和执行耗时。真题和考点都能被引用，引用上会标出来源类型。
+- **问答**：多轮对话；每条回答展示引用、召回资料、改写后的问题和执行耗时。真题和考点都能被引用，引用上会标出来源类型。每条回答下方可直接评价「有帮助 / 没帮助」，差评可选原因（答非所问 / 引用不对 / 资料里有但没答 / 其他）并补一句备注；拒答则问「这个拒答合理吗」，用同一套通道记录，反馈状态随对话存进 localStorage。
 - **题库**：按科目筛选、按题干/选项/题号搜索，支持分页；题库接口只返回题干和选项，答案在详情里才出现。题目详情会列出关联考点。
 - **知识库**：四科 → 章节 → 考点卡片，支持全文搜索和章节筛选。卡片是项目自写的考点摘要，标了 `source: self` / `status: draft`，不冒充教材原文；详情里可跳关联真题。章节导航带「考点数 · 涉及真题数」，页头「考频榜」按关联真题数排出考点热度，可点进卡片。
 - **练习**：三个标签页。① 随机练习：随机抽题，先作答再展开答案，用“会了/还不会”做本地统计；也可以从考点卡片直接进入“按考点练习”，只练该考点关联的真题。② 错题本：按科目统计掌握度，支持单题重练和全部重练；点「看原题」可回到完整解析和关联考点。③ 10 题小测：按科目抽 10 道单选题组卷，提交即自动判分，错题直接进错题本。练习记录都写入浏览器 localStorage。
-- **质量**：运行状况看板。顶部四张 KPI（窗口内拒答数、缓存命中率、本进程问答量、语料规模）；中部拒答原因条形与每日拒答柱图（没拒答的日子补 0）；底部最近拒答，有命中题目的可一键跳原题。进程计数只代表本次启动，跨重启的历史看缺口日志。数据源是 `/stats/overview`。
+- **质量**：运行状况看板。顶部四张 KPI（窗口内拒答数、缓存命中率、本进程问答量、语料规模）；中部拒答原因条形与每日拒答柱图（没拒答的日子补 0）；底部最近拒答与最近差评，有命中题目的可一键跳原题。最近差评带「有帮助率 · 共 N 条反馈」，每条标出差评原因，也能一键跳到对应真题/考点。进程计数只代表本次启动，跨重启的历史看缺口日志与反馈表。数据源是 `/stats/overview`。
 
 问答检索同时覆盖真题和考点两个库：BM25 + 向量召回 → RRF → Cross-Encoder 精排，引用校验对两类 chunk 用同一套逐字规则。考点只作为概念解释的补充，涉及具体题目答案时以真题解析为准。
 
@@ -220,20 +221,22 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `GET /knowledge` | 考点列表：`q` / `subject` / `chapter` / `limit` / `offset`，附带科目计数和章节计数 |
 | `GET /knowledge/tree` | 考点树 + 考频榜：科目 → 章节（考点数 / 涉及真题数），`heat` 按关联真题数排序，`limit` 控制榜单条数 |
 | `GET /knowledge/{id}` | 考点详情：正文、公式、易错点、来源行号、关联真题 |
+| `POST /feedback` | 回答反馈：`{"query": "...", "helpful": true|false, "reason": "...", "note": "...", "answer": "...", "citations": ["2019-408-01"], "cached": false}`；不占问答额度 |
 | `GET /stats/gaps` | 缺口统计：`days` / `limit`，返回总数、按原因、按天、最近拒答 |
-| `GET /stats/overview` | 质量看板数据：进程内问答计数、缓存命中率、语料规模，外加同窗口的缺口统计 |
+| `GET /stats/feedback` | 反馈统计：`days` / `limit`，返回总数、有帮助率、按差评原因、最近差评 |
+| `GET /stats/overview` | 质量看板数据：进程内问答计数、缓存命中率、语料规模，外加同窗口的缺口与反馈统计 |
 | `GET /meta` | 题目数、科目分布、年份、考点数、检索模式 |
 | `GET /health` | 题目数、考点数、检索模式、provider |
 | `GET /` | 五页前端，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/knowledge`、`/meta`、`/stats/gaps`、`/stats/overview`）都必须带
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/feedback`、`/chunks`、`/knowledge`、`/meta`、`/stats/gaps`、`/stats/feedback`、`/stats/overview`）都必须带
 `X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
 限额（刷题库/知识库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
 
 考点文件默认读 `data/curated/knowledge.jsonl`，可用 `KB_KNOWLEDGE` 指向别的 JSONL。启动时会校验
 `id / subject / chapter / title / body` 必填字段，并检查考点 id 不能和题目 id 冲突；同一 id 后出现的覆盖先出现的。
 
-引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。
+引用会带 `source_ref`（原文件 + 行号），拒答会写入 `data/work/gap_log.jsonl`（`KB_GAP_LOG` 可改），记录 query、拒答原因和最近命中题，作为补资料的输入。反馈有数据库时写 `answer_feedback` 表，没数据库或写库失败时退到 `data/work/feedback.jsonl`（`KB_FEEDBACK_LOG` 可改），不丢用户的操作。
 
 链路是：理解问题（可选改写）→ 检索 → 拒答闸门 → 生成（强制 JSON）→ 引用逐字校验 → 失败重试一次 → 仍失败降级为拒答。
 
@@ -355,18 +358,19 @@ answer/
   eval_gate.py 拒答阈值标定
   eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
-api/app.py     FastAPI 服务（/ask、/chat、/chunks、/knowledge、/meta、/health、/）
+api/app.py     FastAPI 服务（/ask、/chat、/feedback、/chunks、/knowledge、/stats、/meta、/health、/）
 api/catalog.py 题库筛选、列表/详情序列化（纯函数）
 api/metrics.py 进程内问答计数（质量看板用，重启归零）
 api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联、章节考频树
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
 api/gap.py     拒答缺口日志（JSONL，仅内存模式）
+api/feedback.py 反馈标准化、JSONL 落盘与统计（纯函数 + 文件 IO）
 db/
-  schema.sql   chunks / meta / gap_logs / answer_cache 表与索引
-  store.py     语料同步、向量召回、SQL 筛选、拒答日志
+  schema.sql   chunks / meta / gap_logs / answer_cache / answer_feedback 表与索引
+  store.py     语料同步、向量召回、SQL 筛选、拒答与反馈日志、统计聚合
   load.py      手工重建语料（python -m db.load）
   wait.py      容器启动前等 Postgres 就绪
-web/index.html 四页前端（问答 / 题库 / 知识库 / 练习），无构建步骤
+web/index.html 五页前端（问答 / 题库 / 知识库 / 练习 / 质量），无构建步骤
 deploy/nginx.conf  反向代理 + 第二层限流
 tools/preload_models.py 构建期预下载模型
 Dockerfile / docker-compose.yml / .env.example

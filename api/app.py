@@ -18,6 +18,7 @@
   KB_DAILY_MAX      全局每日请求上限，默认 0（不限）
   KB_TRUST_PROXY    设为 1 时从 X-Forwarded-For 取客户端 IP（放在 Nginx 后面时打开）
   KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
+  KB_FEEDBACK_LOG   没有数据库时反馈写到哪里，默认 data/work/feedback.jsonl
 """
 import os
 import threading
@@ -43,6 +44,8 @@ from db.store import Store
 
 from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
+from .feedback import (feedback_stats as jsonl_feedback_stats,
+                       log_feedback as jsonl_log_feedback, normalize_feedback)
 from .gap import gap_stats, log_gap
 from .guard import AccessGuard
 from . import metrics
@@ -70,6 +73,16 @@ class ChatTurn(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     history: List[ChatTurn] = Field(default_factory=list)
+
+
+class FeedbackRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    helpful: bool
+    reason: str = Field("", max_length=40)
+    note: str = Field("", max_length=500)
+    answer: str = Field("", max_length=4000)
+    citations: List[str] = Field(default_factory=list)
+    cached: bool = False
 
 
 def _enforce(request: Request, limit: bool) -> None:
@@ -171,6 +184,11 @@ def _load() -> None:
     if not gap_path.is_absolute():
         gap_path = ROOT / gap_path
     gap_path.parent.mkdir(parents=True, exist_ok=True)
+    feedback_path = Path(os.environ.get(
+        "KB_FEEDBACK_LOG", "data/work/feedback.jsonl"))
+    if not feedback_path.is_absolute():
+        feedback_path = ROOT / feedback_path
+    feedback_path.parent.mkdir(parents=True, exist_ok=True)
 
     # 只有真实模型才做追问改写；mock 模式退化为规则拼接，保证离线也能跑。
     agent = QueryAgent(provider if provider_name == "deepseek" else None)
@@ -189,6 +207,7 @@ def _load() -> None:
         "storage": "postgres" if store is not None else "memory",
         "store": store,
         "gap_log": str(gap_path),
+        "feedback_log": str(feedback_path),
         "agent": agent,
         # 缓存命名空间隔离检索模式、provider、精排候选数和语料版本：
         # 任一变化都换一套键，旧回答不会串到新配置上。
@@ -460,6 +479,53 @@ def _gap_stats_data(days: int, limit: int) -> dict:
     return gap_stats(_state.get("gap_log", ""), days, limit)
 
 
+def _feedback_stats_data(days: int, limit: int) -> dict:
+    store = _state.get("store")
+    if store is not None:
+        return store.feedback_stats(days, limit)
+    return jsonl_feedback_stats(_state.get("feedback_log", ""), days, limit)
+
+
+@app.post("/feedback")
+def feedback(req: FeedbackRequest,
+             _: None = Depends(enforce_content)) -> dict:
+    """记录用户对一条回答的评价。
+
+    反馈不占问答额度（不调模型），但仍然要求口令，避免公网被灌数据。
+    有库入库；写库失败或没配数据库时退到 JSONL，不把用户的操作丢掉。
+    """
+    try:
+        rec = normalize_feedback(req.query, req.helpful, req.reason,
+                                 req.note, req.answer, req.citations,
+                                 req.cached)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    store = _state.get("store")
+    if store is not None:
+        try:
+            store.log_feedback(rec)
+            return {"ok": True, "stored": "postgres"}
+        except Exception:  # 入库失败不能影响前端，至少留下 JSONL
+            pass
+    path = _state.get("feedback_log", "")
+    if path:
+        try:
+            jsonl_log_feedback(path, rec)
+            return {"ok": True, "stored": "jsonl"}
+        except OSError:
+            pass
+    return {"ok": False, "stored": ""}
+
+
+@app.get("/stats/feedback")
+def stats_feedback(days: int = 30, limit: int = 10,
+                   _: None = Depends(enforce_content)) -> dict:
+    """反馈统计：有用率、差评原因、最近差评。"""
+    return _feedback_stats_data(max(1, min(int(days), 365)),
+                                max(1, min(int(limit), 100)))
+
+
 @app.get("/stats/gaps")
 def stats_gaps(days: int = 30, limit: int = 20,
                _: None = Depends(enforce_content)) -> dict:
@@ -496,6 +562,7 @@ def stats_overview(days: int = 30, limit: int = 20,
             "years": years,
         },
         "gaps": _gap_stats_data(days, limit),
+        "feedback": _feedback_stats_data(days, limit),
     }
 
 

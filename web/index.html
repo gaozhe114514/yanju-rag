@@ -176,6 +176,33 @@
     .cite-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
     .cite-id { color: var(--brand); font-size: 12px; font-weight: 700; }
     .cite-quote { color: #334155; }
+    /* ---------- answer feedback ---------- */
+    .fb-row {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line);
+    }
+    .fb-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
+    .fb-btn, .fb-reason, .fb-submit {
+      padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--card); color: #475569; font-size: 12px; line-height: 1.5;
+    }
+    .fb-btn:hover, .fb-reason:hover, .fb-submit:hover {
+      border-color: #93c5fd; color: var(--brand);
+    }
+    .fb-btn.no:hover { border-color: #fca5a5; color: var(--danger); }
+    .fb-reason.active {
+      border-color: var(--brand-dark); background: var(--brand-dark); color: #fff;
+    }
+    .fb-note {
+      flex: 1 1 150px; min-width: 0; padding: 4px 9px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--card); color: var(--ink); font-size: 12px;
+    }
+    .fb-note:focus {
+      outline: none; border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, .1);
+    }
+    .fb-submit { border-color: var(--brand); color: var(--brand); font-weight: 600; }
+    .fb-done { color: var(--muted); font-size: 12px; }
     .link-btn {
       padding: 0; border: 0; background: transparent; color: var(--brand);
       font-size: 12px; text-decoration: none;
@@ -475,6 +502,7 @@
       padding: 14px; border: 1px solid var(--line); border-radius: 12px;
       background: var(--card);
     }
+    .quality-card.stack { margin-top: 10px; }
     .quality-head {
       display: flex; align-items: baseline; justify-content: space-between;
       gap: 8px; margin-bottom: 10px;
@@ -521,6 +549,7 @@
       display: inline-block; padding: 1px 7px; border-radius: 999px;
       background: #e8efff; color: #2f6bff; font-size: 11px;
     }
+    .gap-tag.err { background: #fef2f2; color: var(--danger); }
     .gap-row button { justify-self: end; }
     .empty-block { color: var(--muted); font-size: 12.5px; padding: 14px 2px; }
     @media (max-width: 860px) {
@@ -891,6 +920,13 @@
             <span class="quality-sub" id="quality-recent-count"></span>
           </div>
           <div class="recent-gaps" id="quality-recent"></div>
+        </div>
+        <div class="quality-card stack">
+          <div class="quality-head">
+            <span class="quality-title">最近差评</span>
+            <span class="quality-sub" id="quality-feedback-sub"></span>
+          </div>
+          <div class="recent-gaps" id="quality-feedback"></div>
         </div>
       </div>
     </section>
@@ -1283,7 +1319,7 @@
     return (sec / 3600).toFixed(1) + ' 小时前';
   }
 
-  function renderBotMessage(msg) {
+  function renderBotMessage(msg, query) {
     const row = el('div', 'msg bot');
     row.appendChild(el('div', 'avatar', '408'));
     const body = el('div', 'bot-body');
@@ -1384,9 +1420,101 @@
       card.appendChild(det);
     }
 
+    const fb = feedbackBlock(msg, query);
+    if (fb) card.appendChild(fb);
+
     body.appendChild(card);
     row.appendChild(body);
     return row;
+  }
+
+  /* ---------- answer feedback ---------- */
+  const FB_REASONS = [
+    ['wrong_answer', '答非所问'],
+    ['bad_citation', '引用不对'],
+    ['should_answer', '资料里有但没答'],
+    ['other', '其他']
+  ];
+
+  function fbReasonLabel(key) {
+    const hit = FB_REASONS.filter(r => r[0] === key)[0];
+    return hit ? hit[1] : '其他';
+  }
+
+  function feedbackBlock(msg, query) {
+    const data = msg.data || {};
+    if (!query || data.intent === 'chitchat' || data.intent === 'clarify') return null;
+    const box = el('div', 'fb-row');
+    if (msg.feedback) {
+      const done = msg.feedback;
+      box.appendChild(el('span', 'fb-done', done.helpful
+        ? '已记录：有帮助'
+        : '已记录：没帮助 · ' + fbReasonLabel(done.reason)));
+      return box;
+    }
+    const refused = !!data.refused;
+    box.appendChild(el('span', 'fb-label',
+      refused ? '这个拒答合理吗？' : '这个回答有帮助吗？'));
+    const yes = el('button', 'fb-btn', refused ? '合理' : '有帮助');
+    const no = el('button', 'fb-btn no', refused ? '不该拒答' : '没帮助');
+    yes.addEventListener('click', () => {
+      submitFeedback(box, msg, query, true, refused ? 'should_answer' : '');
+    });
+    no.addEventListener('click', () => {
+      box.replaceChildren();
+      box.appendChild(el('span', 'fb-label', '哪里有问题？'));
+      let current = refused ? 'should_answer' : 'wrong_answer';
+      FB_REASONS.forEach(([key, label]) => {
+        const b = el('button', 'fb-reason' + (key === current ? ' active' : ''), label);
+        b.addEventListener('click', () => {
+          current = key;
+          Array.prototype.forEach.call(box.querySelectorAll('.fb-reason'),
+            n => n.classList.toggle('active', n === b));
+        });
+        box.appendChild(b);
+      });
+      const note = el('input', 'fb-note');
+      note.placeholder = '补充说明（可选）';
+      note.maxLength = 200;
+      box.appendChild(note);
+      const submit = el('button', 'fb-submit', '提交');
+      submit.addEventListener('click', () => {
+        submitFeedback(box, msg, query, false, current, note.value);
+      });
+      box.appendChild(submit);
+    });
+    box.appendChild(yes);
+    box.appendChild(no);
+    return box;
+  }
+
+  async function submitFeedback(box, msg, query, helpful, reason, note) {
+    const data = msg.data || {};
+    box.replaceChildren(el('span', 'fb-done', '正在提交…'));
+    try {
+      const res = await api('/feedback', {
+        method: 'POST',
+        body: {
+          query: query,
+          helpful: !!helpful,
+          reason: helpful ? '' : (reason || 'other'),
+          note: note || '',
+          answer: String(data.answer || '').slice(0, 2000),
+          citations: (data.citations || []).map(c => c.chunk_id).filter(Boolean),
+          cached: !!data.cached
+        }
+      });
+      if (!res || !res.ok) throw new Error('服务端未保存');
+      msg.feedback = { helpful: !!helpful, reason: helpful ? '' : (reason || 'other') };
+      saveConvs();
+      box.replaceChildren(el('span', 'fb-done', helpful
+        ? '已记录：有帮助'
+        : '已记录：没帮助 · ' + fbReasonLabel(reason)));
+    } catch (e) {
+      toast('反馈提交失败：' + e.message, 'err');
+      const fresh = feedbackBlock(msg, query);
+      if (fresh) box.replaceWith(fresh);
+    }
   }
 
   function loadingBubble() {
@@ -1430,8 +1558,15 @@
       box.appendChild(emptyState());
       return;
     }
+    // 反馈要带上这轮的问题：老对话没有 msg.query 时取最近一条用户消息
+    let lastUser = '';
     conv.messages.forEach(m => {
-      box.appendChild(m.role === 'user' ? userMessage(m) : renderBotMessage(m));
+      if (m.role === 'user') {
+        lastUser = m.content || '';
+        box.appendChild(userMessage(m));
+      } else {
+        box.appendChild(renderBotMessage(m, m.query || lastUser));
+      }
     });
     if (state.sending) box.appendChild(loadingBubble());
     requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
@@ -1477,7 +1612,8 @@
         method: 'POST',
         body: {query: text, history: history}
       });
-      conv.messages.push({role: 'assistant', data: data, ts: Date.now()});
+      conv.messages.push({role: 'assistant', data: data, query: text,
+        ts: Date.now()});
       conv.updatedAt = Date.now();
     } catch (e) {
       conv.messages.pop();
@@ -2940,6 +3076,8 @@
       $('#quality-reasons').replaceChildren();
       $('#quality-days-chart').replaceChildren();
       $('#quality-recent').replaceChildren();
+      $('#quality-feedback').replaceChildren();
+      $('#quality-feedback-sub').textContent = '';
       return;
     }
     const gaps = d.gaps || {};
@@ -3032,6 +3170,42 @@
           row.appendChild(el('span', 'quality-sub', '无命中题'));
         }
         recentBox.appendChild(row);
+      });
+    }
+
+    // 最近差评：只看差评，正反馈体现在有用率上
+    const fb = d.feedback || {};
+    const fbSub = $('#quality-feedback-sub');
+    fbSub.textContent = fb.total
+      ? '有帮助率 ' + Math.round((fb.helpful_rate || 0) * 100) + '% · 共 ' +
+        fb.total + ' 条反馈'
+      : '';
+    const fbBox = $('#quality-feedback');
+    fbBox.replaceChildren();
+    const fbRecent = fb.recent || [];
+    if (!fbRecent.length) {
+      fbBox.appendChild(el('div', 'empty-block',
+        fb.total ? '窗口内没有差评。' : '还没有用户反馈。'));
+    } else {
+      fbRecent.forEach(r => {
+        const row = el('div', 'gap-row');
+        row.title = [r.query, r.note].filter(Boolean).join('\n');
+        const ts = String(r.ts || '').replace('T', ' ').replace('+00:00', '').slice(0, 16);
+        row.appendChild(el('span', null, ts));
+        row.appendChild(el('span', 'gap-tag err', fbReasonLabel(r.reason)));
+        row.appendChild(el('span', 'gap-q', r.query || '（无提问文本）'));
+        const first = (r.citations || [])[0];
+        if (first) {
+          const btn = el('button', 'link-btn', '看引用');
+          btn.addEventListener('click', () => openSource({
+            chunk_id: first,
+            kind: /-408-/.test(first) ? 'question' : 'knowledge'
+          }));
+          row.appendChild(btn);
+        } else {
+          row.appendChild(el('span', 'quality-sub', '无引用'));
+        }
+        fbBox.appendChild(row);
       });
     }
   }
