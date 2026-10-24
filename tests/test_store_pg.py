@@ -57,6 +57,7 @@ class StorePgTest(unittest.TestCase):
             conn.execute("DROP TABLE IF EXISTS chunks")
             conn.execute("DROP TABLE IF EXISTS meta")
             conn.execute("DROP TABLE IF EXISTS gap_logs")
+            conn.execute("DROP TABLE IF EXISTS answer_cache")
             conn.commit()
         cls.store.init_schema()
         chunks = [build_chunk(q) for q in QUESTIONS]
@@ -114,6 +115,70 @@ class StorePgTest(unittest.TestCase):
             row = conn.execute("SELECT * FROM gap_logs ORDER BY id DESC LIMIT 1").fetchone()
         self.assertEqual(row["query"], "资料外的问题")
         self.assertEqual(row["top_chunk"], "2019-408-01")
+
+    def test_answer_cache_roundtrip(self):
+        key = "cache-key-1"
+        self.assertIsNone(self.store.get_answer_cache(key, 60))
+        payload = {"answer": "页目录号是 081H。", "refused": False,
+                   "citations": [{"chunk_id": "2019-408-01", "quote": "081H"}]}
+        self.store.put_answer_cache(key, "页目录号怎么算", payload, 60)
+        hit = self.store.get_answer_cache(key, 60)
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit["payload"]["answer"], payload["answer"])
+        self.assertEqual(hit["payload"]["citations"], payload["citations"])
+        self.assertGreaterEqual(hit["age_s"], 0)
+        self.assertLess(hit["age_s"], 60)
+
+    def test_answer_cache_ttl_disabled_and_expired(self):
+        key = "cache-key-2"
+        self.store.put_answer_cache(key, "问题", {"answer": "答案"}, 60)
+        # TTL=0 表示关闭缓存，既不写也不读
+        self.assertIsNone(self.store.get_answer_cache(key, 0))
+        with self.store.connect() as conn:
+            conn.execute(
+                "UPDATE answer_cache SET created_at = now() - interval '2 hours'"
+                " WHERE cache_key = %s", (key,))
+            conn.commit()
+        self.assertIsNone(self.store.get_answer_cache(key, 60))
+
+    def test_answer_cache_upsert(self):
+        key = "cache-key-3"
+        self.store.put_answer_cache(key, "问题", {"answer": "旧"}, 60)
+        self.store.put_answer_cache(key, "问题", {"answer": "新"}, 60)
+        hit = self.store.get_answer_cache(key, 60)
+        self.assertEqual(hit["payload"]["answer"], "新")
+        with self.store.connect() as conn:
+            n = conn.execute(
+                "SELECT count(*)::int AS n FROM answer_cache"
+                " WHERE cache_key = %s", (key,)).fetchone()["n"]
+        self.assertEqual(n, 1)
+
+    def test_gap_stats(self):
+        with self.store.connect() as conn:
+            conn.execute("DELETE FROM gap_logs")
+            conn.execute(
+                "INSERT INTO gap_logs (created_at, query, reason, top_chunk,"
+                " top_score) VALUES"
+                " (now() - interval '2 hours', '最新的问题', 'low_score',"
+                "  '2019-408-01', 0.02),"
+                " (now() - interval '3 hours', '次新的问题', 'low_score',"
+                "  NULL, 0.0),"
+                " (now() - interval '5 hours', '引用失败的问题',"
+                "  'citation_failed: 引用过短', '2019-408-31', 0.9),"
+                " (now() - interval '40 days', '窗口外的问题', 'no_hits',"
+                "  NULL, 0.0)")
+            conn.commit()
+        stats = self.store.gap_stats(days=30, limit=2)
+        self.assertEqual(stats["storage"], "postgres")
+        self.assertEqual(stats["total"], 3)
+        by_reason = {r["reason"]: r["count"] for r in stats["by_reason"]}
+        self.assertEqual(by_reason["low_score"], 2)
+        self.assertEqual(by_reason["citation_failed"], 1)
+        self.assertNotIn("no_hits", by_reason)
+        self.assertEqual(sum(d["count"] for d in stats["by_day"]), 3)
+        self.assertEqual([r["query"] for r in stats["recent"]],
+                         ["最新的问题", "次新的问题"])
+        self.assertIsNone(stats["recent"][1]["top_chunk"])
 
 
 if __name__ == "__main__":

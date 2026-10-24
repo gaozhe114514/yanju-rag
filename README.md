@@ -2,7 +2,7 @@
 
 面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
 
-> 状态：v0.13。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。
+> 状态：v0.14。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版的产品框架是四页（问答 / 题库 / 知识库 / 练习）+ 会话历史 + 执行过程展示 + 错题本、掌握度与 10 题小测；题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。这一版新增 **应答缓存**（`answer_cache`，默认 24h，拒答不缓存）与 **缺口统计接口** `/stats/gaps`。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -133,6 +133,7 @@ py -m retrieval.eval --queries data/eval/2019_queries_hard.jsonl \
 | `chunks` | 235 道题 + 42 张考点卡；题干/选项/解析、原始 JSONL、`vector(512)` 向量 |
 | `meta` | 语料指纹、embedding 模型名与维度 |
 | `gap_logs` | 拒答日志（query / 原因 / top1 命中 / 分数），用来反哺资料补充 |
+| `answer_cache` | 应答缓存（缓存键 / 原问题 / 完整响应 JSON / 写入时间）；只存作答成功的回答 |
 
 启动时 `api.app` 读 JSONL → 计算「语料 + 模型」指纹 → 和 `meta` 里的比对，只有变了才重新 embedding 并 upsert；没变直接复用库里的向量。浏览接口的筛选分页、科目统计走 SQL，向量召回是 `ORDER BY embedding <=> query LIMIT k`。
 
@@ -185,8 +186,11 @@ KB_MODE=hybrid KB_PROVIDER=mock py -m uvicorn api.app:app --host 127.0.0.1 --por
 set DEEPSEEK_API_KEY=sk-xxxx          # PowerShell: $env:DEEPSEEK_API_KEY="sk-xxxx"
 set KB_MODE=hybrid-ce
 set KB_FUSE_K=10
+set KB_CACHE_TTL=86400                # 应答缓存秒数，0 = 关闭
 py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
+
+应答缓存只在配置了 `DATABASE_URL` 时生效，键由「检索模式 + provider + 精排候选数 + 语料指纹 + 归一化问题」组成；`/chat` 用改写后的问题查缓存。响应里的 `cached` / `cache_age_s` 标明是否命中及回答年龄，命中时 `trace` 只保留「应答缓存」一步。**拒答和寒暄/澄清不缓存**，避免把一次失败固化 24 小时。
 
 ### 产品框架（v0.8）
 
@@ -208,18 +212,19 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 | 接口 | 说明 |
 |---|---|
-| `POST /ask` | 单轮问答：`{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms |
+| `POST /ask` | 单轮问答：`{"query": "..."}`，返回 answer / citations / refused / reason / hits / latency_ms / cached / cache_age_s |
 | `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}]}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
 | `GET /chunks` | 题库列表：`q` / `subject` / `year` / `limit` / `offset`，只返回题干和选项 |
 | `GET /chunks/{id}` | 题目详情：题干、选项、答案、解析、`source_ref`、`related_knowledge` |
 | `GET /knowledge` | 考点列表：`q` / `subject` / `chapter` / `limit` / `offset`，附带科目计数和章节计数 |
 | `GET /knowledge/tree` | 考点树 + 考频榜：科目 → 章节（考点数 / 涉及真题数），`heat` 按关联真题数排序，`limit` 控制榜单条数 |
 | `GET /knowledge/{id}` | 考点详情：正文、公式、易错点、来源行号、关联真题 |
+| `GET /stats/gaps` | 缺口统计：`days` / `limit`，返回总数、按原因、按天、最近拒答 |
 | `GET /meta` | 题目数、科目分布、年份、考点数、检索模式 |
 | `GET /health` | 题目数、考点数、检索模式、provider |
 | `GET /` | 四页前端，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/knowledge`、`/meta`）都必须带
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chunks`、`/knowledge`、`/meta`、`/stats/gaps`）都必须带
 `X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
 限额（刷题库/知识库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
 
@@ -339,6 +344,7 @@ retrieval/
   cli.py       命令行检索
 answer/
   agent.py     多轮意图识别 + 追问改写（LLM / 规则回退）
+  cache.py     应答缓存键、TTL 与响应包装（纯函数）
   gate.py      拒答闸门（分数 + 分差阈值）
   prompt.py    强制 JSON 的 system/user prompt
   providers.py DeepSeek / 离线抽取占位实现
@@ -353,7 +359,7 @@ api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联、章
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
 api/gap.py     拒答缺口日志（JSONL，仅内存模式）
 db/
-  schema.sql   chunks / meta / gap_logs 表与 pgvector 索引
+  schema.sql   chunks / meta / gap_logs / answer_cache 表与索引
   store.py     语料同步、向量召回、SQL 筛选、拒答日志
   load.py      手工重建语料（python -m db.load）
   wait.py      容器启动前等 Postgres 就绪

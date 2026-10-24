@@ -17,6 +17,7 @@
   KB_RATE_WINDOW    限流窗口秒数，默认 600
   KB_DAILY_MAX      全局每日请求上限，默认 0（不限）
   KB_TRUST_PROXY    设为 1 时从 X-Forwarded-For 取客户端 IP（放在 Nginx 后面时打开）
+  KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
 """
 import os
 import threading
@@ -30,6 +31,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
+from answer.cache import (cache_key, cached_payload, storable_payload,
+                          ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
@@ -40,7 +43,7 @@ from db.store import Store
 
 from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
-from .gap import log_gap
+from .gap import gap_stats, log_gap
 from .guard import AccessGuard
 from .knowledge import (filter_knowledge, know_brief, know_detail,
                         knowledge_chapters, knowledge_for_question,
@@ -131,11 +134,13 @@ def _load() -> None:
     searcher = build_searcher(
         chunks, mode=mode, k_fuse=fuse_k, k_final=5,
         vector_search=store.vector_search if store is not None else None)
+    fingerprint = ""
     if store is not None:
         stats = store.sync(
             questions, knowledge, chunks,
             embedder=searcher.embedder,
             model_name=searcher.embedder.model_name if searcher.embedder else "")
+        fingerprint = stats.get("fingerprint", "")
         print("数据库语料%s：题 %d / 考点 %d" % (
             "已重建" if stats["reloaded"] else "无需重建",
             stats["questions"], stats["knowledge"]))
@@ -184,6 +189,11 @@ def _load() -> None:
         "store": store,
         "gap_log": str(gap_path),
         "agent": agent,
+        # 缓存命名空间隔离检索模式、provider、精排候选数和语料版本：
+        # 任一变化都换一套键，旧回答不会串到新配置上。
+        "cache_ttl": ttl_from_env(),
+        "cache_ns": "%s|%s|k%s|%s" % (
+            mode, provider_name, fuse_k, fingerprint[:16]),
     })
 
 
@@ -193,7 +203,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="408 考研知识库", version="0.7", lifespan=lifespan)
+app = FastAPI(title="408 考研知识库", version="0.14", lifespan=lifespan)
 
 
 def _hit_payload(h) -> dict:
@@ -334,6 +344,31 @@ def _log_gap(query: str, res) -> None:
         pass  # 日志写失败不能影响答题
 
 
+def _cache_lookup(query: str) -> Optional[dict]:
+    """按「实际用于检索的问题」查缓存；没有数据库或关闭 TTL 时直接跳过。"""
+    store = _state.get("store")
+    ttl = int(_state.get("cache_ttl", 0))
+    if store is None or ttl <= 0:
+        return None
+    key = cache_key(query, _state.get("cache_ns", ""))
+    try:
+        return store.get_answer_cache(key, ttl)
+    except Exception:  # 缓存故障降级为直接答题
+        return None
+
+
+def _cache_store(query: str, payload: dict) -> None:
+    store = _state.get("store")
+    ttl = int(_state.get("cache_ttl", 0))
+    if store is None or ttl <= 0 or payload.get("refused"):
+        return
+    key = cache_key(query, _state.get("cache_ns", ""))
+    try:
+        store.put_answer_cache(key, query, storable_payload(payload), ttl)
+    except Exception:
+        pass  # 写缓存失败不能影响答题
+
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -346,6 +381,7 @@ def health() -> dict:
         "provider": _state.get("provider"),
         "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
+        "cache_ttl_s": _state.get("cache_ttl", 0),
     }
 
 
@@ -356,11 +392,17 @@ def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
         return {"refused": True, "answer": "", "citations": [],
                 "reason": "server_not_ready", "hits": [], "latency_ms": 0}
     t0 = time.time()
+    hit = _cache_lookup(req.query)
+    if hit is not None:
+        return cached_payload(hit["payload"], hit["age_s"],
+                              int((time.time() - t0) * 1000))
     # 模型推理是 CPU 密集的，单 worker 内串行，避免线程争抢
     with _lock:
         res = pipeline.answer(req.query)
     _log_gap(req.query, res)
-    return _answer_payload(res, t0)
+    payload = with_cache_meta(_answer_payload(res, t0))
+    _cache_store(req.query, payload)
+    return payload
 
 
 @app.post("/chat")
@@ -381,12 +423,37 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
     # 改写只调一次轻量模型，放在锁外；真正的检索/生成仍在锁内串行。
     plan = agent.plan(req.query, history)
     if plan.intent in ("chitchat", "clarify"):
-        return _non_kb_payload(plan, t0)
+        return with_cache_meta(_non_kb_payload(plan, t0))
+
+    # 多轮按「改写后的问题」查缓存：同一轮追问得到同一独立问题时复用答案。
+    hit = _cache_lookup(plan.rewritten)
+    if hit is not None:
+        out = cached_payload(hit["payload"], hit["age_s"],
+                             int((time.time() - t0) * 1000))
+        rewritten = plan.rewritten if plan.rewritten != plan.query else ""
+        out["intent"] = plan.intent
+        out["rewritten_query"] = rewritten
+        out["trace"]["rewritten_query"] = rewritten
+        return out
 
     with _lock:
         res = pipeline.answer(plan.rewritten)
     _log_gap(req.query, res)
-    return _answer_payload(res, t0, plan)
+    payload = with_cache_meta(_answer_payload(res, t0, plan))
+    _cache_store(plan.rewritten, payload)
+    return payload
+
+
+@app.get("/stats/gaps")
+def stats_gaps(days: int = 30, limit: int = 20,
+               _: None = Depends(enforce_content)) -> dict:
+    """缺口统计：按原因、按天聚合，并给出最近若干条拒答。"""
+    days = max(1, min(int(days), 365))
+    limit = max(1, min(int(limit), 100))
+    store = _state.get("store")
+    if store is not None:
+        return store.gap_stats(days, limit)
+    return gap_stats(_state.get("gap_log", ""), days, limit)
 
 
 @app.get("/meta")

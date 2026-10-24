@@ -47,3 +47,21 @@ CREATE TABLE IF NOT EXISTS gap_logs (
     top_chunk  text,
     top_score  real
 );
+
+CREATE INDEX IF NOT EXISTS gap_logs_created_idx
+    ON gap_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS gap_logs_reason_idx
+    ON gap_logs (reason);
+
+-- 应答缓存：只存已作答的回答，拒答不入库。
+-- cache_key 由 answer.cache.cache_key() 生成，命名空间里带检索模式、
+-- provider 与语料指纹，语料更新后旧缓存自然失效。
+CREATE TABLE IF NOT EXISTS answer_cache (
+    cache_key  text PRIMARY KEY,
+    query      text NOT NULL DEFAULT '',
+    payload    jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS answer_cache_created_idx
+    ON answer_cache (created_at);

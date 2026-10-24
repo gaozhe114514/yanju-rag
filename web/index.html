@@ -1145,6 +1145,13 @@
     return ['badge', '已作答 · 引用已校验'];
   }
 
+  function cacheAgeText(sec) {
+    sec = Math.max(0, Number(sec) || 0);
+    if (sec < 60) return Math.max(1, Math.round(sec)) + ' 秒前';
+    if (sec < 3600) return Math.round(sec / 60) + ' 分钟前';
+    return (sec / 3600).toFixed(1) + ' 小时前';
+  }
+
   function renderBotMessage(msg) {
     const row = el('div', 'msg bot');
     row.appendChild(el('div', 'avatar', '408'));
@@ -1167,7 +1174,8 @@
     line.appendChild(el('span', b[0], b[1]));
     const bits = [];
     if (data.latency_ms) bits.push((data.latency_ms / 1000).toFixed(1) + ' 秒');
-    if (data.attempts) bits.push('生成 ' + data.attempts + ' 次');
+    if (data.cached) bits.push('缓存回答 · ' + cacheAgeText(data.cache_age_s));
+    else if (data.attempts) bits.push('生成 ' + data.attempts + ' 次');
     if (bits.length) line.appendChild(el('span', 'badge-meta', bits.join(' · ')));
     body.appendChild(line);
 

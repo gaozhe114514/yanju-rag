@@ -129,7 +129,8 @@ class Store:
                     or (embedder is not None and null_vec > 0))
             if not need:
                 return {"reloaded": False, "questions": counts.get("question", 0),
-                        "knowledge": counts.get("knowledge", 0)}
+                        "knowledge": counts.get("knowledge", 0),
+                        "fingerprint": fingerprint}
 
             rows = []
             for q in questions:
@@ -202,7 +203,7 @@ class Store:
 
         return {"reloaded": True, "questions": len(questions),
                 "knowledge": len(knowledge),
-                "embedded": len(vectors)}
+                "embedded": len(vectors), "fingerprint": fingerprint}
 
     # ---------- 读语料 ----------
 
@@ -305,6 +306,45 @@ class Store:
                 " ORDER BY year").fetchall()
         return [int(r["year"]) for r in rows]
 
+    # ---------- 应答缓存 ----------
+
+    def get_answer_cache(self, cache_key: str, ttl_s: int) -> Optional[Dict]:
+        """命中返回 payload 与年龄；过期视为未命中，由后续写入顺带清理。"""
+        if ttl_s <= 0:
+            return None
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT payload,"
+                " EXTRACT(EPOCH FROM (now() - created_at)) AS age_s"
+                " FROM answer_cache WHERE cache_key = %s",
+                (cache_key,)).fetchone()
+        if row is None:
+            return None
+        age_s = float(row["age_s"] or 0)
+        if age_s > ttl_s:
+            return None
+        return {"payload": row["payload"], "age_s": age_s}
+
+    def put_answer_cache(self, cache_key: str, query: str, payload: Dict,
+                         ttl_s: int) -> None:
+        if ttl_s <= 0:
+            return
+        body = json.dumps(payload, ensure_ascii=False)
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM answer_cache"
+                " WHERE created_at < now() - (%s::double precision"
+                " * interval '1 second')",
+                (float(ttl_s),))
+            conn.execute(
+                "INSERT INTO answer_cache (cache_key, query, payload, created_at)"
+                " VALUES (%s, %s, %s::jsonb, now())"
+                " ON CONFLICT (cache_key) DO UPDATE SET"
+                " query = EXCLUDED.query, payload = EXCLUDED.payload,"
+                " created_at = now()",
+                (cache_key, query, body))
+            conn.commit()
+
     # ---------- 拒答日志 ----------
 
     def log_gap(self, query: str, reason: str,
@@ -317,5 +357,50 @@ class Store:
                 (query, reason or "", top_chunk,
                  None if top_score is None else float(top_score)))
             conn.commit()
+
+    def gap_stats(self, days: int = 30, limit: int = 20) -> Dict:
+        """按原因、按天聚合拒答日志，并返回最近若干条。"""
+        days = max(1, min(int(days), 365))
+        limit = max(1, min(int(limit), 100))
+        # 显式 ::int，避免 psycopg 把 Python int 当 int8 传给 make_interval 时
+        # 找不到匹配的函数签名。
+        window = "created_at >= now() - (%s::int * interval '1 day')"
+        with self.connect() as conn:
+            total = conn.execute(
+                "SELECT count(*)::int AS n FROM gap_logs WHERE " + window,
+                (days,)).fetchone()["n"]
+            reasons = conn.execute(
+                "SELECT COALESCE(NULLIF(btrim(split_part(reason, ':', 1)), ''),"
+                " 'unknown') AS reason, count(*)::int AS n"
+                " FROM gap_logs WHERE " + window +
+                " GROUP BY 1 ORDER BY n DESC, reason",
+                (days,)).fetchall()
+            by_day = conn.execute(
+                "SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')"
+                " AS day, count(*)::int AS n"
+                " FROM gap_logs WHERE " + window +
+                " GROUP BY 1 ORDER BY 1",
+                (days,)).fetchall()
+            recent = conn.execute(
+                "SELECT created_at, query, reason, top_chunk, top_score"
+                " FROM gap_logs WHERE " + window +
+                " ORDER BY created_at DESC, id DESC LIMIT %s",
+                (days, limit)).fetchall()
+        return {
+            "storage": "postgres",
+            "window_days": days,
+            "total": int(total),
+            "by_reason": [{"reason": r["reason"], "count": r["n"]}
+                          for r in reasons],
+            "by_day": [{"date": r["day"], "count": r["n"]} for r in by_day],
+            "recent": [{
+                "ts": r["created_at"].isoformat(timespec="seconds"),
+                "query": r["query"],
+                "reason": r["reason"],
+                "top_chunk": r["top_chunk"],
+                "top_score": (None if r["top_score"] is None
+                              else round(float(r["top_score"]), 4)),
+            } for r in recent],
+        }
 
 
