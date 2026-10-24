@@ -797,7 +797,8 @@
     sending: false,
     loadingStart: 0,
     loadingTimer: null,
-    bank: {q: '', subject: '', year: '', items: [], total: 0, offset: 0, loading: false},
+    bank: {q: '', subject: '', year: '', items: [], total: 0, offset: 0,
+           loading: false, token: 0},
     knowledge: {q: '', subject: '', chapter: '', items: [], total: 0, offset: 0,
                 loading: false, subjects: [], chapters: []},
     practice: {subject: '', year: '', current: null, detail: null, revealed: false,
@@ -1448,25 +1449,30 @@
 
   async function fetchBank(reset) {
     const b = state.bank;
-    if (b.loading) return;
     if (!state.meta) {
       const meta = await ensureMeta();
       if (!meta) { renderBank(true); return; }
     }
+    // 筛选条件可能在请求途中又变了：用 token 丢弃过期响应，而不是锁住整个列表
+    const token = ++b.token;
     if (reset) { b.offset = 0; b.items = []; }
     b.loading = true;
     renderBank(false);
     try {
       const data = await api('/chunks?' + bankParams().toString());
+      if (token !== b.token) return;
       b.items = reset ? data.items : b.items.concat(data.items);
       b.total = data.total;
       b.offset = b.items.length;
     } catch (e) {
+      if (token !== b.token) return;
       if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
       else toast('题库加载失败：' + e.message, 'err');
     } finally {
-      b.loading = false;
-      renderBank(false);
+      if (token === b.token) {
+        b.loading = false;
+        renderBank(false);
+      }
     }
   }
 
@@ -1482,11 +1488,13 @@
     } else {
       b.items.forEach(q => list.appendChild(bankCard(q)));
     }
-    $('#bank-meta').textContent = state.meta
-      ? '共 ' + b.total + ' 题 · 已显示 ' + b.items.length + ' 题' +
-        (b.year ? ' · ' + b.year + ' 年' : '') +
-        (b.q ? ' · 搜索“' + b.q + '”' : '')
-      : '';
+    $('#bank-meta').textContent = !state.meta
+      ? ''
+      : (b.loading && !b.items.length
+        ? '正在加载题库…'
+        : '共 ' + b.total + ' 题 · 已显示 ' + b.items.length + ' 题' +
+          (b.year ? ' · ' + b.year + ' 年' : '') +
+          (b.q ? ' · 搜索“' + b.q + '”' : ''));
     $('#bank-more').hidden = !b.items.length || b.items.length >= b.total;
     $('#bank-more').disabled = b.loading;
   }
