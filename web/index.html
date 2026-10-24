@@ -126,9 +126,63 @@
     /* ---------- pages ---------- */
     .page { display: none; flex: 1; min-height: 0; }
     .page.active { display: flex; flex-direction: column; }
-    #page-bank.active, #page-practice.active, #page-knowledge.active { display: block; overflow-y: auto; }
+    #page-today.active, #page-bank.active, #page-practice.active, #page-knowledge.active { display: block; overflow-y: auto; }
     .page-inner { width: 100%; max-width: 1000px; margin: 0 auto; padding: 24px; }
     .page-inner.narrow { max-width: 780px; }
+
+    /* ---------- today ---------- */
+    .today-wrap { max-width: 760px; }
+    .today-hero {
+      padding: 22px 22px 18px; margin-bottom: 12px;
+      border: 1px solid #dbeafe; border-radius: 16px;
+      background: linear-gradient(135deg, #eef5ff 0%, #ffffff 64%);
+    }
+    .today-kicker { color: var(--muted); font-size: 11.5px; letter-spacing: .04em; }
+    .today-hero h2 {
+      margin: 7px 0 6px; font-size: 21px; line-height: 1.5;
+      font-weight: 700; letter-spacing: .1px;
+    }
+    .today-sub { margin: 0; color: #475569; font-size: 13px; line-height: 1.7; }
+    .today-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 14px; }
+    .today-chip {
+      padding: 5px 10px; border: 1px solid #dbeafe; border-radius: 999px;
+      background: #fff; color: #1e40af; font-size: 11.5px; white-space: nowrap;
+    }
+    .today-chip.accent { border-color: var(--brand); background: var(--brand); color: #fff; }
+    .today-chip-edit {
+      margin-left: -3px; padding: 0; border: 0; background: transparent;
+      color: var(--muted); font-size: 11px;
+    }
+    .today-chip-edit:hover { color: var(--brand); text-decoration: underline; }
+    .today-section { margin-top: 14px; }
+    .today-section-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 8px; margin-bottom: 8px;
+    }
+    .today-section-title { color: #334155; font-size: 13px; font-weight: 700; }
+    .today-section-sub { color: var(--muted); font-size: 11.5px; }
+    .today-card {
+      padding: 15px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card);
+    }
+    .today-row {
+      display: flex; align-items: flex-start; gap: 10px; padding: 11px 0;
+      border-top: 1px dashed var(--line);
+    }
+    .today-row:first-child { padding-top: 0; border-top: 0; }
+    .today-row:last-child { padding-bottom: 0; }
+    .today-row-main { flex: 1; min-width: 0; }
+    .today-row-title {
+      color: #334155; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere;
+    }
+    .today-row-meta { margin-top: 2px; color: var(--muted); font-size: 11.5px; }
+    .today-row .ghost { flex: none; padding: 6px 12px; font-size: 12px; }
+    .today-empty { padding: 6px 0 2px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+    .today-question-loading {
+      padding: 34px 10px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card); color: var(--muted); font-size: 13px; text-align: center;
+    }
+    .today-question .practice-card { box-shadow: none; }
 
     /* ---------- chat ---------- */
     #page-chat { overflow: hidden; }
@@ -176,33 +230,6 @@
     .cite-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
     .cite-id { color: var(--brand); font-size: 12px; font-weight: 700; }
     .cite-quote { color: #334155; }
-    /* ---------- answer feedback ---------- */
-    .fb-row {
-      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-      margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line);
-    }
-    .fb-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
-    .fb-btn, .fb-reason, .fb-submit {
-      padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
-      background: var(--card); color: #475569; font-size: 12px; line-height: 1.5;
-    }
-    .fb-btn:hover, .fb-reason:hover, .fb-submit:hover {
-      border-color: #93c5fd; color: var(--brand);
-    }
-    .fb-btn.no:hover { border-color: #fca5a5; color: var(--danger); }
-    .fb-reason.active {
-      border-color: var(--brand-dark); background: var(--brand-dark); color: #fff;
-    }
-    .fb-note {
-      flex: 1 1 150px; min-width: 0; padding: 4px 9px; border: 1px solid var(--line);
-      border-radius: 8px; background: var(--card); color: var(--ink); font-size: 12px;
-    }
-    .fb-note:focus {
-      outline: none; border-color: #93c5fd;
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, .1);
-    }
-    .fb-submit { border-color: var(--brand); color: var(--brand); font-weight: 600; }
-    .fb-done { color: var(--muted); font-size: 12px; }
     .link-btn {
       padding: 0; border: 0; background: transparent; color: var(--brand);
       font-size: 12px; text-decoration: none;
@@ -502,7 +529,6 @@
       padding: 14px; border: 1px solid var(--line); border-radius: 12px;
       background: var(--card);
     }
-    .quality-card.stack { margin-top: 10px; }
     .quality-head {
       display: flex; align-items: baseline; justify-content: space-between;
       gap: 8px; margin-bottom: 10px;
@@ -549,7 +575,6 @@
       display: inline-block; padding: 1px 7px; border-radius: 999px;
       background: #e8efff; color: #2f6bff; font-size: 11px;
     }
-    .gap-tag.err { background: #fef2f2; color: var(--danger); }
     .gap-row button { justify-self: end; }
     .empty-block { color: var(--muted); font-size: 12.5px; padding: 14px 2px; }
     @media (max-width: 860px) {
@@ -755,7 +780,8 @@
     </div>
     <button class="new-chat" id="new-chat">＋ 新建对话</button>
     <nav class="nav" id="nav">
-      <button data-page="chat" class="active"><span class="nav-ico">◉</span>问答</button>
+      <button data-page="today" class="active"><span class="nav-ico">☀</span>今日</button>
+      <button data-page="chat"><span class="nav-ico">◉</span>问答</button>
       <button data-page="bank"><span class="nav-ico">▤</span>题库</button>
       <button data-page="knowledge"><span class="nav-ico">▦</span>知识库</button>
       <button data-page="practice"><span class="nav-ico">✎</span>练习</button>
@@ -780,8 +806,8 @@
     <header class="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="打开菜单">☰</button>
       <div class="top-title">
-        <div id="page-title">真题问答</div>
-        <div class="sub" id="page-sub">多轮追问 · 每条结论都可核对</div>
+        <div id="page-title">今日</div>
+        <div class="sub" id="page-sub">每天只做一件小事</div>
       </div>
       <div class="top-actions"><span class="pill" id="health-pill">连接中…</span></div>
     </header>
@@ -791,7 +817,39 @@
       <button id="auth-open">输入口令</button>
     </div>
 
-    <section class="page active" id="page-chat">
+    <section class="page active" id="page-today">
+      <div class="page-inner narrow today-wrap">
+        <div class="today-hero">
+          <div class="today-kicker" id="today-date"></div>
+          <h2 id="today-greeting">今天只做一件小事。</h2>
+          <p class="today-sub" id="today-sub"></p>
+          <div class="today-chips">
+            <span class="today-chip accent" id="today-countdown"></span>
+            <button class="today-chip-edit" id="today-exam-edit">改日期</button>
+            <span class="today-chip" id="today-streak"></span>
+            <span class="today-chip" id="today-week"></span>
+          </div>
+        </div>
+
+        <div class="today-section">
+          <div class="today-section-head">
+            <span class="today-section-title">今天这一题</span>
+            <span class="today-section-sub" id="today-question-src"></span>
+          </div>
+          <div id="today-question"></div>
+        </div>
+
+        <div class="today-section">
+          <div class="today-section-head">
+            <span class="today-section-title">接着上次</span>
+            <span class="today-section-sub">不用从头开始</span>
+          </div>
+          <div class="today-card" id="today-resume"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-chat">
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
@@ -921,13 +979,6 @@
           </div>
           <div class="recent-gaps" id="quality-recent"></div>
         </div>
-        <div class="quality-card stack">
-          <div class="quality-head">
-            <span class="quality-title">最近差评</span>
-            <span class="quality-sub" id="quality-feedback-sub"></span>
-          </div>
-          <div class="recent-gaps" id="quality-feedback"></div>
-        </div>
       </div>
     </section>
   </main>
@@ -962,10 +1013,13 @@
   const ACTIVE_KEY = '408-active-conv-v1';
   const STATS_KEY = '408-practice-stats-v1';
   const HISTORY_KEY = '408-practice-history-v1';
+  const EXAM_DATE_KEY = '408-exam-date-v1';
+  const TODAY_KEY = '408-today-question-v1';
   const SUBJECT_FALLBACK = {
     ds: '数据结构', co: '计算机组成原理', os: '操作系统', cn: '计算机网络', '': '未分类'
   };
   const PAGE_META = {
+    today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
     bank: {title: '题库', sub: '按年份和科目浏览真题'},
     knowledge: {title: '考点知识库', sub: '四科考点卡片 · 与真题双向关联'},
@@ -1006,6 +1060,8 @@
                 heat: {open: false, loaded: false, loading: false, items: [],
                        total: 0, totalHeat: 0, linked: 0}},
     quality: {days: 30, data: null, loading: false, seq: 0},
+    today: {item: null, detail: null, source: '', sourceTitle: '',
+            revealed: false, assessed: null, loading: false},
     practice: {subject: '', year: '', current: null, detail: null, revealed: false,
                assessed: null, list: [], queue: null, topic: '', mode: 'drill',
                history: loadHistory(), map: null, quiz: null, quizSubject: '',
@@ -1319,7 +1375,7 @@
     return (sec / 3600).toFixed(1) + ' 小时前';
   }
 
-  function renderBotMessage(msg, query) {
+  function renderBotMessage(msg) {
     const row = el('div', 'msg bot');
     row.appendChild(el('div', 'avatar', '408'));
     const body = el('div', 'bot-body');
@@ -1420,101 +1476,9 @@
       card.appendChild(det);
     }
 
-    const fb = feedbackBlock(msg, query);
-    if (fb) card.appendChild(fb);
-
     body.appendChild(card);
     row.appendChild(body);
     return row;
-  }
-
-  /* ---------- answer feedback ---------- */
-  const FB_REASONS = [
-    ['wrong_answer', '答非所问'],
-    ['bad_citation', '引用不对'],
-    ['should_answer', '资料里有但没答'],
-    ['other', '其他']
-  ];
-
-  function fbReasonLabel(key) {
-    const hit = FB_REASONS.filter(r => r[0] === key)[0];
-    return hit ? hit[1] : '其他';
-  }
-
-  function feedbackBlock(msg, query) {
-    const data = msg.data || {};
-    if (!query || data.intent === 'chitchat' || data.intent === 'clarify') return null;
-    const box = el('div', 'fb-row');
-    if (msg.feedback) {
-      const done = msg.feedback;
-      box.appendChild(el('span', 'fb-done', done.helpful
-        ? '已记录：有帮助'
-        : '已记录：没帮助 · ' + fbReasonLabel(done.reason)));
-      return box;
-    }
-    const refused = !!data.refused;
-    box.appendChild(el('span', 'fb-label',
-      refused ? '这个拒答合理吗？' : '这个回答有帮助吗？'));
-    const yes = el('button', 'fb-btn', refused ? '合理' : '有帮助');
-    const no = el('button', 'fb-btn no', refused ? '不该拒答' : '没帮助');
-    yes.addEventListener('click', () => {
-      submitFeedback(box, msg, query, true, refused ? 'should_answer' : '');
-    });
-    no.addEventListener('click', () => {
-      box.replaceChildren();
-      box.appendChild(el('span', 'fb-label', '哪里有问题？'));
-      let current = refused ? 'should_answer' : 'wrong_answer';
-      FB_REASONS.forEach(([key, label]) => {
-        const b = el('button', 'fb-reason' + (key === current ? ' active' : ''), label);
-        b.addEventListener('click', () => {
-          current = key;
-          Array.prototype.forEach.call(box.querySelectorAll('.fb-reason'),
-            n => n.classList.toggle('active', n === b));
-        });
-        box.appendChild(b);
-      });
-      const note = el('input', 'fb-note');
-      note.placeholder = '补充说明（可选）';
-      note.maxLength = 200;
-      box.appendChild(note);
-      const submit = el('button', 'fb-submit', '提交');
-      submit.addEventListener('click', () => {
-        submitFeedback(box, msg, query, false, current, note.value);
-      });
-      box.appendChild(submit);
-    });
-    box.appendChild(yes);
-    box.appendChild(no);
-    return box;
-  }
-
-  async function submitFeedback(box, msg, query, helpful, reason, note) {
-    const data = msg.data || {};
-    box.replaceChildren(el('span', 'fb-done', '正在提交…'));
-    try {
-      const res = await api('/feedback', {
-        method: 'POST',
-        body: {
-          query: query,
-          helpful: !!helpful,
-          reason: helpful ? '' : (reason || 'other'),
-          note: note || '',
-          answer: String(data.answer || '').slice(0, 2000),
-          citations: (data.citations || []).map(c => c.chunk_id).filter(Boolean),
-          cached: !!data.cached
-        }
-      });
-      if (!res || !res.ok) throw new Error('服务端未保存');
-      msg.feedback = { helpful: !!helpful, reason: helpful ? '' : (reason || 'other') };
-      saveConvs();
-      box.replaceChildren(el('span', 'fb-done', helpful
-        ? '已记录：有帮助'
-        : '已记录：没帮助 · ' + fbReasonLabel(reason)));
-    } catch (e) {
-      toast('反馈提交失败：' + e.message, 'err');
-      const fresh = feedbackBlock(msg, query);
-      if (fresh) box.replaceWith(fresh);
-    }
   }
 
   function loadingBubble() {
@@ -1558,15 +1522,9 @@
       box.appendChild(emptyState());
       return;
     }
-    // 反馈要带上这轮的问题：老对话没有 msg.query 时取最近一条用户消息
-    let lastUser = '';
     conv.messages.forEach(m => {
-      if (m.role === 'user') {
-        lastUser = m.content || '';
-        box.appendChild(userMessage(m));
-      } else {
-        box.appendChild(renderBotMessage(m, m.query || lastUser));
-      }
+      if (m.role === 'user') box.appendChild(userMessage(m));
+      else box.appendChild(renderBotMessage(m));
     });
     if (state.sending) box.appendChild(loadingBubble());
     requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
@@ -1641,6 +1599,618 @@
     const t = $('#composer');
     t.style.height = 'auto';
     t.style.height = Math.min(t.scrollHeight, 150) + 'px';
+  }
+
+  /* ---------- today ---------- */
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function dayKey(ts) {
+    const d = ts instanceof Date ? ts : new Date(ts);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+
+  function startOfDay(ts) {
+    const d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function clip(text, n) {
+    const s = String(text || '').replace(/\s+/g, ' ').trim();
+    return s.length > n ? s.slice(0, n) + '…' : s;
+  }
+
+  // 初试通常在 12 月倒数第二个周六；用户可以在本机改成官方日期。
+  function secondLastSaturday(year) {
+    const sats = [];
+    for (let day = 1; day <= 31; day += 1) {
+      const d = new Date(year, 11, day);
+      if (d.getMonth() !== 11) break;
+      if (d.getDay() === 6) sats.push(d);
+    }
+    return sats.length ? sats[Math.max(0, sats.length - 2)] : new Date(year, 11, 19);
+  }
+
+  function examDate() {
+    const raw = localStorage.getItem(EXAM_DATE_KEY) || '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const saved = new Date(raw + 'T00:00:00');
+      if (!isNaN(saved.getTime())) return saved;
+    }
+    const now = new Date();
+    let d = secondLastSaturday(now.getFullYear());
+    if (startOfDay(d) < startOfDay(now)) d = secondLastSaturday(now.getFullYear() + 1);
+    return d;
+  }
+
+  function daysUntil(date) {
+    return Math.round((startOfDay(date) - startOfDay(Date.now())) / 86400000);
+  }
+
+  function activityDays() {
+    const days = {};
+    state.conversations.forEach(c => (c.messages || []).forEach(m => {
+      if (m.ts) days[dayKey(m.ts)] = true;
+    }));
+    Object.keys(state.practice.history || {}).forEach(id => {
+      const r = state.practice.history[id];
+      if (r && r.last_at) days[dayKey(r.last_at)] = true;
+    });
+    return days;
+  }
+
+  function lastActivityDay(days) {
+    const keys = Object.keys(days).sort();
+    if (!keys.length) return null;
+    const parts = keys[keys.length - 1].split('-').map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function streakInfo() {
+    const days = activityDays();
+    const today = startOfDay(Date.now());
+    const activeToday = !!days[dayKey(today)];
+    const cur = new Date(today);
+    if (!activeToday) {
+      cur.setDate(cur.getDate() - 1);
+      if (!days[dayKey(cur)]) {
+        return {streak: 0, activeToday: false, lastDay: lastActivityDay(days)};
+      }
+    }
+    let n = 0;
+    while (days[dayKey(cur)]) {
+      n += 1;
+      cur.setDate(cur.getDate() - 1);
+    }
+    return {streak: n, activeToday, lastDay: lastActivityDay(days)};
+  }
+
+  function todayActivity() {
+    const key = dayKey(Date.now());
+    let asks = 0;
+    let drills = 0;
+    state.conversations.forEach(c => (c.messages || []).forEach(m => {
+      if (m.role === 'user' && m.ts && dayKey(m.ts) === key) asks += 1;
+    }));
+    Object.keys(state.practice.history || {}).forEach(id => {
+      const r = state.practice.history[id];
+      if (r && r.last_at && dayKey(r.last_at) === key) drills += 1;
+    });
+    return {asks, drills};
+  }
+
+  function recentActivity(daysBack) {
+    const from = startOfDay(Date.now());
+    from.setDate(from.getDate() - (daysBack - 1));
+    let asks = 0;
+    let drills = 0;
+    state.conversations.forEach(c => (c.messages || []).forEach(m => {
+      if (m.role === 'user' && m.ts && startOfDay(m.ts) >= from) asks += 1;
+    }));
+    Object.keys(state.practice.history || {}).forEach(id => {
+      const r = state.practice.history[id];
+      if (r && r.last_at && startOfDay(r.last_at) >= from) drills += 1;
+    });
+    return {asks, drills};
+  }
+
+  function dateLine(d) {
+    const wd = '日一二三四五六'[d.getDay()];
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 · 周' + wd;
+  }
+
+  function todayGreeting() {
+    const h = new Date().getHours();
+    const sal = h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' :
+      h < 18 ? '下午好' : '晚上好';
+    const act = todayActivity();
+    const st = streakInfo();
+    const hasAny = Object.keys(state.practice.history || {}).length > 0 ||
+      state.conversations.some(c => (c.messages || []).length > 0);
+
+    if (act.asks || act.drills) {
+      const bits = [];
+      if (act.asks) bits.push('问过 ' + act.asks + ' 次');
+      if (act.drills) bits.push('练过 ' + act.drills + ' 题');
+      return {
+        title: sal + '，今天已经' + bits.join('、') + '了。',
+        sub: '想再来一道就做，不想做也没关系。'
+      };
+    }
+    if (!hasAny) {
+      return {
+        title: sal + '，先做一件小事。',
+        sub: '问一句或做一道题都算开始；这里不催你打卡。'
+      };
+    }
+    if (!st.activeToday && st.streak) {
+      return {
+        title: sal + '，已经连续 ' + st.streak + ' 天。',
+        sub: '今天做一道就续上，不用多。'
+      };
+    }
+    if (!st.lastDay) {
+      return {
+        title: sal + '，接着上次来。',
+        sub: '不用从头开始，做一道小题找找手感。'
+      };
+    }
+    const gap = Math.max(1, Math.round(
+      (startOfDay(Date.now()) - startOfDay(st.lastDay)) / 86400000));
+    if (gap <= 1) {
+      return {
+        title: sal + '，昨天来过，今天接着来。',
+        sub: '不用补作业，从一道小题找手感。'
+      };
+    }
+    if (gap <= 6) {
+      return {
+        title: sal + '，' + gap + ' 天没见。',
+        sub: '不用补作业，今天做一道就够。'
+      };
+    }
+    return {
+      title: sal + '，好久不见。',
+      sub: '从一道小题找找手感，不着急。'
+    };
+  }
+
+  function latestConversation() {
+    return state.conversations
+      .filter(c => (c.messages || []).length)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
+  }
+
+  function latestPractice() {
+    return practiceHistoryRows()
+      .sort((a, b) => (b.last_at || 0) - (a.last_at || 0))[0] || null;
+  }
+
+  // 「今天这一题」只要 2 分钟能做完的单选题：综合题留到练习页。
+  async function smallQuestionDetail(id) {
+    if (!id) return null;
+    try {
+      const d = await api('/chunks/' + encodeURIComponent(id));
+      return (d && d.type === 'single' && d.has_options) ? d : null;
+    } catch (e) {
+      if (e.status === 401) throw e;
+      return null;
+    }
+  }
+
+  // 今日一题优先错题，其次接着最近一次提问里的引用，最后随机。
+  async function pickTodayQuestion() {
+    const todayKey = dayKey(Date.now());
+    const wrongs = wrongRecords();
+    const fresh = wrongs.filter(r => dayKey(r.last_at) !== todayKey)
+      .concat(wrongs.filter(r => dayKey(r.last_at) === todayKey));
+    for (let i = 0; i < Math.min(fresh.length, 5); i += 1) {
+      const d = await smallQuestionDetail(fresh[i].id);
+      if (d) return {item: d, source: 'wrong'};
+    }
+
+    const conv = latestConversation();
+    if (conv) {
+      const ids = [];
+      for (let i = conv.messages.length - 1; i >= 0 && ids.length < 5; i -= 1) {
+        const cites = (conv.messages[i].data &&
+          conv.messages[i].data.citations) || [];
+        cites.forEach(c => {
+          if (c.chunk_id && /-408-/.test(c.chunk_id) && ids.indexOf(c.chunk_id) < 0) {
+            ids.push(c.chunk_id);
+          }
+        });
+      }
+      for (let i = 0; i < ids.length; i += 1) {
+        const d = await smallQuestionDetail(ids[i]);
+        if (d) return {item: d, source: 'citation', title: conv.title || '上次的问题'};
+      }
+    }
+    return {item: null, source: 'random'};
+  }
+
+  async function randomQuestion(excludeId) {
+    const total = state.meta && state.meta.chunks;
+    if (!total) return null;
+    for (let i = 0; i < 4; i += 1) {
+      const offset = Math.floor(Math.random() * Math.max(1, total - 20));
+      const data = await api('/chunks?limit=20&offset=' + offset);
+      const items = (data.items || []).filter(x =>
+        x.id !== excludeId && x.has_options && x.type === 'single');
+      if (items.length) {
+        const pick = items[Math.floor(Math.random() * items.length)];
+        return api('/chunks/' + encodeURIComponent(pick.id));
+      }
+    }
+    return null;
+  }
+
+  function loadTodaySaved() {
+    try {
+      const v = JSON.parse(localStorage.getItem(TODAY_KEY) || 'null');
+      if (v && v.date === dayKey(Date.now()) && v.id) return v;
+    } catch (e) {}
+    return null;
+  }
+
+  function saveTodayState() {
+    const t = state.today;
+    if (!t.item || !t.item.id) return;
+    try {
+      localStorage.setItem(TODAY_KEY, JSON.stringify({
+        date: dayKey(Date.now()),
+        id: t.item.id,
+        source: t.source || '',
+        title: t.sourceTitle || '',
+        revealed: !!t.revealed,
+        done: t.assessed || ''
+      }));
+    } catch (e) {}
+  }
+
+  async function openTodayQuestion(id, source) {
+    const t = state.today;
+    const seq = (t.seq || 0) + 1;
+    t.seq = seq;
+    t.loading = true;
+    t.error = '';
+    renderTodayQuestion();
+    try {
+      const detail = await api('/chunks/' + encodeURIComponent(id));
+      if (seq !== t.seq) return;
+      t.item = detail;
+      t.source = source || 'resume';
+      t.sourceTitle = '';
+      t.revealed = false;
+      t.assessed = null;
+      saveTodayState();
+    } catch (e) {
+      if (seq !== t.seq) return;
+      t.item = null;
+      t.error = e.status === 401
+        ? '口令无效，请重新输入。'
+        : '题目加载失败：' + e.message;
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+    } finally {
+      if (seq === t.seq) {
+        t.loading = false;
+        renderTodayQuestion();
+      }
+    }
+    const section = $('#page-today .today-section');
+    if (section && section.scrollIntoView) {
+      section.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+  }
+
+  async function loadToday(excludeId) {
+    const t = state.today;
+    const seq = (t.seq || 0) + 1;
+    t.seq = seq;
+    t.loading = true;
+    t.error = '';
+    renderTodayQuestion();
+    try {
+      // 今天这道题一旦定下，刷新后还是它，不重新抽。
+      const saved = excludeId ? null : loadTodaySaved();
+      if (saved) {
+        const d = await smallQuestionDetail(saved.id);
+        if (seq !== t.seq) return;
+        if (d) {
+          t.item = d;
+          t.source = saved.source || 'random';
+          t.sourceTitle = saved.title || '';
+          t.revealed = !!saved.revealed;
+          t.assessed = saved.done || null;
+          return;
+        }
+      }
+
+      const pick = await pickTodayQuestion();
+      if (seq !== t.seq) return;
+      let detail = pick.item;
+      let source = pick.source;
+      let title = pick.title || '';
+      if (!detail || detail.id === excludeId) {
+        detail = await randomQuestion(excludeId);
+        source = 'random';
+        title = '';
+      }
+      if (seq !== t.seq) return;
+      if (!detail) {
+        t.item = null;
+        t.source = '';
+        return;
+      }
+      t.item = detail;
+      t.source = source;
+      t.sourceTitle = title;
+      t.revealed = false;
+      t.assessed = null;
+      saveTodayState();
+    } catch (e) {
+      if (seq !== t.seq) return;
+      t.item = null;
+      t.error = e.status === 401
+        ? '口令无效，请重新输入。'
+        : '题目加载失败：' + e.message;
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+    } finally {
+      if (seq === t.seq) {
+        t.loading = false;
+        renderTodayQuestion();
+      }
+    }
+  }
+
+  function todaySourceText(t) {
+    if (t.source === 'wrong') return '从错题本里挑的';
+    if (t.source === 'citation') {
+      return t.sourceTitle ? '接着上次的「' + clip(t.sourceTitle, 14) + '」' : '接着上次的问题';
+    }
+    if (t.source === 'resume') return '你上次练的那道';
+    return '题库随机一道';
+  }
+
+  function renderTodayQuestion() {
+    const box = $('#today-question');
+    if (!box) return;
+    const t = state.today;
+    const src = $('#today-question-src');
+    if (src) src.textContent = t.loading ? '' : todaySourceText(t);
+
+    if (t.loading) {
+      box.replaceChildren(el('div', 'today-question-loading', '正在挑一道题…'));
+      return;
+    }
+    if (t.error) {
+      const wrap = el('div', 'today-question-loading');
+      wrap.appendChild(el('div', null, t.error));
+      const retry = el('button', 'ghost', '重试');
+      retry.style.marginTop = '10px';
+      retry.addEventListener('click', () => loadToday());
+      wrap.appendChild(document.createElement('br'));
+      wrap.appendChild(retry);
+      box.replaceChildren(wrap);
+      return;
+    }
+    if (!t.item) {
+      box.replaceChildren(el('div', 'today-question-loading', state.meta
+        ? '题库里还没有可练的单选题。先到「问答」问一句，或到「题库」看看。'
+        : '正在读取题库…'));
+      return;
+    }
+
+    const d = t.item;
+    const card = el('div', 'practice-card');
+    const meta = el('div', 'q-meta');
+    meta.appendChild(el('span', 'q-id', d.id));
+    meta.appendChild(el('span', 'q-tag', d.subject_label || subjectLabel(d.subject)));
+    meta.appendChild(el('span', 'q-tag', typeLabel(d.type)));
+    card.appendChild(meta);
+    card.appendChild(el('h2', null, d.stem));
+
+    const opts = d.options || {};
+    const keys = Object.keys(opts).sort();
+    if (keys.length) {
+      keys.forEach(k => {
+        const row = el('div', 'opt');
+        if (t.revealed && String(d.answer || '').trim().toUpperCase() === k.toUpperCase()) {
+          row.classList.add('correct');
+        }
+        row.appendChild(el('span', 'opt-letter', k + '.'));
+        row.appendChild(el('span', null, opts[k]));
+        card.appendChild(row);
+      });
+    } else {
+      card.appendChild(el('div', 'practice-note', '综合题：先在心里过一遍思路，再看答案。'));
+    }
+
+    const actions = el('div', 'btn-row');
+    if (!t.revealed) {
+      const reveal = el('button', 'primary', '先想想，看答案');
+      reveal.addEventListener('click', () => {
+        t.revealed = true;
+        saveTodayState();
+        renderTodayQuestion();
+      });
+      actions.appendChild(reveal);
+      card.appendChild(actions);
+      card.appendChild(el('div', 'practice-note', '2 分钟就够，不用写下来。'));
+    } else {
+      const answerBox = el('div', 'answer-box');
+      answerBox.appendChild(el('div', 'section-title', '参考答案'));
+      answerBox.appendChild(el('div', 'detail-answer', d.answer || '见解析'));
+      if (d.analysis) {
+        answerBox.appendChild(el('div', 'section-title', '解析'));
+        answerBox.appendChild(el('div', 'analysis', d.analysis));
+      }
+      if (d.analysis_origin === 'ai') {
+        answerBox.appendChild(el('div', 'practice-note', '解析由 AI 生成，待人工校对。'));
+      }
+      card.appendChild(answerBox);
+
+      if (d.needs_figure) {
+        card.appendChild(el('div', 'warn-box',
+          '本题涉及图形，题库暂未收录图片，具体数值请对照原卷。'));
+      }
+
+      if (!t.assessed) {
+        const ok = el('button', 'primary ok-btn', '这题我会了');
+        ok.addEventListener('click', () => assessToday('known'));
+        const no = el('button', 'primary no-btn', '还不太会');
+        no.addEventListener('click', () => assessToday('unknown'));
+        actions.appendChild(ok);
+        actions.appendChild(no);
+      } else {
+        actions.appendChild(el('span', 'practice-note', t.assessed === 'known'
+          ? '已记下：会了。'
+          : '已记下：还不太会，之后还会再见到它。'));
+        const next = el('button', 'primary', '换一题');
+        next.addEventListener('click', () => loadToday(d.id));
+        actions.appendChild(next);
+      }
+      const full = el('button', 'ghost', '看完整原题');
+      full.addEventListener('click', () => openQuestion(d.id));
+      actions.appendChild(full);
+      card.appendChild(actions);
+    }
+
+    box.replaceChildren(card);
+  }
+
+  function assessToday(kind) {
+    const t = state.today;
+    if (!t.item || t.assessed) return;
+    t.assessed = kind;
+    bumpStats(kind);
+    recordAssessment(t.item, kind);
+    saveTodayState();
+    renderToday();
+  }
+
+  function renderTodayResume() {
+    const box = $('#today-resume');
+    if (!box) return;
+    box.replaceChildren();
+    const conv = latestConversation();
+    const practice = latestPractice();
+
+    if (!conv && !practice) {
+      box.appendChild(el('div', 'today-empty',
+        '还没有记录。先问第一个问题，或者去练习页做一道题；从哪开始都行。'));
+      const actions = el('div', 'btn-row');
+      const ask = el('button', 'primary', '去问一句');
+      ask.addEventListener('click', () => {
+        go('chat');
+        setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 80);
+      });
+      const drill = el('button', 'ghost', '去练习');
+      drill.addEventListener('click', () => go('practice'));
+      actions.appendChild(ask);
+      actions.appendChild(drill);
+      box.appendChild(actions);
+      return;
+    }
+
+    if (conv) {
+      const row = el('div', 'today-row');
+      const main = el('div', 'today-row-main');
+      const title = clip(conv.title || '上次的对话', 30);
+      main.appendChild(el('div', 'today-row-title', '上次聊到「' + title + '」'));
+      const lastBot = conv.messages.slice().reverse().find(m => m.role === 'assistant');
+      const preview = lastBot && lastBot.data
+        ? clip(lastBot.data.answer || '', 46)
+        : '';
+      main.appendChild(el('div', 'today-row-meta',
+        '对话 · ' + formatWhen(conv.updatedAt) + (preview ? ' · ' + preview : '')));
+      row.appendChild(main);
+      const btn = el('button', 'ghost', '继续聊');
+      btn.addEventListener('click', () => {
+        state.activeId = conv.id;
+        localStorage.setItem(ACTIVE_KEY, conv.id);
+        renderConvList();
+        go('chat');
+      });
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+
+    if (practice) {
+      const row = el('div', 'today-row');
+      const main = el('div', 'today-row-main');
+      main.appendChild(el('div', 'today-row-title',
+        '上次练到「' + clip(practice.stem, 34) + '」'));
+      main.appendChild(el('div', 'today-row-meta',
+        '练习 · ' + formatWhen(practice.last_at) +
+        (practice.result === 'unknown' ? ' · 当时还不会' : ' · 当时会了')));
+      row.appendChild(main);
+      const btn = el('button', 'ghost', '再做一次');
+      btn.addEventListener('click', () => openTodayQuestion(practice.id, 'resume'));
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  }
+
+  function renderToday() {
+    if (!$('#today-date')) return;
+    $('#today-date').textContent = dateLine(new Date());
+    const g = todayGreeting();
+    $('#today-greeting').textContent = g.title;
+    $('#today-sub').textContent = g.sub;
+
+    const ed = examDate();
+    const n = daysUntil(ed);
+    let countdown;
+    if (n > 0) countdown = '距 ' + (ed.getFullYear() + 1) + ' 初试 ' + n + ' 天';
+    else if (n === 0) countdown = '今天就是初试';
+    else countdown = (ed.getFullYear() + 1) + ' 初试已结束';
+    $('#today-countdown').textContent = countdown;
+
+    const st = streakInfo();
+    $('#today-streak').textContent = st.streak
+      ? '连续 ' + st.streak + ' 天'
+      : '今天开个头';
+    const wk = recentActivity(7);
+    $('#today-week').textContent = '近 7 天：问 ' + wk.asks + ' · 练 ' + wk.drills;
+
+    renderTodayResume();
+    renderTodayQuestion();
+  }
+
+  function editExamDate() {
+    const wrap = el('div');
+    const row = el('div', 'settings-row');
+    row.appendChild(el('label', null, '初试日期'));
+    const input = el('input');
+    input.type = 'date';
+    const cur = examDate();
+    input.value = cur.getFullYear() + '-' + pad2(cur.getMonth() + 1) + '-' + pad2(cur.getDate());
+    row.appendChild(input);
+    wrap.appendChild(row);
+    wrap.appendChild(el('div', 'settings-note',
+      '默认按往年规律取 12 月倒数第二个周六；如果你确认了官方日期，可以改在这里。只保存在本机浏览器。'));
+    const actions = el('div', 'btn-row');
+    const save = el('button', 'primary', '保存');
+    const reset = el('button', 'ghost', '恢复估算');
+    actions.appendChild(save);
+    actions.appendChild(reset);
+    wrap.appendChild(actions);
+    save.addEventListener('click', () => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(input.value)) {
+        toast('请选择一个日期', 'err');
+        return;
+      }
+      localStorage.setItem(EXAM_DATE_KEY, input.value);
+      closeModal();
+      renderToday();
+    });
+    reset.addEventListener('click', () => {
+      localStorage.removeItem(EXAM_DATE_KEY);
+      closeModal();
+      renderToday();
+    });
+    openModal('初试日期', wrap);
   }
 
   /* ---------- question bank ---------- */
@@ -2947,7 +3517,7 @@
     const parts = raw.split('/').filter(Boolean).map(p => {
       try { return decodeURIComponent(p); } catch (e) { return p; }
     });
-    const head = parts[0] || 'chat';
+    const head = parts[0] || 'today';
     if (head === 'q') return {page: state.page, qid: parts[1] || ''};
     if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
     return {
@@ -2983,7 +3553,14 @@
     $('#page-title').textContent = meta.title;
     $('#page-sub').textContent = pageSub(page);
     closeSidebar();
-    if (page === 'chat') {
+    if (page === 'today') {
+      renderToday();
+      ensureMeta(true).then(m => {
+        if (!m) return;
+        renderToday();
+        if (!state.today.item) loadToday();
+      });
+    } else if (page === 'chat') {
       renderMessages();
       setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
     } else if (page === 'bank') {
@@ -3076,8 +3653,6 @@
       $('#quality-reasons').replaceChildren();
       $('#quality-days-chart').replaceChildren();
       $('#quality-recent').replaceChildren();
-      $('#quality-feedback').replaceChildren();
-      $('#quality-feedback-sub').textContent = '';
       return;
     }
     const gaps = d.gaps || {};
@@ -3172,42 +3747,6 @@
         recentBox.appendChild(row);
       });
     }
-
-    // 最近差评：只看差评，正反馈体现在有用率上
-    const fb = d.feedback || {};
-    const fbSub = $('#quality-feedback-sub');
-    fbSub.textContent = fb.total
-      ? '有帮助率 ' + Math.round((fb.helpful_rate || 0) * 100) + '% · 共 ' +
-        fb.total + ' 条反馈'
-      : '';
-    const fbBox = $('#quality-feedback');
-    fbBox.replaceChildren();
-    const fbRecent = fb.recent || [];
-    if (!fbRecent.length) {
-      fbBox.appendChild(el('div', 'empty-block',
-        fb.total ? '窗口内没有差评。' : '还没有用户反馈。'));
-    } else {
-      fbRecent.forEach(r => {
-        const row = el('div', 'gap-row');
-        row.title = [r.query, r.note].filter(Boolean).join('\n');
-        const ts = String(r.ts || '').replace('T', ' ').replace('+00:00', '').slice(0, 16);
-        row.appendChild(el('span', null, ts));
-        row.appendChild(el('span', 'gap-tag err', fbReasonLabel(r.reason)));
-        row.appendChild(el('span', 'gap-q', r.query || '（无提问文本）'));
-        const first = (r.citations || [])[0];
-        if (first) {
-          const btn = el('button', 'link-btn', '看引用');
-          btn.addEventListener('click', () => openSource({
-            chunk_id: first,
-            kind: /-408-/.test(first) ? 'question' : 'knowledge'
-          }));
-          row.appendChild(btn);
-        } else {
-          row.appendChild(el('span', 'quality-sub', '无引用'));
-        }
-        fbBox.appendChild(row);
-      });
-    }
   }
 
   function bind() {
@@ -3216,6 +3755,8 @@
     });
     $('#new-chat').addEventListener('click', newChat);
     $('#send').addEventListener('click', send);
+    const examEdit = $('#today-exam-edit');
+    if (examEdit) examEdit.addEventListener('click', editExamDate);
     $('#menu-btn').addEventListener('click', openSidebar);
     $('#scrim').addEventListener('click', closeSidebar);
     $('#settings-btn').addEventListener('click', () => openSettings(''));
