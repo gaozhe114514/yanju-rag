@@ -176,6 +176,22 @@ class SearcherTest(unittest.TestCase):
         hits = s.search("哈希冲突")
         self.assertEqual(hits[0].chunk.id, "2019-408-02")
 
+    def test_external_vector_search(self):
+        """传了 vector_search 就不再建内存向量索引，结果按 id 映射回来。"""
+        chunks = sample_chunks()
+        calls = []
+
+        def fake_search(qv, top_k):
+            calls.append(top_k)
+            return [(chunks[2].id, 0.9), ("not-in-corpus", 0.5)]
+
+        s = HybridSearcher(chunks, embedder=FakeEmbedder(),
+                           vector_search=fake_search)
+        self.assertIsNone(s.vector_index)
+        hits = s.search("快速排序")
+        self.assertTrue(calls)
+        self.assertIn(chunks[2].id, [h.chunk.id for h in hits])
+
     def test_reranker_keeps_top_k(self):
         chunks = sample_chunks()
         s = HybridSearcher(chunks, reranker=LexicalReranker([c.text for c in chunks]),

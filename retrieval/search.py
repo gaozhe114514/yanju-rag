@@ -68,16 +68,23 @@ def match_exact_question(query: str, chunks: Sequence[Chunk]) -> Optional[Chunk]
 class HybridSearcher:
     def __init__(self, chunks: Sequence[Chunk], embedder=None,
                  reranker=None, k_each: int = 50, k_fuse: int = 30,
-                 k_final: int = 5):
+                 k_final: int = 5, vector_search=None):
+        """vector_search：外部向量召回（如 pgvector），签名 (vec, top_k) -> [(id, score)]。
+
+        传入后不再把语料向量放进进程内存，也不在构造时重复算一遍；
+        BM25 仍然在进程内，因为没有中文分词的 Postgres 全文检索帮不上忙。
+        """
         if not chunks:
             raise ValueError("chunks 为空")
         self.chunks = list(chunks)
+        self._index_by_id = {c.id: i for i, c in enumerate(self.chunks)}
         self.k_each, self.k_fuse, self.k_final = k_each, k_fuse, k_final
         self.bm25 = BM25([tokenize(c.text) for c in self.chunks])
         self.embedder = embedder
         self.reranker = reranker
+        self.vector_search = vector_search
         self.vector_index: Optional[VectorIndex] = None
-        if embedder is not None:
+        if embedder is not None and vector_search is None:
             vecs = embedder.embed([c.text for c in self.chunks])
             self.vector_index = VectorIndex(vecs)
 
@@ -92,9 +99,16 @@ class HybridSearcher:
         bmap = dict(bm_hits)
         lists = [bm_hits]
         vmap = {}
-        if self.vector_index is not None and self.embedder is not None:
+        if (self.vector_index is not None or self.vector_search is not None) \
+                and self.embedder is not None:
             qv = self.embedder.embed([query], is_query=True)[0]
-            v_hits = self.vector_index.search(qv, self.k_each)
+            if self.vector_search is not None:
+                # 数据库返回的是 chunk id，转回本进程里的下标，后续统一走 RRF
+                v_hits = [(self._index_by_id[cid], score)
+                          for cid, score in self.vector_search(qv, self.k_each)
+                          if cid in self._index_by_id]
+            else:
+                v_hits = self.vector_index.search(qv, self.k_each)
             vmap = dict(v_hits)
             lists.append(v_hits)
 
@@ -117,17 +131,18 @@ MODES = ("bm25", "hybrid", "hybrid-rerank", "hybrid-ce")
 def build_searcher(chunks: Sequence[Chunk], mode: str = "hybrid",
                    model_name: str = "BAAI/bge-small-zh-v1.5",
                    reranker_model: str = "BAAI/bge-reranker-v2-m3",
-                   k_fuse: int = 30, k_final: int = 5) -> HybridSearcher:
+                   k_fuse: int = 30, k_final: int = 5,
+                   embedder=None, vector_search=None) -> HybridSearcher:
     if mode not in MODES:
         raise ValueError("未知 mode: %s" % mode)
-    embedder = None
-    reranker = None
-    if mode in ("hybrid", "hybrid-rerank", "hybrid-ce"):
+    if mode in ("hybrid", "hybrid-rerank", "hybrid-ce") and embedder is None:
         embedder = BgeEmbedder(model_name=model_name)
+    reranker = None
     if mode == "hybrid-rerank":
         reranker = LexicalReranker([c.text for c in chunks])
     elif mode == "hybrid-ce":
         reranker = CrossEncoderReranker([c.text for c in chunks],
                                         model_name=reranker_model)
     return HybridSearcher(chunks, embedder=embedder, reranker=reranker,
-                          k_fuse=k_fuse, k_final=k_final)
+                          k_fuse=k_fuse, k_final=k_final,
+                          vector_search=vector_search)

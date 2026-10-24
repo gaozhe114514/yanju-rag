@@ -74,5 +74,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
 
+# 先等 Postgres 就绪（compose 的 healthcheck 之外再兜一层），再启动 API。
 # 精排模型占 2GB+，单 worker；并发由进程内锁串行化
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["sh", "-c", "python -m db.wait && exec uvicorn api.app:app --host 0.0.0.0 --port 8000 --workers 1"]

@@ -5,6 +5,7 @@
   py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 环境变量：
+  DATABASE_URL      PostgreSQL 连接串；设置后语料/向量/浏览查询都走数据库
   KB_INPUT          题库 JSONL，逗号分隔，默认 2019/2020/2021/2023/2024 五卷
   KB_MODE           bm25 / hybrid / hybrid-rerank / hybrid-ce，默认 hybrid
   KB_FUSE_K         进入精排的候选数，默认 10
@@ -35,12 +36,16 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
 
-from .catalog import brief, detail, filter_questions, subject_counts
+from db.store import Store
+
+from .catalog import (brief, detail, filter_questions, format_subject_counts,
+                      subject_counts)
 from .gap import log_gap
 from .guard import AccessGuard
-from .knowledge import (filter_knowledge, know_detail, knowledge_chapters,
-                        knowledge_for_question, knowledge_subject_counts,
-                        load_knowledge, related_knowledge_by_question)
+from .knowledge import (filter_knowledge, know_brief, know_detail,
+                        knowledge_chapters, knowledge_for_question,
+                        knowledge_subject_counts, load_knowledge,
+                        related_knowledge_by_question)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -117,7 +122,23 @@ def _load() -> None:
     mode = os.environ.get("KB_MODE", "hybrid")
     # CPU 上精排 10 个候选约 7 秒/次；30 个要约 27 秒，R@1 只差 0 点。
     fuse_k = int(os.environ.get("KB_FUSE_K", "10"))
-    searcher = build_searcher(chunks, mode=mode, k_fuse=fuse_k, k_final=5)
+
+    # 配了 DATABASE_URL 就以 Postgres 为准：语料、向量、浏览查询都走数据库，
+    # 进程内只留 BM25 和精排模型。没有数据库时回退内存索引，便于单测和离线开发。
+    store = Store.from_env()
+    if store is not None:
+        store.init_schema()
+    searcher = build_searcher(
+        chunks, mode=mode, k_fuse=fuse_k, k_final=5,
+        vector_search=store.vector_search if store is not None else None)
+    if store is not None:
+        stats = store.sync(
+            questions, knowledge, chunks,
+            embedder=searcher.embedder,
+            model_name=searcher.embedder.model_name if searcher.embedder else "")
+        print("数据库语料%s：题 %d / 考点 %d" % (
+            "已重建" if stats["reloaded"] else "无需重建",
+            stats["questions"], stats["knowledge"]))
 
     provider_name = os.environ.get("KB_PROVIDER", "")
     if not provider_name:
@@ -159,6 +180,8 @@ def _load() -> None:
         "mode": mode,
         "fuse_k": fuse_k,
         "provider": provider_name,
+        "storage": "postgres" if store is not None else "memory",
+        "store": store,
         "gap_log": str(gap_path),
         "agent": agent,
     })
@@ -295,9 +318,18 @@ def _non_kb_payload(plan, t0: float) -> dict:
 def _log_gap(query: str, res) -> None:
     if not res.refused:
         return
+    top = res.hits[0] if res.hits else None
+    store = _state.get("store")
+    if store is not None:
+        try:
+            store.log_gap(query, res.reason,
+                          top.chunk.id if top else None,
+                          float(top.score) if top else None)
+        except Exception:  # 日志写失败不能影响答题
+            pass
+        return
     try:
-        log_gap(_state["gap_log"], query, res.reason,
-                res.hits[0] if res.hits else None)
+        log_gap(_state["gap_log"], query, res.reason, top)
     except OSError:
         pass  # 日志写失败不能影响答题
 
@@ -312,6 +344,7 @@ def health() -> dict:
         "mode": _state.get("mode"),
         "fuse_k": _state.get("fuse_k"),
         "provider": _state.get("provider"),
+        "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
     }
 
@@ -359,16 +392,24 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 @app.get("/meta")
 def meta(_: None = Depends(enforce_content)) -> dict:
     questions = _state.get("questions", [])
-    years = sorted({int(q.get("year")) for q in questions if q.get("year")})
     knowledge = _state.get("knowledge", [])
+    store = _state.get("store")
+    if store is not None:
+        counts = store.question_subject_counts()
+        subjects = format_subject_counts(counts)
+        years = store.years()
+    else:
+        subjects = subject_counts(questions)
+        years = sorted({int(q.get("year")) for q in questions if q.get("year")})
     return {
         "chunks": len(questions),
-        "subjects": subject_counts(questions),
+        "subjects": subjects,
         "knowledge": len(knowledge),
         "knowledge_subjects": knowledge_subject_counts(knowledge),
         "years": years,
         "mode": _state.get("mode"),
         "provider": _state.get("provider"),
+        "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
     }
 
@@ -379,7 +420,8 @@ def knowledge_list(q: str = "", subject: str = "", chapter: str = "",
                    _: None = Depends(enforce_content)) -> dict:
     limit = max(1, min(int(limit), 200))
     offset = max(0, int(offset))
-    cards = _state.get("knowledge", [])
+    store = _state.get("store")
+    cards = store.all_knowledge() if store is not None else _state.get("knowledge", [])
     total, rows = filter_knowledge(cards, q, subject, chapter, limit, offset)
     return {
         "total": total,
@@ -393,7 +435,9 @@ def knowledge_list(q: str = "", subject: str = "", chapter: str = "",
 
 @app.get("/knowledge/{card_id}")
 def knowledge_detail(card_id: str, _: None = Depends(enforce_content)) -> dict:
-    card = _state.get("knowledge_by_id", {}).get(card_id)
+    store = _state.get("store")
+    card = (store.get_knowledge(card_id) if store is not None
+            else _state.get("knowledge_by_id", {}).get(card_id))
     if card is None:
         raise HTTPException(status_code=404, detail="考点不存在")
     return know_detail(card, _state.get("questions_by_id", {}))
@@ -405,8 +449,12 @@ def chunks(q: str = "", subject: str = "", year: Optional[int] = None,
            _: None = Depends(enforce_content)) -> dict:
     limit = max(1, min(int(limit), 100))
     offset = max(0, int(offset))
-    total, rows = filter_questions(_state.get("questions", []), q, subject,
-                                   year, limit, offset)
+    store = _state.get("store")
+    if store is not None:
+        total, rows = store.query_questions(q, subject, year, limit, offset)
+    else:
+        total, rows = filter_questions(_state.get("questions", []), q, subject,
+                                       year, limit, offset)
     return {
         "total": total,
         "limit": limit,
@@ -417,11 +465,18 @@ def chunks(q: str = "", subject: str = "", year: Optional[int] = None,
 
 @app.get("/chunks/{chunk_id}")
 def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
-    row = _state.get("questions_by_id", {}).get(chunk_id)
+    store = _state.get("store")
+    row = (store.get_question(chunk_id) if store is not None
+           else _state.get("questions_by_id", {}).get(chunk_id))
     if row is None:
         raise HTTPException(status_code=404, detail="题目不存在")
     item = detail(row)
-    item["related_knowledge"] = _state.get("knowledge_by_question", {}).get(chunk_id, [])
+    if store is not None:
+        item["related_knowledge"] = [know_brief(c)
+                                     for c in store.related_knowledge(chunk_id)]
+    else:
+        item["related_knowledge"] = _state.get(
+            "knowledge_by_question", {}).get(chunk_id, [])
     return item
 
 

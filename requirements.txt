@@ -12,6 +12,5 @@ uvicorn[standard]>=0.30
 #   精排：BAAI/bge-reranker-v2-m3     约 2.3GB
 #   生产：BAAI/bge-m3                 约 2.2GB（替代 bge-small）
 
-# 尚未接入（先留位）：
-# psycopg[binary]>=3.2
-# pgvector>=0.3
+# 存储层：Postgres + pgvector（pgvector 扩展在数据库镜像里，Python 侧只要驱动）
+psycopg[binary]>=3.2

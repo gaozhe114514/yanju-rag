@@ -61,7 +61,7 @@ def load_knowledge(path: str, display_path: str = "") -> List[Dict]:
     return list(cards.values())
 
 
-def _haystack(card: Dict) -> str:
+def haystack(card: Dict) -> str:
     parts = [
         str(card.get("id") or ""),
         str(card.get("title") or ""),
@@ -131,7 +131,7 @@ def filter_knowledge(cards: Sequence[Dict], query: str = "", subject: str = "",
             continue
         if chap and (card.get("chapter") or "") != chap:
             continue
-        if q and q not in _haystack(card):
+        if q and q not in haystack(card):
             continue
         matched.append(card)
     matched.sort(key=lambda c: (_subject_rank(c.get("subject") or ""),

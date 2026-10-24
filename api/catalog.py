@@ -16,7 +16,7 @@ def subject_label(key: str) -> str:
     return SUBJECT_LABELS.get(key or "", key or "未分类")
 
 
-def _haystack(q: Dict) -> str:
+def haystack(q: Dict) -> str:
     opts = q.get("options") or {}
     parts = [
         str(q.get("id") or ""),
@@ -75,18 +75,15 @@ def filter_questions(rows: Sequence[Dict], query: str = "", subject: str = "",
             continue
         if year is not None and str(row.get("year") or "") != str(year):
             continue
-        if q and q not in _haystack(row):
+        if q and q not in haystack(row):
             continue
         matched.append(row)
     total = len(matched)
     return total, matched[offset:offset + limit]
 
 
-def subject_counts(rows: Iterable[Dict]) -> List[Dict]:
-    counts: Dict[str, int] = {}
-    for row in rows:
-        key = row.get("subject") or ""
-        counts[key] = counts.get(key, 0) + 1
+def format_subject_counts(counts: Dict[str, int]) -> List[Dict]:
+    """把 {科目: 数量} 排成前端要的顺序；数据库和内存两条路都走这里。"""
     out = []
     for key in SUBJECT_ORDER:
         if counts.get(key):
@@ -95,3 +92,11 @@ def subject_counts(rows: Iterable[Dict]) -> List[Dict]:
         if key not in SUBJECT_ORDER:
             out.append({"key": key, "label": subject_label(key), "count": n})
     return out
+
+
+def subject_counts(rows: Iterable[Dict]) -> List[Dict]:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        key = row.get("subject") or ""
+        counts[key] = counts.get(key, 0) + 1
+    return format_subject_counts(counts)
