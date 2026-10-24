@@ -447,6 +447,93 @@
       color: var(--muted); font-size: 13px; text-align: center; background: var(--card);
     }
 
+    /* ---------- quality ---------- */
+    .quality-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .quality-hint { color: var(--muted); font-size: 12.5px; }
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px; margin-bottom: 10px;
+    }
+    .kpi {
+      padding: 14px; border: 1px solid var(--line); border-radius: 12px;
+      background: var(--card);
+    }
+    .kpi-num {
+      color: #0f172a; font-size: 22px; font-weight: 700; line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-num small { color: var(--muted); font-size: 12px; font-weight: 600; margin-left: 2px; }
+    .kpi-label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .quality-grid {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px; margin-bottom: 10px;
+    }
+    .quality-card {
+      padding: 14px; border: 1px solid var(--line); border-radius: 12px;
+      background: var(--card);
+    }
+    .quality-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 8px; margin-bottom: 10px;
+    }
+    .quality-title { color: #334155; font-size: 13px; font-weight: 700; }
+    .quality-sub { color: var(--muted); font-size: 11.5px; }
+    .bar-list { display: flex; flex-direction: column; gap: 8px; }
+    .bar-row2 {
+      display: grid; grid-template-columns: 120px minmax(0, 1fr) 48px;
+      align-items: center; gap: 8px; color: #475569; font-size: 12px;
+    }
+    .bar-track { height: 8px; border-radius: 999px; background: #eef2f8; overflow: hidden; }
+    .bar-fill {
+      display: block; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #7fb0ff, #2f6bff);
+    }
+    .bar-num { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .day-bars {
+      display: flex; align-items: flex-end; gap: 3px; height: 112px; padding-top: 4px;
+    }
+    .day-bar {
+      position: relative; flex: 1 1 0; min-width: 2px; height: 100%;
+      display: flex; align-items: flex-end;
+    }
+    .day-bar::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+      border-radius: 2px; background: #e6ecf6;
+    }
+    .day-bar > i {
+      position: relative; z-index: 1; width: 100%;
+      border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #9cc4ff, #2f6bff);
+    }
+    .recent-gaps {
+      display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto;
+    }
+    .gap-row {
+      display: grid; grid-template-columns: 132px 96px minmax(0, 1fr) 76px;
+      align-items: center; gap: 8px; padding: 7px 9px;
+      border-radius: 9px; background: #f8fafc; color: #475569; font-size: 12px;
+    }
+    .gap-row .gap-q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gap-row > span:first-child { white-space: nowrap; }
+    .gap-tag {
+      display: inline-block; padding: 1px 7px; border-radius: 999px;
+      background: #e8efff; color: #2f6bff; font-size: 11px;
+    }
+    .gap-row button { justify-self: end; }
+    .empty-block { color: var(--muted); font-size: 12.5px; padding: 14px 2px; }
+    @media (max-width: 860px) {
+      .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .quality-grid { grid-template-columns: minmax(0, 1fr); }
+      .gap-row {
+        grid-template-columns: 102px 84px minmax(0, 1fr) auto;
+        gap: 6px; padding: 7px 8px; font-size: 11.5px;
+      }
+      .gap-row .link-btn { padding: 0; font-size: 11.5px; }
+      .gap-tag { padding: 1px 5px; font-size: 10.5px; white-space: nowrap; }
+    }
+
     /* ---------- knowledge ---------- */
     .knowledge-layout {
       display: grid; grid-template-columns: 190px minmax(0, 1fr);
@@ -643,6 +730,7 @@
       <button data-page="bank"><span class="nav-ico">▤</span>题库</button>
       <button data-page="knowledge"><span class="nav-ico">▦</span>知识库</button>
       <button data-page="practice"><span class="nav-ico">✎</span>练习</button>
+      <button data-page="quality"><span class="nav-ico">◎</span>质量</button>
     </nav>
     <div class="side-section">
       <div class="side-title">最近对话</div>
@@ -765,6 +853,47 @@
         </div>
       </div>
     </section>
+
+    <section class="page" id="page-quality">
+      <div class="page-inner">
+        <div class="quality-bar">
+          <div class="quality-hint" id="quality-hint">正在读取运行数据…</div>
+          <div class="selects">
+            <select class="select" id="quality-days" aria-label="统计窗口">
+              <option value="7">近 7 天</option>
+              <option value="30" selected>近 30 天</option>
+              <option value="90">近 90 天</option>
+            </select>
+            <button class="ghost" id="quality-refresh">刷新</button>
+          </div>
+        </div>
+        <div class="kpi-grid" id="quality-kpi"></div>
+        <div class="quality-grid">
+          <div class="quality-card">
+            <div class="quality-head">
+              <span class="quality-title">拒答原因</span>
+              <span class="quality-sub" id="quality-reason-total"></span>
+            </div>
+            <div class="bar-list" id="quality-reasons"></div>
+          </div>
+          <div class="quality-card">
+            <div class="quality-head">
+              <span class="quality-title">每日拒答</span>
+              <span class="quality-sub">窗口内</span>
+            </div>
+            <div class="day-bars" id="quality-days-chart"></div>
+            <div class="quality-sub" id="quality-days-note"></div>
+          </div>
+        </div>
+        <div class="quality-card">
+          <div class="quality-head">
+            <span class="quality-title">最近拒答</span>
+            <span class="quality-sub" id="quality-recent-count"></span>
+          </div>
+          <div class="recent-gaps" id="quality-recent"></div>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -804,7 +933,8 @@
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
     bank: {title: '题库', sub: '按年份和科目浏览真题'},
     knowledge: {title: '考点知识库', sub: '四科考点卡片 · 与真题双向关联'},
-    practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'}
+    practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
+    quality: {title: '质量看板', sub: '拒答、缓存与语料的运行状况'}
   };
 
   function loadJSON(key, fallback) {
@@ -839,6 +969,7 @@
                 loading: false, subjects: [], chapters: [],
                 heat: {open: false, loaded: false, loading: false, items: [],
                        total: 0, totalHeat: 0, linked: 0}},
+    quality: {days: 30, data: null, loading: false, seq: 0},
     practice: {subject: '', year: '', current: null, detail: null, revealed: false,
                assessed: null, list: [], queue: null, topic: '', mode: 'drill',
                history: loadHistory(), map: null, quiz: null, quizSubject: '',
@@ -2747,6 +2878,161 @@
           renderPracticePage();
         }
       });
+    } else if (page === 'quality') {
+      fetchQuality();
+    }
+  }
+
+  /* ---------- quality ---------- */
+  const GAP_REASONS = {
+    no_hits: '资料未命中',
+    low_score: '分数不足',
+    citation_failed: '引用校验失败',
+    provider_error: '模型调用失败',
+    clarify: '指代不明',
+    unknown: '其他'
+  };
+
+  function gapReasonLabel(reason) {
+    const key = String(reason || '').split(':')[0].trim();
+    return GAP_REASONS[key] || key || '未知';
+  }
+
+  async function fetchQuality() {
+    const q = state.quality;
+    q.loading = true;
+    const seq = (q.seq || 0) + 1;
+    q.seq = seq;
+    renderQuality();
+    try {
+      const data = await api('/stats/overview?days=' + encodeURIComponent(q.days));
+      if (seq !== state.quality.seq) return;
+      q.data = data;
+    } catch (e) {
+      if (seq !== state.quality.seq) return;
+      if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+      else toast('质量数据加载失败：' + e.message, 'err');
+    } finally {
+      if (seq === state.quality.seq) {
+        q.loading = false;
+        renderQuality();
+      }
+    }
+  }
+
+  function kpiCard(value, unit, label) {
+    const card = el('div', 'kpi');
+    const num = el('div', 'kpi-num', value);
+    if (unit) num.appendChild(el('small', null, unit));
+    card.appendChild(num);
+    card.appendChild(el('div', 'kpi-label', label));
+    return card;
+  }
+
+  function renderQuality() {
+    const q = state.quality;
+    const kpi = $('#quality-kpi');
+    if (!kpi) return;
+    const d = q.data;
+    kpi.replaceChildren();
+    if (!d) {
+      $('#quality-hint').textContent = q.loading ? '正在读取运行数据…' : '暂无数据。';
+      $('#quality-reasons').replaceChildren();
+      $('#quality-days-chart').replaceChildren();
+      $('#quality-recent').replaceChildren();
+      return;
+    }
+    const gaps = d.gaps || {};
+    const corpus = d.corpus || {};
+    kpi.appendChild(kpiCard(String(gaps.total || 0), ' 次', '近 ' + (d.window_days || q.days) + ' 天拒答'));
+    kpi.appendChild(kpiCard(Math.round((d.cache_hit_rate || 0) * 100) + '%', '', '缓存命中率（本进程）'));
+    kpi.appendChild(kpiCard(String(d.asks || 0), ' 次', '本进程问答量'));
+    kpi.appendChild(kpiCard(String(corpus.questions || 0), ' 题', '语料 · ' + (corpus.knowledge || 0) + ' 个考点'));
+
+    $('#quality-hint').textContent = '数据来源：' + (d.storage === 'postgres' ? 'PostgreSQL' : '本地 JSONL') +
+      ' · 进程计数自上次启动起算';
+
+    // 拒答原因
+    const reasons = (gaps.by_reason || []).slice();
+    const reasonBox = $('#quality-reasons');
+    reasonBox.replaceChildren();
+    const maxReason = reasons.reduce((m, r) => Math.max(m, r.count || 0), 1);
+    $('#quality-reason-total').textContent = reasons.length ? '共 ' + reasons.length + ' 类' : '';
+    if (!reasons.length) {
+      reasonBox.appendChild(el('div', 'empty-block', '窗口内没有拒答记录。'));
+    } else {
+      reasons.forEach(r => {
+        const row = el('div', 'bar-row2');
+        row.appendChild(el('span', null, gapReasonLabel(r.reason)));
+        const track = el('span', 'bar-track');
+        const fill = el('span', 'bar-fill');
+        fill.style.width = Math.max(4, Math.round((r.count || 0) * 100 / maxReason)) + '%';
+        track.appendChild(fill);
+        row.appendChild(track);
+        row.appendChild(el('span', 'bar-num', String(r.count || 0)));
+        reasonBox.appendChild(row);
+      });
+    }
+
+    // 每日拒答：把窗口内没有拒答的日子也补成 0，读起来才像时间序列
+    const byDay = (gaps.by_day || []).slice();
+    const daysBox = $('#quality-days-chart');
+    daysBox.replaceChildren();
+    const counts = {};
+    byDay.forEach(r => { counts[r.date] = r.count || 0; });
+    const span = Math.max(1, Math.min(d.window_days || q.days || 30, 90));
+    const endAt = byDay.length
+      ? new Date(byDay[byDay.length - 1].date + 'T00:00:00Z')
+      : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+    const series = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const day = new Date(endAt.getTime());
+      day.setUTCDate(day.getUTCDate() - i);
+      const key = day.toISOString().slice(0, 10);
+      series.push({date: key, count: counts[key] || 0});
+    }
+    const maxDay = series.reduce((m, r) => Math.max(m, r.count), 1);
+    series.forEach(r => {
+      const bar = el('div', 'day-bar');
+      bar.title = r.date + '：' + r.count + ' 次';
+      const fill = el('i');
+      fill.style.height = r.count ? Math.max(6, Math.round(r.count * 100 / maxDay)) + '%' : '0';
+      bar.appendChild(fill);
+      daysBox.appendChild(bar);
+    });
+    const chartNote = $('#quality-days-note');
+    if (chartNote) {
+      chartNote.textContent = series.length
+        ? series[0].date.slice(5) + ' → ' + series[series.length - 1].date.slice(5) +
+          ' · 峰值 ' + maxDay + ' 次'
+        : '';
+    }
+
+    // 最近拒答
+    const recent = gaps.recent || [];
+    const recentBox = $('#quality-recent');
+    recentBox.replaceChildren();
+    $('#quality-recent-count').textContent = recent.length ? '最近 ' + recent.length + ' 条' : '';
+    if (!recent.length) {
+      recentBox.appendChild(el('div', 'empty-block', '还没有拒答记录。'));
+    } else {
+      recent.forEach(r => {
+        const row = el('div', 'gap-row');
+        row.title = r.query || '';
+        const ts = String(r.ts || '').replace('T', ' ').replace('+00:00', '').slice(0, 16);
+        row.appendChild(el('span', null, ts));
+        row.appendChild(el('span', 'gap-tag', gapReasonLabel(r.reason)));
+        row.appendChild(el('span', 'gap-q', r.query || '（无提问文本）'));
+        const btn = el('button', 'link-btn', '看原题');
+        if (r.top_chunk) {
+          btn.addEventListener('click', () => openQuestion(r.top_chunk));
+          row.appendChild(btn);
+        } else {
+          // 没有命中题目时，这行只剩「资料里没有」，不给一个点了没用的按钮
+          row.appendChild(el('span', 'quality-sub', '无命中题'));
+        }
+        recentBox.appendChild(row);
+      });
     }
   }
 
@@ -2794,6 +3080,13 @@
     });
     $('#kn-more').addEventListener('click', () => fetchKnowledge(false));
     $('#kn-heat-toggle').addEventListener('click', toggleHeat);
+
+    $('#quality-days').addEventListener('change', e => {
+      state.quality.days = parseInt(e.target.value, 10) || 30;
+      state.quality.data = null;
+      fetchQuality();
+    });
+    $('#quality-refresh').addEventListener('click', () => fetchQuality());
 
     window.addEventListener('popstate', applyHash);
     window.addEventListener('hashchange', applyHash);

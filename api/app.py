@@ -45,6 +45,7 @@ from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
 from .gap import gap_stats, log_gap
 from .guard import AccessGuard
+from . import metrics
 from .knowledge import (filter_knowledge, know_brief, know_detail,
                         knowledge_chapters, knowledge_for_question,
                         knowledge_subject_counts, knowledge_tree,
@@ -203,7 +204,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="408 考研知识库", version="0.14", lifespan=lifespan)
+app = FastAPI(title="408 考研知识库", version="0.15", lifespan=lifespan)
 
 
 def _hit_payload(h) -> dict:
@@ -392,14 +393,17 @@ def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
         return {"refused": True, "answer": "", "citations": [],
                 "reason": "server_not_ready", "hits": [], "latency_ms": 0}
     t0 = time.time()
+    metrics.bump("ask_total")
     hit = _cache_lookup(req.query)
     if hit is not None:
+        metrics.bump("cache_hit")
         return cached_payload(hit["payload"], hit["age_s"],
                               int((time.time() - t0) * 1000))
     # 模型推理是 CPU 密集的，单 worker 内串行，避免线程争抢
     with _lock:
         res = pipeline.answer(req.query)
     _log_gap(req.query, res)
+    metrics.bump("ask_refused" if res.refused else "ask_answered")
     payload = with_cache_meta(_answer_payload(res, t0))
     _cache_store(req.query, payload)
     return payload
@@ -422,12 +426,15 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 
     # 改写只调一次轻量模型，放在锁外；真正的检索/生成仍在锁内串行。
     plan = agent.plan(req.query, history)
+    metrics.bump("chat_total")
     if plan.intent in ("chitchat", "clarify"):
+        metrics.bump("chat_nonkb")
         return with_cache_meta(_non_kb_payload(plan, t0))
 
     # 多轮按「改写后的问题」查缓存：同一轮追问得到同一独立问题时复用答案。
     hit = _cache_lookup(plan.rewritten)
     if hit is not None:
+        metrics.bump("cache_hit")
         out = cached_payload(hit["payload"], hit["age_s"],
                              int((time.time() - t0) * 1000))
         rewritten = plan.rewritten if plan.rewritten != plan.query else ""
@@ -439,21 +446,57 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
     with _lock:
         res = pipeline.answer(plan.rewritten)
     _log_gap(req.query, res)
+    metrics.bump("chat_refused" if res.refused else "chat_answered")
     payload = with_cache_meta(_answer_payload(res, t0, plan))
     _cache_store(plan.rewritten, payload)
     return payload
+
+
+def _gap_stats_data(days: int, limit: int) -> dict:
+    """缺口统计的公共取数：有库走库，没库读 JSONL。"""
+    store = _state.get("store")
+    if store is not None:
+        return store.gap_stats(days, limit)
+    return gap_stats(_state.get("gap_log", ""), days, limit)
 
 
 @app.get("/stats/gaps")
 def stats_gaps(days: int = 30, limit: int = 20,
                _: None = Depends(enforce_content)) -> dict:
     """缺口统计：按原因、按天聚合，并给出最近若干条拒答。"""
+    return _gap_stats_data(max(1, min(int(days), 365)),
+                           max(1, min(int(limit), 100)))
+
+
+@app.get("/stats/overview")
+def stats_overview(days: int = 30, limit: int = 20,
+                   _: None = Depends(enforce_content)) -> dict:
+    """质量看板：进程内问答计数 + 缺口统计 + 语料规模。
+
+    process 里的计数只代表本进程启动以来，重启归零；跨重启的历史看 gaps。
+    """
     days = max(1, min(int(days), 365))
     limit = max(1, min(int(limit), 100))
-    store = _state.get("store")
-    if store is not None:
-        return store.gap_stats(days, limit)
-    return gap_stats(_state.get("gap_log", ""), days, limit)
+    counters = metrics.snapshot()
+    asks = counters["ask_total"] + counters["chat_total"]
+    questions = _state.get("questions", [])
+    years = sorted({int(q.get("year")) for q in questions if q.get("year")})
+    return {
+        "storage": _state.get("storage", "memory"),
+        "window_days": days,
+        "process": counters,
+        "asks": asks,
+        "answered": counters["ask_answered"] + counters["chat_answered"],
+        "refused": counters["ask_refused"] + counters["chat_refused"],
+        "cache_hits": counters["cache_hit"],
+        "cache_hit_rate": round(counters["cache_hit"] / asks, 4) if asks else 0.0,
+        "corpus": {
+            "questions": len(questions),
+            "knowledge": len(_state.get("knowledge", [])),
+            "years": years,
+        },
+        "gaps": _gap_stats_data(days, limit),
+    }
 
 
 @app.get("/meta")
