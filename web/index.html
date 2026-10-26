@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b1220">
+  <meta name="theme-color" content="#fdfcf9">
   <title>408 真题知识库</title>
   <style>
     :root {
@@ -761,9 +761,11 @@
       --content-max: 1180px;
       background: var(--bg);
     }
-    .main[data-page="today"], .main[data-page="chat"], .main[data-page="practice"] {
+    .main[data-page="today"], .main[data-page="practice"] {
       --content-max: 900px;
     }
+    .main[data-page="chat"] { --content-max: 820px; }
+    .main[data-page="chat"] .topbar { display: none; }
 
     /* ---------- 侧栏 ---------- */
     .sidebar {
@@ -907,7 +909,11 @@
       border-color: rgba(176, 80, 30, .4);
       box-shadow: 0 0 0 3px rgba(176, 80, 30, .09), var(--shadow-sm);
     }
-    .today-ask input { padding: 8px 0; color: var(--ink); font-size: 14px; }
+    .today-ask input {
+      padding: 8px 0; border: 0; outline: 0; background: transparent;
+      color: var(--ink); font-size: 14px;
+    }
+    .today-ask input:focus-visible { outline: none; }
     .today-ask input::placeholder { color: #786f63; }
     .today-ask .primary { padding: 9px 20px; border-radius: 9px; font-size: 13px; }
     .today-ask-hint {
@@ -1026,6 +1032,93 @@
     }
     .send:hover { background: var(--brand-dark); }
     .composer-hint { max-width: 100%; color: var(--muted); font-size: 10.5px; }
+
+    /* ---------- 对话优先（对齐热门 Agent 的形态） ---------- */
+    .conv-group {
+      padding: 14px 10px 5px; color: var(--muted);
+      font-size: 10.5px; letter-spacing: .08em;
+    }
+    .conv-group:first-child { padding-top: 4px; }
+    .main[data-page="chat"] .messages { padding: 26px 40px 8px; }
+    .main[data-page="chat"] .msg { margin-bottom: 26px; }
+    .user-bubble {
+      padding: 10px 15px; border-radius: 18px 18px 4px 18px;
+      background: var(--wash); color: var(--ink);
+      box-shadow: none; font-size: 14.5px;
+    }
+    .msg.bot { gap: 12px; }
+    .avatar {
+      width: 26px; height: 26px; border-radius: 8px;
+      background: var(--brand-soft); color: var(--brand-dark);
+      font-size: 9.5px;
+    }
+    .answer-card {
+      padding: 1px 0 0; border: 0; border-radius: 0;
+      background: transparent; box-shadow: none;
+    }
+    .answer-text { font-size: 14.8px; line-height: 1.88; }
+    .badge-line { margin-bottom: 8px; }
+    .section-title { margin: 22px 0 8px; letter-spacing: .12em; }
+    .cite {
+      padding: 11px 14px; border-left: 2px solid var(--brand);
+      border-radius: 0 10px 10px 0; background: #faf7f0;
+    }
+    .cite-head { flex-wrap: wrap; row-gap: 3px; }
+    .composer-wrap { padding: 10px 40px 20px; }
+    .composer {
+      padding: 9px 9px 9px 18px; border-radius: 24px;
+      box-shadow: 0 6px 24px rgba(69, 49, 31, .06);
+    }
+    .composer textarea { font-size: 14.5px; }
+    .composer textarea:focus-visible { outline: none; }
+    .send {
+      display: grid; place-items: center;
+      width: 34px; height: 34px; padding: 0; border-radius: 50%;
+    }
+    .send svg {
+      width: 17px; height: 17px; fill: none; stroke: currentColor;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+    }
+
+    /* 空态 = Agent 首页 */
+    .empty.home {
+      align-items: stretch; justify-content: safe center;
+      width: 100%; max-width: 100%; min-height: 100%;
+      margin: 0 auto; padding: 40px 6px 6vh; text-align: left;
+    }
+    .home-kicker {
+      color: var(--brand); font-size: 11px; font-weight: 500;
+      letter-spacing: .14em; text-transform: uppercase;
+    }
+    .home h2 {
+      margin: 10px 0; font-family: var(--display);
+      font-size: 31px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em;
+    }
+    .home-sub { max-width: 560px; color: var(--muted); font-size: 14px; line-height: 1.75; }
+    .home-stats {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 6px 0; margin-top: 18px; color: var(--muted); font-size: 12px;
+    }
+    .home-stat + .home-stat::before {
+      content: "·"; margin: 0 10px; color: #b9ad9b;
+    }
+    .home-prompts {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; margin-top: 34px;
+    }
+    .prompt {
+      display: flex; flex-direction: column; gap: 7px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card); box-shadow: var(--shadow-sm); text-align: left;
+      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    .prompt:hover {
+      border-color: #d5c8b0; transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(28, 24, 22, .06);
+    }
+    .prompt-tag { color: var(--brand); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+    .prompt-q { color: var(--ink); font-size: 13.5px; line-height: 1.6; }
+    .home-note { margin-top: 22px; color: var(--muted); font-size: 11.5px; }
 
     /* ---------- 资料 ---------- */
     .bank-head { gap: 12px; margin-bottom: 14px; }
@@ -1214,10 +1307,18 @@
       .top-actions .pill { padding: 4px 8px; font-size: 10.5px; }
       .banner { margin: 10px 16px 0; }
       .messages { padding: 16px 16px 6px; }
-      .msg { margin-bottom: 16px; }
+      .main[data-page="chat"] .topbar { display: flex; }
+      .main[data-page="chat"] .messages { padding: 20px 16px 6px; }
+      .msg { margin-bottom: 18px; }
       .user-bubble { max-width: 88%; }
-      .composer-wrap { padding: 8px 16px 14px; }
+      .main[data-page="chat"] .composer-wrap { padding: 8px 16px 14px; }
       .composer-hint { font-size: 10px; }
+      .empty.home { justify-content: flex-start; padding: 4vh 2px 24px; }
+      .home h2 { font-size: 24px; }
+      .home-sub { font-size: 13.5px; }
+      .home-stats { font-size: 11.5px; }
+      .home-prompts { grid-template-columns: 1fr; gap: 8px; margin-top: 26px; }
+      .home-note { font-size: 11px; }
       .page-inner { padding: 16px 16px 28px; }
       .subnav { padding: 12px 16px 0; overflow-x: auto; }
       .subnav button { min-height: 40px; padding: 8px 14px; }
@@ -1303,8 +1404,8 @@
     </div>
     <button class="new-chat" id="new-chat">＋ 新建对话</button>
     <nav class="nav" id="nav">
-      <button data-page="today" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
-      <button data-page="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+      <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+      <button data-page="today"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
       <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
       <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
     </nav>
@@ -1323,12 +1424,12 @@
   </aside>
   <div class="scrim" id="scrim"></div>
 
-  <main class="main">
+  <main class="main" data-page="chat">
     <header class="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"></use></svg></button>
       <div class="top-title">
-        <div id="page-title">今日</div>
-        <div class="sub" id="page-sub">每天只做一件小事</div>
+        <div id="page-title">真题问答</div>
+        <div class="sub" id="page-sub">多轮追问 · 每条结论都可核对</div>
       </div>
       <div class="top-actions"><span class="pill" id="health-pill" hidden>连接中…</span></div>
     </header>
@@ -1343,7 +1444,7 @@
       <button id="auth-open">输入口令</button>
     </div>
 
-    <section class="page active" id="page-today">
+    <section class="page" id="page-today">
       <div class="page-inner narrow today-wrap">
         <div class="today-hero">
           <div class="today-kicker" id="today-date"></div>
@@ -1382,13 +1483,15 @@
       </div>
     </section>
 
-    <section class="page" id="page-chat">
+    <section class="page active" id="page-chat">
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
           <textarea id="composer" rows="1" maxlength="500"
-                    placeholder="问题目或知识点，例如：CSMA/CD 最小帧长怎么算"></textarea>
-          <button class="send" id="send">发送</button>
+                    placeholder="有问题，直接问…"></textarea>
+          <button class="send" id="send" aria-label="发送" title="发送">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+          </button>
         </div>
         <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用真题或考点原文</div>
       </div>
@@ -1518,8 +1621,8 @@
 </div>
 
 <nav class="tabbar" id="tabbar" aria-label="主要页面">
-  <button data-page="today" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
-  <button data-page="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+  <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+  <button data-page="today"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
   <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
   <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
 </nav>
@@ -1763,20 +1866,39 @@
     }
   }
 
+  function convDateLabel(ts) {
+    if (!ts) return '更早';
+    const days = Math.round((startOfDay(Date.now()) - startOfDay(ts)) / 86400000);
+    if (days <= 0) return '今天';
+    if (days === 1) return '昨天';
+    if (days <= 6) return '最近 7 天';
+    return '更早';
+  }
+
   function renderConvList() {
     const box = $('#conv-list');
     box.replaceChildren();
     if (!state.conversations.length) {
-      box.appendChild(el('div', 'conv-empty', '还没有对话'));
+      box.appendChild(el('div', 'conv-empty', '还没有对话，问一句就有了'));
       return;
     }
-    state.conversations.forEach(conv => {
+    const rows = state.conversations.slice()
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    let group = '';
+    rows.forEach(conv => {
+      const label = convDateLabel(conv.updatedAt);
+      if (label !== group) {
+        group = label;
+        box.appendChild(el('div', 'conv-group', label));
+      }
       const item = el('div', 'conv-item' + (conv.id === state.activeId ? ' active' : ''));
       item.appendChild(el('div', 'conv-title', conv.title || '新对话'));
       if (conv.updatedAt) {
         const d = new Date(conv.updatedAt);
         item.appendChild(el('div', 'conv-time',
-          d.getMonth() + 1 + '/' + d.getDate()));
+          label === '今天'
+            ? pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+            : (d.getMonth() + 1) + '/' + d.getDate()));
       }
       const del = el('button', 'conv-del', '×');
       del.title = '删除对话';
@@ -1849,30 +1971,51 @@
   }
 
   /* ---------- chat rendering ---------- */
+  function askNow(text) {
+    const c = $('#composer');
+    if (!c) return;
+    c.value = text;
+    autoGrow();
+    send();
+  }
+
   function emptyState() {
-    const wrap = el('div', 'empty');
-    wrap.appendChild(el('div', 'logo-lg', '408'));
-    wrap.appendChild(el('h2', null, '有问题，直接问。'));
-    wrap.appendChild(el('p', null,
+    const wrap = el('div', 'empty home');
+    wrap.appendChild(el('div', 'home-kicker', '408 真题知识库'));
+    wrap.appendChild(el('h2', null, salutation() + '，想问点什么？'));
+    wrap.appendChild(el('p', 'home-sub',
       '答案只从真题原文和考点卡片里找依据，每条结论都附上原话；' +
       '资料里没有的，会直说没有，不猜。'));
-    const examples = el('div', 'examples');
+
+    const ed = examDate();
+    const left = daysUntil(ed);
+    const st = streakInfo();
+    const week = recentActivity(7);
+    const stats = el('div', 'home-stats');
+    stats.appendChild(el('span', 'home-stat',
+      left > 0 ? '距 ' + (ed.getFullYear() + 1) + ' 初试 ' + left + ' 天'
+        : (left === 0 ? '今天就是初试' : '初试已过')));
+    stats.appendChild(el('span', 'home-stat',
+      st.streak ? '连续 ' + st.streak + ' 天' : '今天开个头'));
+    stats.appendChild(el('span', 'home-stat',
+      '近 7 天：问 ' + week.asks + ' · 练 ' + week.drills));
+    wrap.appendChild(stats);
+
+    const prompts = el('div', 'home-prompts');
     [
-      '快速排序的时间复杂度',
-      'CSMA/CD 最小帧长怎么算',
-      '二级页式存储的虚拟地址怎么拆成页目录号和页号',
-      'LRU 页置换 缺页次数'
-    ].forEach(q => {
-      const b = el('button', 'example', q);
-      b.addEventListener('click', () => {
-        $('#composer').value = q;
-        autoGrow();
-        $('#composer').focus();
-      });
-      examples.appendChild(b);
+      ['数据结构', '快速排序的时间复杂度'],
+      ['计算机网络', 'CSMA/CD 最小帧长怎么算'],
+      ['操作系统', '二级页式存储的虚拟地址怎么拆成页目录号和页号'],
+      ['操作系统', 'LRU 页置换 缺页次数']
+    ].forEach(([tag, q]) => {
+      const b = el('button', 'prompt');
+      b.appendChild(el('span', 'prompt-tag', tag));
+      b.appendChild(el('span', 'prompt-q', q));
+      b.addEventListener('click', () => askNow(q));
+      prompts.appendChild(b);
     });
-    wrap.appendChild(examples);
-    wrap.appendChild(el('div', 'empty-note',
+    wrap.appendChild(prompts);
+    wrap.appendChild(el('div', 'home-note',
       '多轮追问也可以：先问「快速排序」，再问「那它的时间复杂度呢」。'));
     return wrap;
   }
@@ -2249,10 +2392,14 @@
     return (d.getMonth() + 1) + '月' + d.getDate() + '日 · 周' + wd;
   }
 
-  function todayGreeting() {
+  function salutation() {
     const h = new Date().getHours();
-    const sal = h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' :
+    return h < 5 ? '夜深了' : h < 11 ? '早上好' : h < 14 ? '中午好' :
       h < 18 ? '下午好' : '晚上好';
+  }
+
+  function todayGreeting() {
+    const sal = salutation();
     const act = todayActivity();
     const st = streakInfo();
     const hasAny = Object.keys(state.practice.history || {}).length > 0 ||
@@ -4088,7 +4235,7 @@
     const parts = raw.split('/').filter(Boolean).map(p => {
       try { return decodeURIComponent(p); } catch (e) { return p; }
     });
-    const head = parts[0] || 'today';
+    const head = parts[0] || 'chat';
     if (head === 'q') return {page: state.page, qid: parts[1] || ''};
     if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
     if (head === 'library') return {page: libraryPage()};
@@ -4150,7 +4297,9 @@
       });
     } else if (page === 'chat') {
       renderMessages();
-      setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
+      if (window.innerWidth > 860) {
+        setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
+      }
     } else if (page === 'bank') {
       ensureMeta().then(m => {
         if (m) {
@@ -4481,9 +4630,9 @@
   function init() {
     bind();
     renderToken();
+    renderPage(parseHash().page);
     applyHash();
     renderConvList();
-    renderMessages();
     autoGrow();
     loadHealth();
     ensureMeta(true);
