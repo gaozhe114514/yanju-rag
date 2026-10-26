@@ -45,15 +45,29 @@ def format_hits(hits: Sequence[SearchHit]) -> str:
     return "\n\n".join(blocks)
 
 
-def build_messages(query: str, hits: Sequence[SearchHit]) -> List[Dict]:
+STYLE_PROMPT = """
+【讲解方式】下面是学习者选择的说话风格。它只影响措辞、语气和组织顺序，
+不得改变事实与结论，不得放宽以上任何引用要求，也不得引入【资料】以外的知识。
+若与第 1–7 条规则冲突，一律以规则为准。仍需只输出上面规定的 JSON。
+%s
+"""
+
+
+def build_messages(query: str, hits: Sequence[SearchHit],
+                   style: str = "") -> List[Dict]:
     user = "【资料】\n%s\n\n【问题】\n%s" % (format_hits(hits), query.strip())
-    return [{"role": "system", "content": SYSTEM_PROMPT},
+    system = SYSTEM_PROMPT
+    style = " ".join((style or "").split())
+    if style:
+        system += STYLE_PROMPT % style[:400]
+    return [{"role": "system", "content": system},
             {"role": "user", "content": user}]
 
 
 def build_retry_messages(query: str, hits: Sequence[SearchHit],
-                         previous: str, errors: Sequence[str]) -> List[Dict]:
-    msgs = build_messages(query, hits)
+                         previous: str, errors: Sequence[str],
+                         style: str = "") -> List[Dict]:
+    msgs = build_messages(query, hits, style)
     msgs.append({"role": "assistant", "content": previous})
     feedback = "\n".join("- " + e for e in errors)
     msgs.append({

@@ -32,7 +32,7 @@ class AnswerPipeline:
         self.gate = gate or RefusalGate()
         self.retry = retry
 
-    def answer(self, query: str) -> AnswerResult:
+    def answer(self, query: str, style: str = "") -> AnswerResult:
         t0 = time.time()
         hits = self.searcher.search(query)
         t1 = time.time()
@@ -51,7 +51,7 @@ class AnswerPipeline:
         if decision.refuse:
             return done(AnswerResult(True, reason=decision.reason, hits=hits))
 
-        messages = build_messages(query, hits)
+        messages = build_messages(query, hits, style)
         errors: List[str] = []
         first_errors: List[str] = []
         raw = ""
@@ -88,7 +88,7 @@ class AnswerPipeline:
 
             if attempt == 1 and self.retry:
                 first_errors = list(errors)
-                messages = build_retry_messages(query, hits, raw, errors)
+                messages = build_retry_messages(query, hits, raw, errors, style)
                 continue
             return done(AnswerResult(True, reason="citation_failed: " + "; ".join(errors),
                                      hits=hits, attempts=attempt,

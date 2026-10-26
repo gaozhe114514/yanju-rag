@@ -1360,6 +1360,414 @@
       .tabbar .nav-ico { width: auto; color: inherit; }
       .tabbar .nav-ico svg { width: 20px; height: 20px; }
     }
+
+    /* ---------- v0.22 学习 · 空间 · 伙伴 · 看板 ---------- */
+    .main[data-page="learning"], .main[data-page="partners"] { --content-max: 900px; }
+    .main[data-page="partner"] { --content-max: 820px; overflow: hidden; }
+    .main[data-page="partner"] .topbar { display: none; }
+    .main[data-subpage="notebooks"], .main[data-subpage="journal"],
+    .main[data-subpage="personas"], .main[data-subpage="skills"],
+    .main[data-subpage="memory"], .main[data-subpage="history"] {
+      --content-max: 900px;
+    }
+    #page-mastery.active, #page-space.active, #page-history.active,
+    #page-notebooks.active, #page-journal.active, #page-personas.active,
+    #page-skills.active, #page-memory.active, #page-partners.active,
+    #page-kanban.active { display: block; overflow-y: auto; }
+    #page-partner.active { display: flex; }
+    .subnav { display: flex; flex-wrap: wrap; }
+
+    .page-head-row {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; margin-bottom: 18px; flex-wrap: wrap;
+    }
+    .page-head-row .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .section-label {
+      margin: 0 0 10px; color: var(--ink); font-size: 13.5px; font-weight: 600;
+    }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .muted { color: var(--muted); }
+    .small { font-size: 11.5px; line-height: 1.6; }
+    .panel {
+      padding: 18px; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--card); box-shadow: var(--shadow-sm);
+    }
+    .panel-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .panel-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .panel-sub { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .empty-panel {
+      padding: 28px 20px; border: 1px dashed #d5c8b0; border-radius: 16px;
+      background: var(--bg); color: var(--muted); font-size: 12.5px;
+      line-height: 1.7; text-align: center;
+    }
+    .empty-panel strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 14px; }
+
+    /* 表单 */
+    .form-grid { display: flex; flex-direction: column; gap: 12px; }
+    .form-row > label {
+      display: block; margin-bottom: 5px; color: var(--muted); font-size: 11.5px;
+    }
+    .form-row input, .form-row select, .form-row textarea {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--card); color: var(--ink);
+      font-size: 13.5px; line-height: 1.55;
+    }
+    .form-row textarea { resize: vertical; min-height: 88px; }
+    .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+      border-color: rgba(176, 80, 30, .4); outline: none;
+      box-shadow: 0 0 0 3px rgba(176, 80, 30, .09);
+    }
+    .form-help { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .check-list { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; }
+    .check-row {
+      display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px;
+      border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px;
+      line-height: 1.55; cursor: pointer;
+    }
+    .check-row input { margin-top: 2px; accent-color: var(--brand); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip-toggle {
+      padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--bg); color: var(--muted); font-size: 11.5px;
+    }
+    .chip-toggle.on { background: var(--wash); border-color: transparent; color: #8f3d16; }
+
+    /* 空间 */
+    .space-groups { display: flex; flex-direction: column; gap: 30px; }
+    .space-group h2 {
+      margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .space-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .space-card {
+      display: flex; align-items: flex-start; gap: 12px; width: 100%;
+      padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--card); box-shadow: var(--shadow-sm); text-align: left;
+      transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .space-card:hover {
+      border-color: #d5c8b0; transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(28, 24, 22, .06);
+    }
+    .space-icon {
+      display: grid; place-items: center; flex: none; width: 32px; height: 32px;
+      border-radius: 9px; background: var(--muted-surface); color: var(--brand);
+    }
+    .space-icon svg {
+      width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .space-body { flex: 1; min-width: 0; }
+    .space-title { display: block; color: var(--ink); font-size: 14px; font-weight: 600; }
+    .space-desc {
+      display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.6;
+    }
+    .space-count { flex: none; color: var(--muted); font-size: 11px; padding-top: 2px; }
+
+    /* 列表 */
+    .list-row {
+      display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+      border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+      box-shadow: var(--shadow-sm);
+    }
+    .list-main { flex: 1; min-width: 0; }
+    .list-title { color: var(--ink); font-size: 13.5px; font-weight: 600; line-height: 1.55; }
+    .list-meta { margin-top: 3px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .list-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+    .row-btn {
+      padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--card); color: var(--muted); font-size: 11.5px;
+    }
+    .row-btn:hover { border-color: #cbbda4; color: var(--brand); }
+    .row-btn.danger:hover { border-color: #e0a79e; color: var(--danger); }
+    .toolbar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .toolbar .grow { flex: 1; min-width: 180px; }
+    .search-line {
+      display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+    }
+    .search-line input {
+      flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+      color: var(--ink); font-size: 13px;
+    }
+
+    /* 笔记本 */
+    .note-entry {
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card); box-shadow: var(--shadow-sm);
+    }
+    .note-entry h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+    .note-body {
+      margin-top: 6px; color: #3a352f; font-size: 13px; line-height: 1.8;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .note-meta { margin-top: 8px; color: var(--muted); font-size: 11px; }
+
+    /* 日志 */
+    .journal-mission { color: #3a352f; font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+    .timeline { display: flex; flex-direction: column; }
+    .tl-item { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px dashed var(--line); }
+    .tl-item:last-child { border-bottom: 0; }
+    .tl-dot {
+      flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
+      background: var(--brand);
+    }
+    .tl-dot.practice { background: var(--ok); }
+    .tl-dot.mastery { background: var(--warn); }
+    .tl-dot.task { background: #57514a; }
+    .tl-body { flex: 1; min-width: 0; }
+    .tl-title { color: var(--ink); font-size: 13px; font-weight: 600; }
+    .tl-text { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .tl-time { flex: none; color: var(--muted); font-size: 10.5px; }
+
+    /* 精通之路 */
+    .path-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .path-card {
+      display: flex; flex-direction: column; gap: 10px; padding: 18px;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+      box-shadow: var(--shadow-sm); text-align: left; cursor: pointer;
+      transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .path-card:hover {
+      border-color: #d5c8b0; transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(28, 24, 22, .06);
+    }
+    .path-top { display: flex; align-items: center; gap: 12px; }
+    .path-ring {
+      --p: 0; display: grid; place-items: center; flex: none;
+      width: 46px; height: 46px; border-radius: 50%;
+      background: conic-gradient(var(--brand) calc(var(--p) * 1%), var(--muted-surface) 0);
+    }
+    .path-ring span {
+      display: grid; place-items: center; width: 36px; height: 36px;
+      border-radius: 50%; background: var(--card); color: var(--ink);
+      font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+    }
+    .path-name { color: var(--ink); font-size: 14.5px; font-weight: 600; line-height: 1.5; }
+    .path-meta { color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .path-foot {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      color: var(--muted); font-size: 11px;
+    }
+    .path-bar { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--muted-surface); overflow: hidden; }
+    .path-bar i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
+    .module {
+      padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--card); box-shadow: var(--shadow-sm); margin-bottom: 12px;
+    }
+    .module-head { display: flex; align-items: flex-start; gap: 10px; }
+    .module-num {
+      display: grid; place-items: center; flex: none; width: 24px; height: 24px;
+      border-radius: 7px; background: var(--muted-surface); color: var(--muted);
+      font-size: 11px; font-weight: 600;
+    }
+    .module-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
+    .module-sum { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .stage-row {
+      display: flex; align-items: center; gap: 9px; padding: 10px 0 0;
+      margin-top: 10px; border-top: 1px dashed var(--line);
+      color: var(--muted); font-size: 12px;
+    }
+    .stage-check {
+      display: grid; place-items: center; flex: none; width: 18px; height: 18px;
+      border: 1px solid #cbbda4; border-radius: 50%; color: transparent; font-size: 11px;
+    }
+    .stage-check.done { border-color: var(--ok); background: var(--ok-surface); color: var(--ok); }
+    .stage-text { flex: 1; min-width: 0; }
+    .stage-text b { color: var(--ink); font-weight: 500; }
+    .quiz-inline {
+      margin-top: 10px; padding: 12px 14px; border-radius: 12px;
+      background: var(--bg); border: 1px solid var(--line);
+    }
+    .quiz-inline .q-stem { color: #3a352f; font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+    .m-options { display: grid; gap: 6px; margin-top: 9px; }
+    .m-opt {
+      display: flex; gap: 8px; width: 100%; padding: 8px 10px; text-align: left;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+      color: #3a352f; font-size: 12.5px; line-height: 1.6;
+    }
+    .m-opt:hover { border-color: #cbbda4; }
+    .m-opt.right { border-color: #b9d9c4; background: var(--ok-surface); color: var(--ok); }
+    .m-opt.wrong { border-color: #e0a79e; background: var(--danger-surface); color: var(--danger); }
+    .m-opt-key { flex: none; font-weight: 600; }
+    .quiz-note { margin-top: 8px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .quiz-note.ok { color: var(--ok); }
+    .level-banner {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      border: 1px solid #ecd9a8; border-radius: 14px; background: var(--warn-surface);
+      color: #713f12; font-size: 12.5px; line-height: 1.65; margin-bottom: 14px;
+    }
+    .level-banner b { font-size: 13.5px; }
+
+    /* 伙伴 */
+    .partner-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .partner-card {
+      display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+      box-shadow: var(--shadow-sm);
+    }
+    .partner-avatar {
+      display: grid; place-items: center; flex: none; width: 40px; height: 40px;
+      border-radius: 11px; background: var(--wash); color: #8f3d16;
+      font-family: var(--display); font-size: 15px; font-weight: 600;
+    }
+    .partner-main { flex: 1; min-width: 0; }
+    .partner-name { color: var(--ink); font-size: 14px; font-weight: 600; }
+    .partner-role { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .partner-desc { margin-top: 6px; color: #57514a; font-size: 12px; line-height: 1.65; }
+    .partner-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
+    .partner-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
+    .partner-head {
+      display: flex; align-items: center; gap: 10px; flex: none;
+      width: 100%; max-width: var(--content-max); margin: 0 auto;
+      padding: 14px 40px 12px; border-bottom: 1px solid var(--line);
+    }
+    .partner-head .partner-avatar { width: 34px; height: 34px; border-radius: 9px; font-size: 13px; }
+    .partner-head-main { flex: 1; min-width: 0; }
+    .partner-head-name { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .partner-head-sub {
+      margin-top: 1px; color: var(--muted); font-size: 11px; line-height: 1.5;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .partner-head-actions { display: flex; gap: 4px; flex: none; }
+    .partner-messages { max-width: var(--content-max); width: 100%; margin: 0 auto; }
+    .partner-shell .composer-wrap { max-width: var(--content-max); margin: 0 auto; padding: 10px 40px 18px; }
+    .partner-shell .composer { max-width: 100%; }
+    .partner-history { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .partner-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+    /* 看板 */
+    .kanban-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 12px; }
+    .kanban-add {
+      display: flex; align-items: center; gap: 8px; padding: 6px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+      margin-bottom: 18px;
+    }
+    .kanban-add input {
+      flex: 1; min-width: 0; padding: 8px 10px; border: 0; outline: 0;
+      background: transparent; color: var(--ink); font-size: 13.5px;
+    }
+    .kanban-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    .kanban-col {
+      padding: 12px; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--cream); min-height: 220px;
+      transition: border-color .15s, background .15s;
+    }
+    .kanban-col.drop { border-color: rgba(176, 80, 30, .5); background: var(--brand-soft); }
+    .kanban-col-head { display: flex; align-items: flex-start; gap: 8px; padding: 4px 4px 10px; }
+    .kanban-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--brand); }
+    .kanban-col-title { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+    .kanban-col-hint { margin-top: 1px; color: var(--muted); font-size: 10.5px; }
+    .kanban-count { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .kanban-card {
+      padding: 12px 13px; border: 1px solid var(--line); border-radius: 12px;
+      background: var(--card); box-shadow: var(--shadow-sm); margin-bottom: 8px;
+    }
+    .kanban-card.dragging { opacity: .45; }
+    .kanban-title { color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.55; word-break: break-word; }
+    .kanban-note { margin-top: 4px; color: var(--muted); font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .kanban-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .kanban-tag {
+      padding: 2px 8px; border-radius: 999px; background: var(--muted-surface);
+      color: var(--muted); font-size: 10.5px;
+    }
+    .kanban-link { color: var(--brand); font-size: 10.5px; }
+    .kanban-actions { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; }
+    .kanban-actions button {
+      width: 26px; height: 26px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--muted); font-size: 13px; line-height: 1;
+    }
+    .kanban-actions button:hover { background: var(--muted-surface); color: var(--ink); }
+    .kanban-empty {
+      display: grid; place-items: center; min-height: 88px; padding: 14px;
+      border: 1px dashed #d5c8b0; border-radius: 12px; color: var(--muted);
+      font-size: 11px; text-align: center;
+    }
+    .kanban-foot { margin-top: 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .swatch {
+      width: 24px; height: 24px; padding: 0; border: 2px solid transparent;
+      border-radius: 50%;
+    }
+    .swatch.on { border-color: var(--ink); }
+
+    /* 技能 / 人格 */
+    .skill-row {
+      display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+      border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+      box-shadow: var(--shadow-sm);
+    }
+    .skill-main { flex: 1; min-width: 0; }
+    .skill-name { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+    .skill-desc { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .switch {
+      position: relative; flex: none; width: 38px; height: 21px; padding: 0;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: var(--muted-surface); transition: background .15s, border-color .15s;
+    }
+    .switch::after {
+      content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+      border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(28,24,22,.18);
+      transition: transform .15s;
+    }
+    .switch.on { background: var(--brand); border-color: var(--brand); }
+    .switch.on::after { transform: translateX(17px); }
+    .persona-card {
+      padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card); box-shadow: var(--shadow-sm);
+    }
+    .persona-preview {
+      margin-top: 8px; padding: 9px 11px; border-radius: 10px; background: var(--bg);
+      color: var(--muted); font-size: 12px; line-height: 1.65;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* 问答里的附加动作 */
+    .answer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .tool-btn {
+      padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--card); color: var(--muted); font-size: 11px;
+    }
+    .tool-btn:hover { border-color: #cbbda4; color: var(--brand); }
+    .composer-chip {
+      flex: none; max-width: 92px; margin-bottom: 3px; padding: 5px 9px;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: var(--bg); color: var(--muted); font-size: 11px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .composer-chip:hover { border-color: #cbbda4; color: var(--brand); }
+    .composer-chip.on { background: var(--wash); border-color: transparent; color: #8f3d16; }
+
+    @media (max-width: 860px) {
+      .space-grid, .path-grid, .partner-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .kanban-board { grid-template-columns: 1fr; }
+      .kanban-col { min-height: 120px; }
+      .page-head-row { gap: 10px; }
+      .tabbar { grid-template-columns: repeat(6, 1fr); padding-left: 2px; padding-right: 2px; }
+      .tabbar button { font-size: 10px; gap: 2px; padding: 3px 0; }
+      .tabbar .nav-ico svg { width: 17px; height: 17px; }
+      .subnav { flex-wrap: nowrap; overflow-x: auto; }
+      .subnav button { flex: none; }
+      .partner-head { padding: 10px 16px; }
+      .partner-messages { padding: 16px 16px 8px; }
+      .partner-shell .composer-wrap { padding: 8px 16px 14px; }
+      .composer-chip { max-width: 62px; padding: 4px 7px; }
+      .list-row { flex-direction: column; gap: 8px; }
+      .list-actions { width: 100%; justify-content: flex-start; }
+      .toolbar .grow { min-width: 0; }
+      .module { padding: 14px; }
+      .space-groups { gap: 24px; }
+    }
   </style>
 </head>
 <body>
@@ -1393,6 +1801,27 @@
     <circle cx="12" cy="12" r="3"/>
     <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/>
   </symbol>
+  <symbol id="i-route" viewBox="0 0 24 24">
+    <path d="M6 19h6a4 4 0 0 0 0-8H9a4 4 0 0 1 0-8h9"/>
+    <circle cx="6" cy="19" r="2"/>
+    <circle cx="20" cy="5" r="2"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7" height="7" rx="1.6"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.6"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.6"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.6"/>
+  </symbol>
+  <symbol id="i-users" viewBox="0 0 24 24">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+  </symbol>
+  <symbol id="i-board" viewBox="0 0 24 24">
+    <rect x="3" y="4" width="5" height="16" rx="1.6"/>
+    <rect x="10.5" y="4" width="5" height="11" rx="1.6"/>
+    <rect x="18" y="4" width="3" height="7" rx="1.4"/>
+  </symbol>
 </svg>
 <div class="app">
   <aside class="sidebar" id="sidebar">
@@ -1407,8 +1836,10 @@
     <nav class="nav" id="nav">
       <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
       <button data-page="today"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
-      <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
-      <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
+      <button data-page="learning"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span>学习</button>
+      <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>空间</button>
+      <button data-page="partners"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"></use></svg></span>伙伴</button>
+      <button data-page="kanban"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span>看板</button>
     </nav>
     <div class="side-section">
       <div class="side-title">最近对话</div>
@@ -1435,9 +1866,20 @@
       <div class="top-actions"><span class="pill" id="health-pill" hidden>连接中…</span></div>
     </header>
 
-    <div class="subnav" id="library-subnav" hidden>
-      <button data-lib="bank" class="active">题库</button>
-      <button data-lib="knowledge">考点</button>
+    <div class="subnav" id="learning-subnav" hidden>
+      <button data-learn="mastery" class="active">精通之路</button>
+      <button data-learn="practice">练习</button>
+    </div>
+
+    <div class="subnav" id="space-subnav" hidden>
+      <button data-space="bank" class="active">题库</button>
+      <button data-space="knowledge">考点</button>
+      <button data-space="notebooks">笔记本</button>
+      <button data-space="journal">日志</button>
+      <button data-space="history">对话</button>
+      <button data-space="personas">人格</button>
+      <button data-space="skills">技能</button>
+      <button data-space="memory">记忆</button>
     </div>
 
     <div class="banner" id="auth-banner" hidden>
@@ -1488,6 +1930,7 @@
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
+          <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
           <textarea id="composer" rows="1" maxlength="500"
                     placeholder="有问题，直接问…"></textarea>
           <button class="send" id="send" aria-label="发送" title="发送">
@@ -1578,6 +2021,67 @@
       </div>
     </section>
 
+    <section class="page" id="page-mastery">
+      <div class="page-inner">
+        <div id="mastery-root"></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-space">
+      <div class="page-inner">
+        <div class="space-groups" id="space-groups"></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-history">
+      <div class="page-inner narrow"><div id="history-root"></div></div>
+    </section>
+
+    <section class="page" id="page-notebooks">
+      <div class="page-inner narrow"><div id="notebook-root"></div></div>
+    </section>
+
+    <section class="page" id="page-journal">
+      <div class="page-inner narrow"><div id="journal-root"></div></div>
+    </section>
+
+    <section class="page" id="page-personas">
+      <div class="page-inner narrow"><div id="persona-root"></div></div>
+    </section>
+
+    <section class="page" id="page-skills">
+      <div class="page-inner narrow"><div id="skill-root"></div></div>
+    </section>
+
+    <section class="page" id="page-memory">
+      <div class="page-inner narrow"><div id="memory-root"></div></div>
+    </section>
+
+    <section class="page" id="page-partners">
+      <div class="page-inner"><div id="partners-root"></div></div>
+    </section>
+
+    <section class="page" id="page-partner">
+      <div class="partner-shell">
+        <div class="partner-head" id="partner-head"></div>
+        <div class="messages partner-messages" id="partner-messages"></div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <textarea id="partner-composer" rows="1" maxlength="500"
+                      placeholder="和伙伴说点什么…"></textarea>
+            <button class="send" id="partner-send" aria-label="发送" title="发送">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+            </button>
+          </div>
+          <div class="composer-hint" id="partner-hint">伙伴只改变讲法，结论仍逐字引用真题或考点原文</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-kanban">
+      <div class="page-inner"><div id="kanban-root"></div></div>
+    </section>
+
     <section class="page" id="page-quality">
       <div class="page-inner">
         <div class="quality-bar">
@@ -1624,8 +2128,10 @@
 <nav class="tabbar" id="tabbar" aria-label="主要页面">
   <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
   <button data-page="today"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
-  <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
-  <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
+  <button data-page="learning"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span>学习</button>
+  <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>空间</button>
+  <button data-page="partners"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"></use></svg></span>伙伴</button>
+  <button data-page="kanban"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span>看板</button>
 </nav>
 
 <div class="modal" id="modal" hidden>
@@ -1660,15 +2166,35 @@
   const EXAM_DATE_KEY = '408-exam-date-v1';
   const TODAY_KEY = '408-today-question-v1';
   const LIB_TAB_KEY = '408-library-tab-v1';
+  const PARTNER_KEY = '408-partners-v1';
+  const PARTNER_CHAT_KEY = '408-partner-chats-v1';
+  const NOTEBOOK_KEY = '408-notebooks-v1';
+  const JOURNAL_KEY = '408-journal-v1';
+  const MASTERY_KEY = '408-mastery-v1';
+  const TASK_KEY = '408-task-board-v1';
+  const PERSONA_KEY = '408-personas-v1';
+  const SKILL_KEY = '408-skills-v1';
+  const MEMORY_KEY = '408-learning-memory-v1';
   const SUBJECT_FALLBACK = {
     ds: '数据结构', co: '计算机组成原理', os: '操作系统', cn: '计算机网络', '': '未分类'
   };
   const PAGE_META = {
     today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
-    bank: {title: '资料', sub: '真题题库 · 按年份和科目浏览'},
-    knowledge: {title: '资料', sub: '考点卡片 · 与真题双向关联'},
+    mastery: {title: '精通之路', sub: '从考点到自测，一步一步走完'},
+    bank: {title: '题库', sub: '真题题库 · 按年份和科目浏览'},
+    knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
     practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
+    space: {title: '学习空间', sub: '对话、笔记、题目与个性化设置，集中在一处'},
+    history: {title: '聊天历史', sub: '回顾、重命名或继续之前的对话'},
+    notebooks: {title: '笔记本', sub: '把对话里的答案和自己的想法收在一起'},
+    journal: {title: '学习日志', sub: '当前目标、上次交接和确认过的学习记录'},
+    personas: {title: '人格预设', sub: '换一种讲法，引用规则不变'},
+    skills: {title: '技能', sub: '打开或关掉讲解方式，下一次提问生效'},
+    memory: {title: '学习记忆', sub: '记下目标、薄弱点和偏好'},
+    partners: {title: '伙伴', sub: '每个伙伴有自己的性格和讲法，结论仍逐字引用原文'},
+    partner: {title: '伙伴', sub: '和伙伴聊聊'},
+    kanban: {title: '任务看板', sub: '把要做的事放到板上，一步一步推进'},
     quality: {title: '质量看板', sub: '拒答、缓存与语料的运行状况'}
   };
 
@@ -1686,6 +2212,30 @@
   function loadHistory() {
     const val = loadJSON(HISTORY_KEY, {});
     return (val && typeof val === 'object' && !Array.isArray(val)) ? val : {};
+  }
+
+  function loadList(key) {
+    const val = loadJSON(key, []);
+    return Array.isArray(val) ? val.filter(x => x && typeof x === 'object') : [];
+  }
+
+  function loadMastery() {
+    return loadList(MASTERY_KEY)
+      .filter(p => p.id && Array.isArray(p.steps))
+      .map(p => Object.assign({}, p, {
+        done: p.done && typeof p.done === 'object' ? p.done : {},
+        picks: p.picks && typeof p.picks === 'object' ? p.picks : {}
+      }));
+  }
+
+  function loadPartnerChats() {
+    return loadList(PARTNER_CHAT_KEY)
+      .filter(c => c.id && c.partnerId && Array.isArray(c.messages))
+      .map(c => ({
+        id: c.id, partnerId: c.partnerId, messages: c.messages,
+        createdAt: c.createdAt || Date.now(),
+        updatedAt: c.updatedAt || c.createdAt || Date.now()
+      }));
   }
 
   const state = {
@@ -1713,7 +2263,24 @@
                history: loadHistory(), map: null, quiz: null, quizSubject: '',
                quizYear: ''},
     modalId: '',
-    stats: loadJSON(STATS_KEY, {seen: 0, known: 0, unknown: 0})
+    stats: loadJSON(STATS_KEY, {seen: 0, known: 0, unknown: 0}),
+    personas: loadList(PERSONA_KEY),
+    skills: loadSkills(),
+    memory: loadJSON(MEMORY_KEY, {}),
+    partners: loadList(PARTNER_KEY),
+    partnerChats: loadPartnerChats(),
+    partnerId: '',
+    partnerChatId: '',
+    partnerSending: false,
+    notebooks: loadList(NOTEBOOK_KEY),
+    notebookId: '',
+    journal: loadJournal(),
+    mastery: loadMastery(),
+    masteryId: '',
+    masteryQuestions: {},
+    taskBoard: loadTaskBoard(),
+    kanbanArchived: false,
+    chatPersonaId: ''
   };
 
   if (!state.activeId || !state.conversations.some(c => c.id === state.activeId)) {
@@ -2054,9 +2621,9 @@
     return ['badge', '已作答 · 引用已校验'];
   }
 
-  function renderBotMessage(msg) {
+  function renderBotMessage(msg, avatarText) {
     const row = el('div', 'msg bot');
-    row.appendChild(el('div', 'avatar', '408'));
+    row.appendChild(el('div', 'avatar', avatarText || '408'));
     const body = el('div', 'bot-body');
     const data = msg.data || {};
 
@@ -2151,6 +2718,22 @@
     }
 
     body.appendChild(card);
+
+    if (msg.query && (data.answer || data.refused)) {
+      const tools = el('div', 'answer-tools');
+      const nb = el('button', 'tool-btn', '存到笔记本');
+      nb.addEventListener('click', () => saveAnswerToNotebook(msg));
+      const jr = el('button', 'tool-btn', '记入日志');
+      jr.addEventListener('click', () => {
+        journalAdd('chat', clip(msg.query, 40),
+          data.refused ? '资料未覆盖，已记录这个缺口。' : clip(data.answer, 160));
+        toast('已记入学习日志');
+      });
+      tools.appendChild(nb);
+      tools.appendChild(jr);
+      body.appendChild(tools);
+    }
+
     row.appendChild(body);
     return row;
   }
@@ -2242,7 +2825,8 @@
     try {
       const data = await api('/chat', {
         method: 'POST',
-        body: {query: text, history: history}
+        body: {query: text, history: history,
+               style: styleFor(currentPersonaId())}
       });
       conv.messages.push({role: 'assistant', data: data, query: text,
         ts: Date.now()});
@@ -3777,6 +4361,9 @@
     if (!qz || qz.finished) return;
     if (qz.index + 1 >= qz.questions.length) {
       qz.finished = true;
+      journalAdd('practice', '完成一组小测',
+        '答对 ' + qz.correct + ' / ' + qz.questions.length + ' 题' +
+        (qz.quizSubject ? ' · ' + subjectName(qz.quizSubject) : ''));
     } else {
       qz.index += 1;
     }
@@ -4131,7 +4718,11 @@
     $('#modal').hidden = true;
     document.body.style.overflow = '';
     // 关闭详情时把地址栏退回当前页；用 replace 避免多出一条历史记录
-    if (routeId && !silent) history.replaceState(null, '', '#/' + state.page);
+    if (routeId && !silent) {
+      const id = detailIdFor(state.page);
+      history.replaceState(null, '', '#/' + state.page +
+        (id ? '/' + encodeURIComponent(id) : ''));
+    }
   }
 
   function openSettings(message) {
@@ -4225,10 +4816,2098 @@
 
   /* ---------- routing / events ---------- */
   // 页面和详情都进地址栏：刷新、分享链接、浏览器后退都能回到原处。
+  /* ---------- v0.22 学习空间 / 伙伴 / 精通之路 / 任务看板 ---------- */
+  function uid(prefix) {
+    return prefix + '-' + Date.now().toString(36) + '-' +
+      Math.random().toString(36).slice(2, 7);
+  }
+
+  function saveKey(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      toast('本机存储空间不足，改动没有保存', 'err');
+    }
+  }
+
+  function subjectName(key) {
+    return subjectLabel(key == null ? '' : key);
+  }
+
+  function field(labelText, node, help) {
+    const row = el('div', 'form-row');
+    row.appendChild(el('label', null, labelText));
+    row.appendChild(node);
+    if (help) row.appendChild(el('div', 'form-help', help));
+    return row;
+  }
+
+  function selectEl(options, value) {
+    const sel = el('select');
+    options.forEach(([key, label]) => {
+      const opt = el('option', null, label);
+      opt.value = key;
+      if (String(key) === String(value)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  function subjectSelectOptions(withAll) {
+    const list = [{key: '', label: withAll ? '全部科目' : '未分类'}]
+      .concat(state.meta && state.meta.subjects ? state.meta.subjects : []);
+    return list.map(s => [s.key, s.label + (s.count != null ? ' ' + s.count : '')]);
+  }
+
+  function clearNode(sel) {
+    const node = $(sel);
+    if (node) node.replaceChildren();
+    return node;
+  }
+
+  /* ---------- 技能 / 风格 ---------- */
+  function defaultSkills() {
+    return [
+      {id: 'skill-step', name: '分步推导', on: false, builtin: true,
+       desc: '把思路拆成步骤，先讲为什么，再落到结论。',
+       prompt: '讲解时先拆步骤和依据，再给结论'},
+      {id: 'skill-example', name: '例题先行', on: false, builtin: true,
+       desc: '先用一道真题做示范，再总结规律。',
+       prompt: '先用资料里的真题做示范，再归纳做法'},
+      {id: 'skill-conclusion', name: '结论先行', on: false, builtin: true,
+       desc: '第一句先给结论，后面再补依据。',
+       prompt: '第一句先给结论，再用引用补依据'},
+      {id: 'skill-pitfall', name: '易错点提醒', on: false, builtin: true,
+       desc: '把容易混淆的概念和常见错法点出来。',
+       prompt: '讲完结论后，指出最容易混淆或做错的地方'},
+      {id: 'skill-quiz', name: '讲完自测', on: false, builtin: true,
+       desc: '讲完后给一个可以自测的小问题。',
+       prompt: '讲完后用一句话给出一个自测方向，不要编造题目'}
+    ];
+  }
+
+  function loadSkills() {
+    const saved = loadJSON(SKILL_KEY, []);
+    if (!Array.isArray(saved) || !saved.length) return defaultSkills();
+    const byId = {};
+    saved.forEach(s => {
+      if (!s || !s.id) return;
+      byId[s.id] = {
+        id: s.id, name: String(s.name || '技能'),
+        desc: String(s.desc || ''), prompt: String(s.prompt || ''),
+        on: !!s.on, builtin: !!s.builtin
+      };
+    });
+    // 内置技能即使旧存档里没有也要出现，顺序固定
+    return defaultSkills().map(base => byId[base.id] ?
+      Object.assign({}, base, byId[base.id], {builtin: true}) : base)
+      .concat(saved.filter(s => s && s.id && !defaultSkills().some(b => b.id === s.id))
+        .map(s => ({
+          id: s.id, name: String(s.name || '技能'), desc: String(s.desc || ''),
+          prompt: String(s.prompt || ''), on: !!s.on, builtin: false
+        })));
+  }
+
+  function saveSkills() { saveKey(SKILL_KEY, state.skills); }
+
+  function memorySummary() {
+    const m = state.memory || {};
+    const bits = [];
+    if (m.goal) bits.push('目标：' + m.goal);
+    if (m.score) bits.push('目标分数：' + m.score);
+    if (m.weak && m.weak.length) bits.push('薄弱：' + m.weak.map(subjectName).join('、'));
+    if (m.pref) bits.push('偏好：' + m.pref);
+    return bits.join('；');
+  }
+
+  function styleExtras() {
+    const bits = [];
+    const on = state.skills.filter(s => s.on);
+    if (on.length) bits.push('讲解方式：' + on.map(s => s.name + '——' + s.prompt).join('；'));
+    const mem = memorySummary();
+    if (mem) bits.push('学习者情况（只用于调整侧重）：' + mem);
+    return bits.join('；');
+  }
+
+  function styleFor(personaId) {
+    const bits = [];
+    const p = personaById(personaId);
+    if (p && p.style) bits.push('说话风格：' + p.style);
+    const extras = styleExtras();
+    if (extras) bits.push(extras);
+    return bits.join('；').slice(0, 400);
+  }
+
+  function partnerStyle(partner) {
+    if (!partner) return styleExtras().slice(0, 400);
+    const bits = ['你正在扮演学习伙伴「' + partner.name + '」。'];
+    if (partner.role) bits.push('角色：' + partner.role + '。');
+    if (partner.subject) bits.push('主要辅导科目：' + subjectName(partner.subject) + '。');
+    if (partner.soul) bits.push('性格与说话方式：' + partner.soul + '。');
+    const extras = styleExtras();
+    if (extras) bits.push(extras);
+    return bits.join(' ').slice(0, 400);
+  }
+
+  /* ---------- 学习日志 ---------- */
+  function loadJournal() {
+    const raw = loadJSON(JOURNAL_KEY, null);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return {goal: '', records: []};
+    }
+    return {
+      goal: String(raw.goal || ''),
+      records: Array.isArray(raw.records) ? raw.records : []
+    };
+  }
+
+  function saveJournal() { saveKey(JOURNAL_KEY, state.journal); }
+
+  function journalAdd(type, title, insight) {
+    state.journal.records.unshift({
+      id: uid('j'), type: type || 'note', title: String(title || '').slice(0, 80),
+      insight: String(insight || '').slice(0, 600), ts: Date.now()
+    });
+    state.journal.records = state.journal.records.slice(0, 200);
+    saveJournal();
+    if (state.page === 'journal') renderJournal();
+  }
+
+  function journalHandoff() {
+    const bits = [];
+    const conv = state.conversations.slice()
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    if (conv) bits.push('上次问到：' + conv.title);
+    const last = Object.values(state.practice.history || {})
+      .sort((a, b) => (b.last_at || 0) - (a.last_at || 0))[0];
+    if (last) {
+      bits.push('最近练到：' + clip(last.stem, 38) +
+        '（' + (last.result === 'known' ? '会了' : '还不会') + '）');
+    }
+    const path = state.mastery.slice()
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    if (path) bits.push('精通之路：' + path.name + ' ' + masteryStats(path).pct + '%');
+    return bits.join('；') || '还没有学习记录，先去问一句或练一题吧。';
+  }
+
+  const JOURNAL_TYPES = {
+    chat: '问答', practice: '练习', mastery: '精通之路', task: '任务', note: '手记'
+  };
+
+  function renderJournal() {
+    const root = clearNode('#journal-root');
+    if (!root) return;
+    const goal = el('textarea');
+    goal.value = state.journal.goal || '';
+    goal.placeholder = '例如：11 月前把数据结构与算法的真题过一遍，重点补图论。';
+    goal.rows = 3;
+    const goalRow = field('我的目标', goal, '目标只存在这台设备上，不会上传。');
+    const saveBtn = el('button', 'primary', '保存目标');
+    saveBtn.addEventListener('click', () => {
+      state.journal.goal = goal.value.trim();
+      saveJournal();
+      toast('目标已保存');
+    });
+    const actions = el('div', 'form-actions');
+    actions.appendChild(saveBtn);
+    goalRow.appendChild(actions);
+    const mission = el('div', 'panel');
+    mission.appendChild(el('div', 'panel-title', '当前目标'));
+    mission.appendChild(goalRow);
+    root.appendChild(mission);
+
+    const handoff = el('div', 'panel');
+    const hHead = el('div', 'panel-head');
+    hHead.appendChild(el('div', 'panel-title', '上次交接'));
+    const addBtn = el('button', 'ghost', '记一条');
+    addBtn.addEventListener('click', openJournalEditor);
+    hHead.appendChild(addBtn);
+    handoff.appendChild(hHead);
+    handoff.appendChild(el('div', 'journal-mission', journalHandoff()));
+    root.appendChild(handoff);
+
+    const list = el('div', 'panel');
+    const lHead = el('div', 'panel-head');
+    lHead.appendChild(el('div', 'panel-title', '确认过的学习记录'));
+    lHead.appendChild(el('span', 'panel-sub', state.journal.records.length + ' 条'));
+    list.appendChild(lHead);
+    if (!state.journal.records.length) {
+      list.appendChild(el('div', 'empty-panel',
+        '还没有记录。答完题后点「记入日志」，或在这里手记一条。'));
+    } else {
+      const tl = el('div', 'timeline');
+      state.journal.records.slice(0, 60).forEach(rec => {
+        const item = el('div', 'tl-item');
+        item.appendChild(el('span', 'tl-dot ' + rec.type));
+        const body = el('div', 'tl-body');
+        body.appendChild(el('div', 'tl-title', rec.title || '学习记录'));
+        if (rec.insight) body.appendChild(el('div', 'tl-text', rec.insight));
+        item.appendChild(body);
+        item.appendChild(el('span', 'tl-time',
+          formatWhen(rec.ts) + ' · ' + (JOURNAL_TYPES[rec.type] || '记录')));
+        tl.appendChild(item);
+      });
+      list.appendChild(tl);
+    }
+    root.appendChild(list);
+  }
+
+  function openJournalEditor() {
+    const wrap = el('div', 'form-grid');
+    const title = el('input');
+    title.placeholder = '记下什么？';
+    title.maxLength = 80;
+    const text = el('textarea');
+    text.placeholder = '一句话写下今天真正弄懂的东西。';
+    wrap.appendChild(field('标题', title));
+    wrap.appendChild(field('内容', text));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      if (!title.value.trim()) { title.focus(); return; }
+      journalAdd('note', title.value.trim(), text.value.trim());
+      closeModal();
+      toast('已记入学习日志');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('记一条', wrap);
+    title.focus();
+  }
+
+  /* ---------- 学习空间 ---------- */
+  function renderSpace() {
+    const root = clearNode('#space-groups');
+    if (!root) return;
+    const meta = state.meta || {};
+    const enabled = state.skills.filter(s => s.on).length;
+    const groups = [
+      {label: '对话与资料', items: [
+        {page: 'history', icon: 'i-chat', title: '聊天历史',
+         desc: '回顾并继续之前的对话。',
+         count: state.conversations.length + ' 段对话'},
+        {page: 'notebooks', icon: 'i-book', title: '笔记本',
+         desc: '把答案、引用和自己的手记收在一起。',
+         count: state.notebooks.length + ' 个笔记本'},
+        {page: 'journal', icon: 'i-pen', title: '学习日志',
+         desc: '当前目标、上次交接和确认过的学习记录。',
+         count: state.journal.records.length + ' 条记录'},
+        {page: 'bank', icon: 'i-list', title: '题库',
+         desc: '按年份和科目浏览真题，勾选后直接开练。',
+         count: meta.chunks != null ? meta.chunks + ' 道题' : '真题题库'},
+        {page: 'knowledge', icon: 'i-book', title: '考点',
+         desc: '考点卡片与关联真题，按章节查看。',
+         count: meta.knowledge != null ? meta.knowledge + ' 张卡片' : '考点卡片'}
+      ]},
+      {label: '个性化', items: [
+        {page: 'personas', icon: 'i-users', title: '人格预设',
+         desc: '给回答换一种讲法，引用规则不变。',
+         count: state.personas.length + ' 个预设'},
+        {page: 'skills', icon: 'i-route', title: '技能',
+         desc: '打开或关掉讲解方式，下一次提问生效。',
+         count: enabled + ' / ' + state.skills.length + ' 已启用'},
+        {page: 'memory', icon: 'i-grid', title: '学习记忆',
+         desc: '记下目标、薄弱点和偏好。',
+         count: memorySummary() ? '已填写' : '待填写'}
+      ]}
+    ];
+    groups.forEach(group => {
+      const sec = el('section', 'space-group');
+      sec.appendChild(el('h2', null, group.label));
+      const grid = el('div', 'space-grid');
+      group.items.forEach(item => {
+        const card = el('button', 'space-card');
+        card.type = 'button';
+        const icon = el('span', 'space-icon');
+        icon.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#' +
+          item.icon + '"></use></svg>';
+        card.appendChild(icon);
+        const body = el('span', 'space-body');
+        body.appendChild(el('span', 'space-title', item.title));
+        body.appendChild(el('span', 'space-desc', item.desc));
+        card.appendChild(body);
+        card.appendChild(el('span', 'space-count', item.count));
+        card.addEventListener('click', () => go(item.page));
+        grid.appendChild(card);
+      });
+      sec.appendChild(grid);
+      root.appendChild(sec);
+    });
+  }
+
+  /* ---------- 聊天历史 ---------- */
+  function renderHistory() {
+    const root = clearNode('#history-root');
+    if (!root) return;
+    const bar = el('div', 'toolbar');
+    const search = el('div', 'search-line grow');
+    const input = el('input');
+    input.placeholder = '搜索对话标题或内容…';
+    input.id = 'history-search';
+    search.appendChild(input);
+    bar.appendChild(search);
+    root.appendChild(bar);
+
+    const listBox = el('div', 'stack');
+    root.appendChild(listBox);
+    const draw = q => {
+      listBox.replaceChildren();
+      const kw = (q || '').trim().toLowerCase();
+      const rows = state.conversations.slice()
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .filter(c => {
+          if (!kw) return true;
+          return (c.title || '').toLowerCase().indexOf(kw) >= 0 ||
+            (c.messages || []).some(m => (m.content || '').toLowerCase().indexOf(kw) >= 0);
+        });
+      if (!rows.length) {
+        listBox.appendChild(el('div', 'empty-panel', kw ?
+          '没有匹配的对话。' : '还没有对话，去问答页问一句吧。'));
+        return;
+      }
+      rows.forEach(conv => {
+        const row = el('div', 'list-row');
+        const main = el('div', 'list-main');
+        const title = el('button', 'list-title', conv.title || '未命名对话');
+        title.style.border = '0';
+        title.style.background = 'transparent';
+        title.style.textAlign = 'left';
+        title.style.cursor = 'pointer';
+        title.addEventListener('click', () => openConversation(conv.id));
+        main.appendChild(title);
+        main.appendChild(el('div', 'list-meta',
+          (conv.messages || []).length + ' 条消息 · ' +
+          formatWhen(conv.updatedAt || conv.createdAt || 0)));
+        row.appendChild(main);
+        const acts = el('div', 'list-actions');
+        const open = el('button', 'row-btn', '继续');
+        open.addEventListener('click', () => openConversation(conv.id));
+        const rename = el('button', 'row-btn', '重命名');
+        rename.addEventListener('click', () => renameConversation(conv));
+        const del = el('button', 'row-btn danger', '删除');
+        del.addEventListener('click', () => deleteConversation(conv.id));
+        acts.appendChild(open);
+        acts.appendChild(rename);
+        acts.appendChild(del);
+        row.appendChild(acts);
+        listBox.appendChild(row);
+      });
+    };
+    let timer = null;
+    input.addEventListener('input', e => {
+      clearTimeout(timer);
+      timer = setTimeout(() => draw(e.target.value), 120);
+    });
+    draw('');
+  }
+
+  function openConversation(id) {
+    state.activeId = id;
+    localStorage.setItem(ACTIVE_KEY, id);
+    renderConvList();
+    go('chat');
+  }
+
+  function renameConversation(conv) {
+    const wrap = el('div', 'form-grid');
+    const input = el('input');
+    input.value = conv.title || '';
+    input.maxLength = 40;
+    wrap.appendChild(field('对话标题', input));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      const v = input.value.trim();
+      if (!v) { input.focus(); return; }
+      conv.title = v;
+      conv.updatedAt = Date.now();
+      saveConvs();
+      renderConvList();
+      closeModal();
+      if (state.page === 'history') renderHistory();
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('重命名对话', wrap);
+    input.focus();
+  }
+
+  /* ---------- 笔记本 ---------- */
+  function saveNotebooks() { saveKey(NOTEBOOK_KEY, state.notebooks); }
+
+  function notebookById(id) {
+    return state.notebooks.find(n => n.id === id) || null;
+  }
+
+  function renderNotebooks() {
+    const root = clearNode('#notebook-root');
+    if (!root) return;
+    const nb = notebookById(state.notebookId);
+    if (nb) { renderNotebookDetail(root, nb); return; }
+    state.notebookId = '';
+    const head = el('div', 'page-head-row');
+    const info = el('div');
+    info.appendChild(el('div', 'panel-title', '我的笔记本'));
+    info.appendChild(el('div', 'panel-sub', '从对话里保存答案，或者自己写一条。'));
+    head.appendChild(info);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '新建笔记本');
+    add.addEventListener('click', () => openNotebookEditor(null));
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (!state.notebooks.length) {
+      root.appendChild(el('div', 'empty-panel',
+        '还没有笔记本。新建一个，再从问答里把答案存进来。'));
+      return;
+    }
+    const grid = el('div', 'grid-2');
+    state.notebooks.slice().sort((a, b) =>
+      (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(n => {
+      const card = el('div', 'persona-card');
+      const title = el('button', 'list-title', n.name);
+      title.style.cssText = 'border:0;background:transparent;text-align:left;cursor:pointer;padding:0;';
+      title.addEventListener('click', () => {
+        state.notebookId = n.id;
+        go('notebooks', n.id);
+      });
+      card.appendChild(title);
+      card.appendChild(el('div', 'list-meta',
+        ((n.entries || []).length) + ' 条记录 · ' +
+        formatWhen(n.updatedAt || n.createdAt || 0)));
+      const last = (n.entries || [])[0];
+      if (last) card.appendChild(el('div', 'persona-preview', last.title || last.content || ''));
+      const row = el('div', 'partner-actions');
+      const open = el('button', 'row-btn', '打开');
+      open.addEventListener('click', () => {
+        state.notebookId = n.id;
+        go('notebooks', n.id);
+      });
+      const edit = el('button', 'row-btn', '重命名');
+      edit.addEventListener('click', () => openNotebookEditor(n));
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => {
+        if (!window.confirm('删除笔记本「' + n.name + '」？里面的记录会一起删掉。')) return;
+        state.notebooks = state.notebooks.filter(x => x.id !== n.id);
+        saveNotebooks();
+        renderNotebooks();
+        toast('笔记本已删除');
+      });
+      row.appendChild(open);
+      row.appendChild(edit);
+      row.appendChild(del);
+      card.appendChild(row);
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
+  }
+
+  function renderNotebookDetail(root, nb) {
+    const head = el('div', 'page-head-row');
+    const left = el('div');
+    const back = el('button', 'row-btn', '← 全部笔记本');
+    back.style.marginBottom = '8px';
+    back.addEventListener('click', () => {
+      state.notebookId = '';
+      go('notebooks');
+    });
+    left.appendChild(back);
+    left.appendChild(el('div', 'panel-title', nb.name));
+    left.appendChild(el('div', 'panel-sub',
+      ((nb.entries || []).length) + ' 条记录 · 只保存在这台设备上'));
+    head.appendChild(left);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '写一条');
+    add.addEventListener('click', () => openNotebookEntry(nb));
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (!(nb.entries || []).length) {
+      root.appendChild(el('div', 'empty-panel',
+        '还是空的。去问答页答完一题，点「存到笔记本」。'));
+      return;
+    }
+    const list = el('div', 'stack');
+    (nb.entries || []).forEach(entry => {
+      const box = el('div', 'note-entry');
+      const top = el('div', 'panel-head');
+      const info = el('div');
+      info.appendChild(el('h3', null, entry.title || '未命名记录'));
+      if (entry.source) info.appendChild(el('div', 'list-meta', '来自：' + entry.source));
+      top.appendChild(info);
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => {
+        nb.entries = (nb.entries || []).filter(x => x.id !== entry.id);
+        nb.updatedAt = Date.now();
+        saveNotebooks();
+        renderNotebooks();
+      });
+      top.appendChild(del);
+      box.appendChild(top);
+      box.appendChild(el('div', 'note-body', entry.content || ''));
+      box.appendChild(el('div', 'note-meta', formatWhen(entry.ts)));
+      list.appendChild(box);
+    });
+    root.appendChild(list);
+  }
+
+  function openNotebookEditor(nb) {
+    const wrap = el('div', 'form-grid');
+    const input = el('input');
+    input.value = nb ? nb.name : '';
+    input.placeholder = '例如：数据结构错题整理';
+    input.maxLength = 40;
+    wrap.appendChild(field('笔记本名称', input));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', nb ? '保存' : '创建');
+    save.addEventListener('click', () => {
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      if (nb) {
+        nb.name = name;
+      } else {
+        state.notebooks.unshift({
+          id: uid('nb'), name, entries: [], createdAt: Date.now(), updatedAt: Date.now()
+        });
+      }
+      saveNotebooks();
+      closeModal();
+      renderNotebooks();
+      toast(nb ? '笔记本已重命名' : '笔记本已创建');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal(nb ? '重命名笔记本' : '新建笔记本', wrap);
+    input.focus();
+  }
+
+  function openNotebookEntry(nb) {
+    const wrap = el('div', 'form-grid');
+    const title = el('input');
+    title.placeholder = '这条记录叫什么？';
+    title.maxLength = 80;
+    const content = el('textarea');
+    content.placeholder = '写下你的理解、易错点或待办。';
+    wrap.appendChild(field('标题', title));
+    wrap.appendChild(field('内容', content));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      const t = title.value.trim();
+      const c = content.value.trim();
+      if (!t && !c) { title.focus(); return; }
+      nb.entries = nb.entries || [];
+      nb.entries.unshift({
+        id: uid('en'), title: t || c.slice(0, 30), content: c,
+        source: '', ts: Date.now()
+      });
+      nb.updatedAt = Date.now();
+      saveNotebooks();
+      closeModal();
+      renderNotebooks();
+      toast('已保存到「' + nb.name + '」');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('写一条', wrap);
+    title.focus();
+  }
+
+  function saveAnswerToNotebook(msg) {
+    const data = msg.data || {};
+    const wrap = el('div', 'form-grid');
+    const pick = el('select');
+    state.notebooks.forEach(n => {
+      const opt = el('option', null, n.name);
+      opt.value = n.id;
+      pick.appendChild(opt);
+    });
+    const newOpt = el('option', null, '＋ 新建笔记本');
+    newOpt.value = '__new__';
+    pick.appendChild(newOpt);
+    const newName = el('input');
+    newName.placeholder = '新笔记本名称';
+    newName.maxLength = 40;
+    newName.hidden = true;
+    const title = el('input');
+    title.value = (msg.query || '对话答案').slice(0, 60);
+    title.maxLength = 80;
+    wrap.appendChild(field('存到哪个笔记本', pick));
+    wrap.appendChild(field('新笔记本名称', newName));
+    wrap.appendChild(field('记录标题', title));
+    pick.addEventListener('change', () => {
+      newName.hidden = pick.value !== '__new__';
+      if (!newName.hidden) newName.focus();
+    });
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      let nb = notebookById(pick.value);
+      if (pick.value === '__new__') {
+        const name = newName.value.trim();
+        if (!name) { newName.focus(); return; }
+        nb = {id: uid('nb'), name, entries: [], createdAt: Date.now(), updatedAt: Date.now()};
+        state.notebooks.unshift(nb);
+      } else if (!nb) {
+        toast('先新建一个笔记本', 'err');
+        return;
+      }
+      let content = data.answer || '';
+      if (data.citations && data.citations.length) {
+        content += '\n\n引用：\n' + data.citations.map(c =>
+          '[' + c.chunk_id + '] “' + (c.quote || '') + '”').join('\n');
+      }
+      nb.entries = nb.entries || [];
+      nb.entries.unshift({
+        id: uid('en'), title: title.value.trim() || '对话答案', content,
+        source: msg.query || '', ts: Date.now()
+      });
+      nb.updatedAt = Date.now();
+      saveNotebooks();
+      closeModal();
+      toast('已存到「' + nb.name + '」');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('存到笔记本', wrap);
+  }
+
+  /* ---------- 人格预设 ---------- */
+  function personaById(id) {
+    return state.personas.find(p => p.id === id) || null;
+  }
+
+  function savePersonas() { saveKey(PERSONA_KEY, state.personas); }
+
+  function renderPersonas() {
+    const root = clearNode('#persona-root');
+    if (!root) return;
+    const head = el('div', 'page-head-row');
+    const info = el('div');
+    info.appendChild(el('div', 'panel-title', '人格预设'));
+    info.appendChild(el('div', 'panel-sub',
+      '选中后只改变语气和组织方式，事实与引用仍逐字核对。'));
+    head.appendChild(info);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '新建预设');
+    add.addEventListener('click', () => openPersonaEditor(null));
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (!state.personas.length) {
+      root.appendChild(el('div', 'empty-panel',
+        '还没有人格预设。比如「像同桌一样讲」「只讲考点不寒暄」。'));
+      return;
+    }
+    const grid = el('div', 'grid-2');
+    state.personas.forEach(p => {
+      const card = el('div', 'persona-card');
+      card.appendChild(el('div', 'skill-name', p.name));
+      if (p.desc) card.appendChild(el('div', 'skill-desc', p.desc));
+      card.appendChild(el('div', 'persona-preview', p.style || ''));
+      const row = el('div', 'partner-actions');
+      const use = el('button', 'row-btn', '用于问答');
+      use.addEventListener('click', () => {
+        state.chatPersonaId = p.id;
+        const conv = activeConv();
+        if (conv) { conv.personaId = p.id; saveConvs(); }
+        renderPersonaChip();
+        go('chat');
+        toast('已切换人格：' + p.name);
+      });
+      const edit = el('button', 'row-btn', '编辑');
+      edit.addEventListener('click', () => openPersonaEditor(p));
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => {
+        if (!window.confirm('删除人格预设「' + p.name + '」？')) return;
+        state.personas = state.personas.filter(x => x.id !== p.id);
+        if (state.chatPersonaId === p.id) state.chatPersonaId = '';
+        savePersonas();
+        renderPersonas();
+        renderPersonaChip();
+      });
+      row.appendChild(use);
+      row.appendChild(edit);
+      row.appendChild(del);
+      card.appendChild(row);
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
+  }
+
+  function openPersonaEditor(p) {
+    const wrap = el('div', 'form-grid');
+    const name = el('input');
+    name.value = p ? p.name : '';
+    name.placeholder = '例如：同桌阿哲';
+    name.maxLength = 24;
+    const desc = el('input');
+    desc.value = p ? (p.desc || '') : '';
+    desc.placeholder = '一句话说明它适合什么时候用';
+    desc.maxLength = 60;
+    const style = el('textarea');
+    style.value = p ? (p.style || '') : '';
+    style.placeholder = '例如：说话口语化，先问我是怎么想的，再一步步提示；不直接给答案。';
+    style.maxLength = 300;
+    wrap.appendChild(field('名称', name));
+    wrap.appendChild(field('用途', desc));
+    wrap.appendChild(field('说话方式', style,
+      '只影响措辞；引用校验和拒答规则不会被放宽。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', p ? '保存' : '创建');
+    save.addEventListener('click', () => {
+      const n = name.value.trim();
+      const s = style.value.trim();
+      if (!n) { name.focus(); return; }
+      if (!s) { style.focus(); return; }
+      if (p) {
+        p.name = n; p.desc = desc.value.trim(); p.style = s;
+      } else {
+        state.personas.unshift({
+          id: uid('p'), name: n, desc: desc.value.trim(), style: s, createdAt: Date.now()
+        });
+      }
+      savePersonas();
+      closeModal();
+      renderPersonas();
+      renderPersonaChip();
+      toast(p ? '人格预设已保存' : '人格预设已创建');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal(p ? '编辑人格预设' : '新建人格预设', wrap);
+    name.focus();
+  }
+
+  function currentPersonaId() {
+    const conv = activeConv();
+    return (conv && conv.personaId) || state.chatPersonaId || '';
+  }
+
+  function renderPersonaChip() {
+    const chip = $('#persona-chip');
+    if (!chip) return;
+    const p = personaById(currentPersonaId());
+    chip.textContent = p ? p.name : '默认';
+    chip.classList.toggle('on', !!p);
+    chip.title = p ? '当前人格：' + p.name : '选择人格预设';
+  }
+
+  function openPersonaPicker() {
+    const wrap = el('div', 'form-grid');
+    const list = el('div', 'stack');
+    const mk = (id, name, desc) => {
+      const row = el('button', 'list-row');
+      row.type = 'button';
+      row.style.textAlign = 'left';
+      row.style.cursor = 'pointer';
+      const main = el('div', 'list-main');
+      main.appendChild(el('div', 'list-title', name));
+      if (desc) main.appendChild(el('div', 'list-meta', desc));
+      row.appendChild(main);
+      if (currentPersonaId() === id) row.appendChild(el('span', 'badge', '使用中'));
+      row.addEventListener('click', () => {
+        state.chatPersonaId = id;
+        const conv = activeConv();
+        if (conv) { conv.personaId = id; saveConvs(); }
+        renderPersonaChip();
+        closeModal();
+      });
+      list.appendChild(row);
+    };
+    mk('', '默认 408 助教', '直接、克制，只讲资料里有的。');
+    state.personas.forEach(p => mk(p.id, p.name, p.desc || p.style));
+    wrap.appendChild(list);
+    const acts = el('div', 'form-actions');
+    const manage = el('button', 'ghost', '管理预设');
+    manage.addEventListener('click', () => { closeModal(); go('personas'); });
+    acts.appendChild(manage);
+    wrap.appendChild(acts);
+    openModal('选择人格', wrap);
+  }
+
+  /* ---------- 技能 ---------- */
+  function renderSkills() {
+    const root = clearNode('#skill-root');
+    if (!root) return;
+    const head = el('div', 'page-head-row');
+    const info = el('div');
+    info.appendChild(el('div', 'panel-title', '技能'));
+    info.appendChild(el('div', 'panel-sub',
+      '启用的技能会拼进下一次提问的讲解要求；引用和拒答规则始终不变。'));
+    head.appendChild(info);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '新建技能');
+    add.addEventListener('click', () => openSkillEditor());
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    const list = el('div', 'stack');
+    state.skills.forEach(sk => {
+      const row = el('div', 'skill-row');
+      const main = el('div', 'skill-main');
+      main.appendChild(el('div', 'skill-name', sk.name));
+      main.appendChild(el('div', 'skill-desc', sk.desc || sk.prompt));
+      if (!sk.builtin) {
+        const del = el('button', 'row-btn danger', '删除');
+        del.style.marginTop = '8px';
+        del.addEventListener('click', () => {
+          state.skills = state.skills.filter(x => x.id !== sk.id);
+          saveSkills();
+          renderSkills();
+        });
+        main.appendChild(del);
+      }
+      row.appendChild(main);
+      const toggle = el('button', 'switch' + (sk.on ? ' on' : ''));
+      toggle.type = 'button';
+      toggle.setAttribute('role', 'switch');
+      toggle.setAttribute('aria-checked', sk.on ? 'true' : 'false');
+      toggle.setAttribute('aria-label', sk.name);
+      toggle.addEventListener('click', () => {
+        sk.on = !sk.on;
+        saveSkills();
+        renderSkills();
+        toast(sk.on ? '已启用「' + sk.name + '」' : '已关闭「' + sk.name + '」');
+      });
+      row.appendChild(toggle);
+      list.appendChild(row);
+    });
+    root.appendChild(list);
+  }
+
+  function openSkillEditor() {
+    const wrap = el('div', 'form-grid');
+    const name = el('input');
+    name.placeholder = '例如：先问我的思路';
+    name.maxLength = 24;
+    const desc = el('input');
+    desc.placeholder = '一句话说明这个技能做什么';
+    desc.maxLength = 60;
+    const prompt = el('textarea');
+    prompt.placeholder = '写给模型的讲解要求，例如：先问我打算怎么做，再根据我的回答提示下一步。';
+    prompt.maxLength = 200;
+    wrap.appendChild(field('名称', name));
+    wrap.appendChild(field('说明', desc));
+    wrap.appendChild(field('讲解要求', prompt,
+      '这只是风格要求，不能要求编造资料或忽略引用。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '创建');
+    save.addEventListener('click', () => {
+      const n = name.value.trim();
+      const p = prompt.value.trim();
+      if (!n) { name.focus(); return; }
+      if (!p) { prompt.focus(); return; }
+      state.skills.push({
+        id: uid('sk'), name: n, desc: desc.value.trim(), prompt: p,
+        on: true, builtin: false
+      });
+      saveSkills();
+      closeModal();
+      renderSkills();
+      toast('技能已创建并启用');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('新建技能', wrap);
+    name.focus();
+  }
+
+  /* ---------- 学习记忆 ---------- */
+  function renderMemory() {
+    const root = clearNode('#memory-root');
+    if (!root) return;
+    const m = state.memory || {};
+    const wrap = el('div', 'panel');
+    wrap.appendChild(el('div', 'panel-title', '学习记忆'));
+    wrap.appendChild(el('div', 'panel-sub',
+      '这些信息只会拼进讲解提示，帮助你得到更贴近自己的说法；不会上传，也不会被当成事实来源。'));
+
+    const form = el('div', 'form-grid');
+    form.style.marginTop = '14px';
+    const goal = el('input');
+    goal.value = m.goal || '';
+    goal.placeholder = '例如：2027 年 408 上岸，目标 120+';
+    goal.maxLength = 80;
+    const score = el('input');
+    score.value = m.score || '';
+    score.placeholder = '例如：120';
+    score.maxLength = 20;
+    const pref = el('textarea');
+    pref.value = m.pref || '';
+    pref.placeholder = '例如：喜欢先看例子再看定义；公式推导要一步步写。';
+    pref.maxLength = 200;
+
+    form.appendChild(field('目标', goal));
+    form.appendChild(field('目标分数', score));
+    const weak = el('div', 'chip-row');
+    const weakSet = new Set(m.weak || []);
+    (state.meta && state.meta.subjects ? state.meta.subjects : []).forEach(s => {
+      const chip = el('button', 'chip-toggle' + (weakSet.has(s.key) ? ' on' : ''), s.label);
+      chip.type = 'button';
+      chip.addEventListener('click', () => {
+        if (weakSet.has(s.key)) weakSet.delete(s.key);
+        else weakSet.add(s.key);
+        chip.classList.toggle('on', weakSet.has(s.key));
+      });
+      weak.appendChild(chip);
+    });
+    const weakRow = el('div', 'form-row');
+    weakRow.appendChild(el('label', null, '薄弱科目'));
+    weakRow.appendChild(weak);
+    form.appendChild(weakRow);
+    form.appendChild(field('学习偏好', pref));
+
+    const acts = el('div', 'form-actions');
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      state.memory = {
+        goal: goal.value.trim(), score: score.value.trim(),
+        weak: Array.from(weakSet), pref: pref.value.trim(), updatedAt: Date.now()
+      };
+      saveKey(MEMORY_KEY, state.memory);
+      toast('学习记忆已保存');
+      renderMemory();
+    });
+    acts.appendChild(save);
+    form.appendChild(acts);
+    wrap.appendChild(form);
+    root.appendChild(wrap);
+  }
+
+  /* ---------- 精通之路 ---------- */
+  const MASTERY_STEPS = 5;
+
+  function saveMastery() { saveKey(MASTERY_KEY, state.mastery.slice(0, 40)); }
+
+  function masteryById(id) {
+    return state.mastery.find(p => p.id === id) || null;
+  }
+
+  function masteryStats(path) {
+    const steps = (path && path.steps) || [];
+    const total = steps.length;
+    const done = steps.filter(s => path.done && path.done[s.id]).length;
+    return {done, total, pct: total ? Math.round(done / total * 100) : 0};
+  }
+
+  function masteryStepDone(path, stepId) {
+    return !!(path.done && path.done[stepId]);
+  }
+
+  function checkMasteryComplete(path) {
+    const s = masteryStats(path);
+    const complete = s.total > 0 && s.done >= s.total;
+    if (complete && !path.completedAt) {
+      path.completedAt = Date.now();
+      journalAdd('mastery', '走完精通之路：' + path.name,
+        '完成 ' + s.total + ' 个考点 · ' + subjectName(path.subject));
+      return true;
+    }
+    if (!complete) path.completedAt = 0;
+    return false;
+  }
+
+  function renderMastery() {
+    const root = clearNode('#mastery-root');
+    if (!root) return;
+    const path = masteryById(state.masteryId);
+    if (path) { renderMasteryDetail(root, path); return; }
+    state.masteryId = '';
+
+    const head = el('div', 'page-head-row');
+    const info = el('div');
+    info.appendChild(el('div', 'panel-title', '精通之路'));
+    info.appendChild(el('div', 'panel-sub',
+      '选一科，把高频考点排成一条路线；每一步都有一道真题自测，答对才算走完。'));
+    head.appendChild(info);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '新建一条路');
+    add.addEventListener('click', openMasteryEditor);
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (!state.mastery.length) {
+      const empty = el('div', 'empty-panel');
+      empty.appendChild(el('strong', null, '还没有精通之路'));
+      empty.appendChild(document.createTextNode(
+        '建议先从最没把握的一科开始。每条路最多 5 个考点，用关联真题自测。'));
+      const row = el('div', 'page-actions');
+      row.style.justifyContent = 'center';
+      row.style.marginTop = '12px';
+      (state.meta && state.meta.subjects ? state.meta.subjects : []).forEach(s => {
+        const b = el('button', 'ghost', s.label);
+        b.addEventListener('click', () => openMasteryEditor(s.key));
+        row.appendChild(b);
+      });
+      empty.appendChild(row);
+      root.appendChild(empty);
+      return;
+    }
+
+    const grid = el('div', 'path-grid');
+    state.mastery.slice().sort((a, b) =>
+      (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(p => {
+      const s = masteryStats(p);
+      const card = el('div', 'path-card');
+      const top = el('div', 'path-top');
+      const ring = el('div', 'path-ring');
+      ring.style.setProperty('--p', s.pct);
+      ring.appendChild(el('span', null, s.pct + '%'));
+      ring.setAttribute('role', 'progressbar');
+      ring.setAttribute('aria-valuemin', '0');
+      ring.setAttribute('aria-valuemax', String(s.total));
+      ring.setAttribute('aria-valuenow', String(s.done));
+      ring.setAttribute('aria-label', p.name + ' 完成度 ' + s.pct + '%');
+      top.appendChild(ring);
+      const titleBox = el('div');
+      titleBox.appendChild(el('div', 'path-name', p.name));
+      titleBox.appendChild(el('div', 'path-meta',
+        subjectName(p.subject) + ' · ' + s.done + ' / ' + s.total + ' 步'));
+      top.appendChild(titleBox);
+      card.appendChild(top);
+      const foot = el('div', 'path-foot');
+      const bar = el('div', 'path-bar');
+      const fill = el('i');
+      fill.style.width = s.pct + '%';
+      bar.appendChild(fill);
+      foot.appendChild(bar);
+      foot.appendChild(el('span', null, s.done === s.total && s.total ?
+        '已完成' : '还差 ' + (s.total - s.done) + ' 步'));
+      card.appendChild(foot);
+      const actions = el('div', 'partner-actions');
+      const open = el('button', 'primary', s.done ? '继续' : '开始');
+      open.addEventListener('click', () => {
+        state.masteryId = p.id;
+        go('mastery', p.id);
+      });
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => {
+        if (!window.confirm('删除精通之路「' + p.name + '」？进度会一起清掉。')) return;
+        state.mastery = state.mastery.filter(x => x.id !== p.id);
+        saveMastery();
+        renderMastery();
+      });
+      actions.appendChild(open);
+      actions.appendChild(del);
+      card.appendChild(actions);
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
+  }
+
+  async function openMasteryEditor(subject) {
+    if (!state.meta) {
+      const meta = await ensureMeta();
+      if (!meta) { toast('先输入访问口令才能读取考点', 'err'); return; }
+    }
+    const subjects = (state.meta && state.meta.subjects) || [];
+    if (!subjects.length) { toast('题库里还没有考点卡片', 'err'); return; }
+    const wrap = el('div', 'form-grid');
+    const subjectSel = selectEl(subjects.map(s => [s.key, s.label]), subject || subjects[0].key);
+    const name = el('input');
+    name.placeholder = '例如：图论补漏';
+    name.maxLength = 40;
+    const count = selectEl([['3', '3 个考点'], ['4', '4 个考点'],
+      ['5', '5 个考点（推荐）']], '5');
+    const syncName = () => {
+      if (name.dataset.touched === '1') return;
+      name.value = subjectLabel(subjectSel.value) + ' · 高频考点';
+    };
+    syncName();
+    subjectSel.addEventListener('change', syncName);
+    name.addEventListener('input', () => { name.dataset.touched = '1'; });
+    wrap.appendChild(field('科目', subjectSel));
+    wrap.appendChild(field('路线名称', name));
+    wrap.appendChild(field('一步一个考点', count,
+      '会优先挑选关联真题最多的考点；每次自测都用该考点的关联真题。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '生成路线');
+    save.addEventListener('click', async () => {
+      const sub = subjectSel.value;
+      const n = parseInt(count.value, 10) || 5;
+      save.disabled = true;
+      save.textContent = '正在整理考点…';
+      try {
+        const params = new URLSearchParams();
+        params.set('subject', sub);
+        params.set('limit', '200');
+        const data = await api('/knowledge?' + params.toString());
+        const cards = (data.items || []).slice().sort((a, b) =>
+          (b.related_count || 0) - (a.related_count || 0) ||
+          String(a.title).localeCompare(String(b.title), 'zh'));
+        const picked = cards.slice(0, n);
+        if (!picked.length) {
+          toast('这一科还没有考点卡片', 'err');
+          return;
+        }
+        const steps = picked.map(c => {
+          // 综合题没有选项，没法在路线里自测；优先挑一道带选项的关联真题
+          const q = (c.related_questions || []).find(x =>
+            x.options && Object.keys(x.options).length >= 2);
+          return {
+            id: c.id, title: c.title, chapter: c.chapter || '',
+            summary: c.summary || '',
+            quiz: q ? {
+              id: q.id, stem: q.stem || '', options: q.options || {},
+              subject: q.subject || sub
+            } : null
+          };
+        });
+        const path = {
+          id: uid('mp'),
+          name: name.value.trim() || subjectLabel(sub) + ' · 高频考点',
+          subject: sub,
+          steps,
+          done: {},
+          picks: {},
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          completedAt: 0
+        };
+        state.mastery.unshift(path);
+        saveMastery();
+        closeModal();
+        state.masteryId = path.id;
+        renderMastery();
+        setHash('mastery', path.id);
+        toast('已生成 ' + steps.length + ' 步精通之路');
+      } catch (e) {
+        if (e.status === 401) {
+          showAuthNeeded('访问口令无效，请重新输入。');
+          closeModal();
+        } else {
+          toast('考点加载失败：' + e.message, 'err');
+        }
+      } finally {
+        save.disabled = false;
+        save.textContent = '生成路线';
+      }
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('新建精通之路', wrap);
+    name.focus();
+    name.select();
+  }
+
+  function renderMasteryDetail(root, path) {
+    const stats = masteryStats(path);
+    const head = el('div', 'page-head-row');
+    const left = el('div');
+    const back = el('button', 'row-btn', '← 全部路线');
+    back.style.marginBottom = '8px';
+    back.addEventListener('click', () => {
+      state.masteryId = '';
+      go('mastery');
+    });
+    left.appendChild(back);
+    left.appendChild(el('div', 'panel-title', path.name));
+    left.appendChild(el('div', 'panel-sub',
+      subjectName(path.subject) + ' · ' + stats.done + ' / ' + stats.total +
+      ' 步 · 答对关联真题才算完成'));
+    head.appendChild(left);
+    const acts = el('div', 'page-actions');
+    const again = el('button', 'ghost', '重开一条');
+    again.addEventListener('click', () => openMasteryEditor(path.subject));
+    acts.appendChild(again);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (stats.done >= stats.total && stats.total) {
+      const banner = el('div', 'level-banner');
+      const b = el('b', null, '这条路走完了');
+      banner.appendChild(b);
+      banner.appendChild(el('span', null,
+        ' ' + stats.total + ' 个考点都答对了。可以去练习里再混着做一组，确认不是记住了题面。'));
+      root.appendChild(banner);
+    }
+
+    path.steps.forEach((step, idx) => {
+      const done = masteryStepDone(path, step.id);
+      const mod = el('div', 'module');
+      const mh = el('div', 'module-head');
+      mh.appendChild(el('div', 'module-num', String(idx + 1)));
+      const mt = el('div', 'module-title');
+      mt.appendChild(document.createTextNode(step.title));
+      if (step.chapter) mt.appendChild(el('span', 'path-meta', ' · ' + step.chapter));
+      mh.appendChild(mt);
+      mod.appendChild(mh);
+      if (step.summary) mod.appendChild(el('div', 'module-sum', step.summary));
+
+      const stage = el('div', 'stage-row');
+      const check = el('span', 'stage-check' + (done ? ' done' : ''));
+      check.textContent = done ? '✓' : '';
+      stage.appendChild(check);
+      const st = el('div', 'stage-text');
+      st.appendChild(el('b', null, done ? '自测已通过' : '自测'));
+      st.appendChild(document.createTextNode(done
+        ? ' · 这道关联真题已经答对'
+        : ' · 用关联真题检验，答对后这一步才算完成'));
+      stage.appendChild(st);
+      const cardBtn = el('button', 'row-btn', '看考点');
+      cardBtn.addEventListener('click', () => openKnowledge(step.id));
+      stage.appendChild(cardBtn);
+      mod.appendChild(stage);
+
+      if (!step.quiz || Object.keys(step.quiz.options || {}).length < 2) {
+        const note = el('div', 'quiz-note', '这张卡片暂时没有关联真题。');
+        const ok = el('button', 'ghost', '读完了，记住这一步');
+        ok.style.marginTop = '8px';
+        ok.disabled = done;
+        ok.addEventListener('click', () => {
+          path.done[step.id] = true;
+          path.updatedAt = Date.now();
+          saveMastery();
+          const justDone = checkMasteryComplete(path);
+          saveMastery();
+          renderMastery();
+          if (justDone) toast('恭喜，这条路走完了');
+        });
+        note.appendChild(document.createElement('br'));
+        note.appendChild(ok);
+        mod.appendChild(note);
+      } else {
+        renderMasteryQuiz(mod, path, step);
+      }
+      root.appendChild(mod);
+    });
+  }
+
+  function renderMasteryQuiz(mod, path, step) {
+    const q = step.quiz;
+    const pick = path.picks[step.id] || '';
+    const correct = String(step.answer || '').trim().toUpperCase();
+    const box = el('div', 'quiz-inline');
+    box.appendChild(el('div', 'q-stem',
+      q.stem + (pick ? '' : '')));
+    if (q.options) {
+      const opts = el('div', 'm-options');
+      Object.keys(q.options).sort().forEach(key => {
+        const row = el('button', 'm-opt');
+        row.type = 'button';
+        if (pick) {
+          if (key === correct) row.classList.add('right');
+          else if (key === pick) row.classList.add('wrong');
+        }
+        row.appendChild(el('span', 'm-opt-key', key + '.'));
+        row.appendChild(el('span', null, q.options[key]));
+        row.addEventListener('click', () => answerMasteryStep(path, step, key));
+        opts.appendChild(row);
+      });
+      box.appendChild(opts);
+    }
+    if (!pick) {
+      box.appendChild(el('div', 'quiz-note',
+        '先自己选一个答案。选完才会核对原题，引用规则和问答页一致。'));
+    } else {
+      const note = el('div', 'quiz-note' + (pick === correct ? ' ok' : ''));
+      note.textContent = pick === correct
+        ? '答对了。这一步完成。'
+        : '答错了。正确答案是 ' + (correct || '—') +
+          '。看一遍考点卡片，再点「再试一次」。';
+      box.appendChild(note);
+      const row = el('div', 'btn-row');
+      row.style.marginTop = '8px';
+      const src = el('button', 'ghost', '查看原题');
+      src.addEventListener('click', () => openQuestion(q.id));
+      row.appendChild(src);
+      if (pick !== correct) {
+        const retry = el('button', 'primary', '再试一次');
+        retry.addEventListener('click', () => {
+          delete path.picks[step.id];
+          path.done[step.id] = false;
+          path.updatedAt = Date.now();
+          saveMastery();
+          renderMastery();
+        });
+        row.appendChild(retry);
+      }
+      box.appendChild(row);
+    }
+    mod.appendChild(box);
+  }
+
+  async function answerMasteryStep(path, step, key) {
+    if (state.masteryBusy) return;
+    if (!step.answer) {
+      state.masteryBusy = true;
+      try {
+        const d = await api('/chunks/' + encodeURIComponent(step.quiz.id));
+        step.answer = String(d.answer || '').trim();
+        step.analysis = d.analysis || '';
+      } catch (e) {
+        if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
+        else toast('答案加载失败：' + e.message, 'err');
+        state.masteryBusy = false;
+        return;
+      }
+      state.masteryBusy = false;
+    }
+    const correct = String(step.answer || '').trim().toUpperCase();
+    path.picks[step.id] = key;
+    if (key === correct) {
+      path.done[step.id] = true;
+      recordAssessment({
+        id: step.quiz.id, subject: step.quiz.subject, stem: step.quiz.stem
+      }, 'known');
+    }
+    path.updatedAt = Date.now();
+    saveMastery();
+    const justDone = checkMasteryComplete(path);
+    saveMastery();
+    renderMastery();
+    if (justDone) {
+      toast('恭喜，这条路走完了');
+    } else if (key === correct) {
+      toast('答对了，这一步完成');
+    }
+    if (key !== correct) {
+      journalAdd('mastery', '自测错题：' + step.title,
+        '在精通之路「' + path.name + '」里选错，已保留在路线里等待重试。');
+    }
+  }
+
+  /* ---------- 伙伴 ---------- */
+  const PARTNER_TEMPLATES = [
+    {name: '同桌阿哲', role: '同桌', soul: '说话口语化，先问我是怎么想的，再一步步提示；不直接给答案。',
+     greeting: '来了？今天想先弄懂哪一题？'},
+    {name: '严师老周', role: '严师', soul: '直接指出问题，不寒暄；先给结论，再要求我说出依据。',
+     greeting: '坐好。把你要问的题说清楚，别绕。'},
+    {name: '出题人小林', role: '出题人视角', soul: '从命题角度讲这道题想考什么，容易在哪儿设坑。',
+     greeting: '先别急着选。说说你觉得出题人想考什么？'}
+  ];
+
+  function savePartners() { saveKey(PARTNER_KEY, state.partners); }
+
+  function savePartnerChats() {
+    try {
+      localStorage.setItem(PARTNER_CHAT_KEY,
+        JSON.stringify(state.partnerChats.slice(0, 24)));
+    } catch (e) {
+      state.partnerChats = state.partnerChats.slice(0, 8).map(c => ({
+        ...c, messages: c.messages.slice(-10)
+      }));
+      try {
+        localStorage.setItem(PARTNER_CHAT_KEY, JSON.stringify(state.partnerChats));
+      } catch (e2) {
+        toast('本机存储空间不足，伙伴消息没有保存', 'err');
+      }
+    }
+  }
+
+  function partnerById(id) {
+    return state.partners.find(p => p.id === id) || null;
+  }
+
+  function partnerInitial(name) {
+    return String(name || '伙').trim().slice(0, 1) || '伙';
+  }
+
+  function chatsForPartner(partnerId) {
+    return state.partnerChats
+      .filter(c => c.partnerId === partnerId)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+
+  function partnerChat(partner, create) {
+    let chat = state.partnerChats.find(c => c.id === state.partnerChatId &&
+      c.partnerId === partner.id);
+    if (!chat) {
+      chat = chatsForPartner(partner.id)[0] || null;
+    }
+    if (!chat && create) {
+      chat = {
+        id: uid('pc'), partnerId: partner.id, messages: [],
+        createdAt: Date.now(), updatedAt: Date.now()
+      };
+      state.partnerChats.unshift(chat);
+      savePartnerChats();
+    }
+    state.partnerChatId = chat ? chat.id : '';
+    return chat;
+  }
+
+  function slimData(data) {
+    const d = data || {};
+    return {
+      refused: !!d.refused,
+      answer: d.answer || '',
+      citations: d.citations || [],
+      reason: d.reason || '',
+      intent: d.intent || '',
+      rewritten_query: d.rewritten_query || ''
+    };
+  }
+
+  function renderPartners() {
+    const root = clearNode('#partners-root');
+    if (!root) return;
+    const head = el('div', 'page-head-row');
+    const info = el('div');
+    info.appendChild(el('div', 'panel-title', '伙伴'));
+    info.appendChild(el('div', 'panel-sub',
+      '每个伙伴有自己的性格和讲法，但答案仍然只从真题和考点里找，引用逐字核对。'));
+    head.appendChild(info);
+    const acts = el('div', 'page-actions');
+    const add = el('button', 'primary', '新建伙伴');
+    add.addEventListener('click', () => openPartnerEditor(null));
+    acts.appendChild(add);
+    head.appendChild(acts);
+    root.appendChild(head);
+
+    if (!state.partners.length) {
+      const empty = el('div', 'empty-panel');
+      empty.appendChild(el('strong', null, '还没有伙伴'));
+      empty.appendChild(document.createTextNode(
+        '可以从一个模板开始，之后再改性格和说话方式。'));
+      const row = el('div', 'partner-grid');
+      row.style.marginTop = '14px';
+      row.style.textAlign = 'left';
+      PARTNER_TEMPLATES.forEach(tpl => {
+        const card = el('div', 'partner-card');
+        card.appendChild(el('div', 'partner-avatar', partnerInitial(tpl.name)));
+        const main = el('div', 'partner-main');
+        main.appendChild(el('div', 'partner-name', tpl.name));
+        main.appendChild(el('div', 'partner-role', tpl.role));
+        main.appendChild(el('div', 'partner-desc', tpl.soul));
+        const use = el('button', 'primary', '用这个模板');
+        use.style.marginTop = '10px';
+        use.addEventListener('click', () => createPartnerFrom(tpl));
+        main.appendChild(use);
+        card.appendChild(main);
+        row.appendChild(card);
+      });
+      empty.appendChild(row);
+      root.appendChild(empty);
+      return;
+    }
+
+    const grid = el('div', 'partner-grid');
+    state.partners.forEach(p => {
+      const chats = chatsForPartner(p.id);
+      const card = el('div', 'partner-card');
+      card.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
+      const main = el('div', 'partner-main');
+      main.appendChild(el('div', 'partner-name', p.name));
+      main.appendChild(el('div', 'partner-role',
+        [p.role, p.subject ? subjectName(p.subject) : ''].filter(Boolean).join(' · ') ||
+        '学习伙伴'));
+      main.appendChild(el('div', 'partner-desc', p.soul || ''));
+      if (chats.length) {
+        main.appendChild(el('div', 'list-meta',
+          chats.length + ' 段对话 · 最近 ' +
+          formatWhen(chats[0].updatedAt || chats[0].createdAt || 0)));
+      }
+      const row = el('div', 'partner-actions');
+      const talk = el('button', 'primary', chats.length ? '继续聊' : '开始聊');
+      talk.addEventListener('click', () => openPartner(p.id, chats[0] ? chats[0].id : ''));
+      const edit = el('button', 'row-btn', '编辑');
+      edit.addEventListener('click', () => openPartnerEditor(p));
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => {
+        if (!window.confirm('删除伙伴「' + p.name + '」？对话记录会一起删掉。')) return;
+        state.partners = state.partners.filter(x => x.id !== p.id);
+        state.partnerChats = state.partnerChats.filter(c => c.partnerId !== p.id);
+        if (state.partnerId === p.id) state.partnerId = '';
+        savePartners();
+        savePartnerChats();
+        renderPartners();
+      });
+      row.appendChild(talk);
+      row.appendChild(edit);
+      row.appendChild(del);
+      main.appendChild(row);
+      card.appendChild(main);
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
+  }
+
+  function createPartnerFrom(tpl) {
+    const p = {
+      id: uid('pa'), name: tpl.name, role: tpl.role, soul: tpl.soul,
+      subject: '', greeting: tpl.greeting || '', createdAt: Date.now()
+    };
+    state.partners.unshift(p);
+    savePartners();
+    toast('已添加伙伴：' + p.name);
+    openPartner(p.id, '');
+  }
+
+  function openPartnerEditor(p) {
+    const wrap = el('div', 'form-grid');
+    const name = el('input');
+    name.value = p ? p.name : '';
+    name.placeholder = '例如：同桌阿哲';
+    name.maxLength = 24;
+    const role = el('input');
+    role.value = p ? (p.role || '') : '';
+    role.placeholder = '例如：同桌 / 严师 / 出题人视角';
+    role.maxLength = 30;
+    const subject = selectEl([['', '不限科目']].concat(
+      ((state.meta && state.meta.subjects) || []).map(s => [s.key, s.label])),
+      p ? (p.subject || '') : '');
+    const soul = el('textarea');
+    soul.value = p ? (p.soul || '') : '';
+    soul.placeholder = '例如：说话口语化，先问我是怎么想的，再一步步提示；不直接给答案。';
+    soul.maxLength = 300;
+    const greeting = el('input');
+    greeting.value = p ? (p.greeting || '') : '';
+    greeting.placeholder = '例如：来了？今天想先弄懂哪一题？';
+    greeting.maxLength = 80;
+    wrap.appendChild(field('名字', name));
+    wrap.appendChild(field('身份', role));
+    wrap.appendChild(field('负责科目', subject));
+    wrap.appendChild(field('性格与说话方式', soul,
+      '只影响措辞和提示方式；不能要求编造资料或放宽引用。'));
+    wrap.appendChild(field('开场白', greeting));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', p ? '保存' : '创建');
+    save.addEventListener('click', () => {
+      const n = name.value.trim();
+      if (!n) { name.focus(); return; }
+      if (p) {
+        p.name = n;
+        p.role = role.value.trim();
+        p.subject = subject.value;
+        p.soul = soul.value.trim();
+        p.greeting = greeting.value.trim();
+        p.updatedAt = Date.now();
+      } else {
+        state.partners.unshift({
+          id: uid('pa'), name: n, role: role.value.trim(), subject: subject.value,
+          soul: soul.value.trim(), greeting: greeting.value.trim(),
+          createdAt: Date.now()
+        });
+      }
+      savePartners();
+      closeModal();
+      if (state.page === 'partner') renderPartner();
+      else renderPartners();
+      toast(p ? '伙伴资料已保存' : '伙伴已创建');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal(p ? '编辑伙伴' : '新建伙伴', wrap);
+    name.focus();
+  }
+
+  function openPartner(id, chatId) {
+    const p = partnerById(id);
+    if (!p) { toast('伙伴不存在', 'err'); go('partners'); return; }
+    state.partnerId = id;
+    state.partnerChatId = chatId || '';
+    partnerChat(p, true);
+    go('partner', id);
+  }
+
+  function renderPartner() {
+    const p = partnerById(state.partnerId);
+    if (!p) { go('partners'); return; }
+    const chat = partnerChat(p, true);
+    const head = clearNode('#partner-head');
+    const back = el('button', 'row-btn', '← 伙伴');
+    back.addEventListener('click', () => go('partners'));
+    head.appendChild(back);
+    head.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
+    const main = el('div', 'partner-head-main');
+    main.appendChild(el('div', 'partner-head-name', p.name));
+    main.appendChild(el('div', 'partner-head-sub',
+      [p.role, p.subject ? subjectName(p.subject) : '', p.soul]
+        .filter(Boolean).join(' · ') || '学习伙伴'));
+    head.appendChild(main);
+    const acts = el('div', 'partner-head-actions');
+    const fresh = el('button', 'row-btn', '新对话');
+    fresh.addEventListener('click', () => {
+      const c = {
+        id: uid('pc'), partnerId: p.id, messages: [],
+        createdAt: Date.now(), updatedAt: Date.now()
+      };
+      state.partnerChats.unshift(c);
+      state.partnerChatId = c.id;
+      savePartnerChats();
+      renderPartner();
+    });
+    const edit = el('button', 'row-btn', '编辑');
+    edit.addEventListener('click', () => openPartnerEditor(p));
+    acts.appendChild(fresh);
+    acts.appendChild(edit);
+    head.appendChild(acts);
+
+    const box = clearNode('#partner-messages');
+    if (!chat.messages.length) {
+      const empty = el('div', 'partner-empty');
+      empty.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
+      empty.lastChild.style.margin = '0 auto 12px';
+      empty.appendChild(el('div', null,
+        p.greeting || '说说你现在卡在哪一道题，或者哪个概念没想明白。'));
+      const chips = el('div', 'partner-history');
+      chips.style.justifyContent = 'center';
+      chips.style.marginTop = '14px';
+      const prompts = [
+        '帮我把最近错的题讲一遍',
+        '这个概念用最简单的话讲',
+        '从出题人的角度说说这题考什么'
+      ];
+      prompts.forEach(text => {
+        const chip = el('button', 'ghost', text);
+        chip.addEventListener('click', () => {
+          const c = $('#partner-composer');
+          c.value = text;
+          autoGrowPartner();
+          c.focus();
+        });
+        chips.appendChild(chip);
+      });
+      empty.appendChild(chips);
+      box.appendChild(empty);
+    } else {
+      if (chatsForPartner(p.id).length > 1) {
+        const bar = el('div', 'partner-history');
+        chatsForPartner(p.id).slice(0, 5).forEach(c => {
+          const chip = el('button',
+            'row-btn' + (c.id === chat.id ? ' active' : ''),
+            formatWhen(c.updatedAt || c.createdAt || 0));
+          chip.addEventListener('click', () => {
+            state.partnerChatId = c.id;
+            renderPartner();
+          });
+          bar.appendChild(chip);
+        });
+        box.appendChild(bar);
+      }
+      chat.messages.forEach(m => {
+        if (m.role === 'user') box.appendChild(userMessage(m));
+        else box.appendChild(renderBotMessage(m, partnerInitial(p.name)));
+      });
+      if (state.partnerSending) {
+        const row = el('div', 'msg bot');
+        row.appendChild(el('div', 'avatar', partnerInitial(p.name)));
+        const body = el('div', 'bot-body');
+        const typing = el('div', 'typing');
+        typing.appendChild(el('span', 'spinner'));
+        typing.appendChild(el('span', null, '伙伴正在翻资料…'));
+        body.appendChild(typing);
+        row.appendChild(body);
+        box.appendChild(row);
+      }
+      requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    }
+    const sendBtn = $('#partner-send');
+    if (sendBtn) sendBtn.disabled = state.partnerSending;
+    const hint = $('#partner-hint');
+    if (hint) hint.textContent = '伙伴只改变讲法，结论仍逐字引用真题或考点原文';
+  }
+
+  function partnerHistory(chat) {
+    return chat.messages.slice(-6).map(m => {
+      if (m.role === 'user') return {role: 'user', content: m.content};
+      const d = m.data || {};
+      return {
+        role: 'assistant',
+        content: d.answer || (d.refused ? '（未作答：' + (d.reason || '资料不足') + '）' : '')
+      };
+    }).filter(m => m.content);
+  }
+
+  function autoGrowPartner() {
+    const t = $('#partner-composer');
+    if (!t) return;
+    t.style.height = 'auto';
+    t.style.height = Math.min(t.scrollHeight, 130) + 'px';
+  }
+
+  async function sendPartner() {
+    const input = $('#partner-composer');
+    if (!input) return;
+    const text = input.value.trim();
+    const p = partnerById(state.partnerId);
+    if (!text || state.partnerSending || !p) return;
+    if (state.health && state.health.auth_required && !state.token) {
+      showAuthNeeded('请先输入访问口令。');
+      return;
+    }
+    const chat = partnerChat(p, true);
+    const history = partnerHistory(chat);
+    input.value = '';
+    autoGrowPartner();
+    chat.messages.push({role: 'user', content: text, ts: Date.now()});
+    chat.updatedAt = Date.now();
+    state.partnerSending = true;
+    renderPartner();
+    savePartnerChats();
+    try {
+      const data = await api('/chat', {
+        method: 'POST',
+        body: {query: text, history, style: partnerStyle(p)}
+      });
+      chat.messages.push({role: 'assistant', data: slimData(data),
+        query: text, ts: Date.now()});
+      chat.updatedAt = Date.now();
+    } catch (e) {
+      chat.messages.pop();
+      input.value = text;
+      autoGrowPartner();
+      if (e.status === 401) showAuthNeeded('访问口令无效或已过期，请重新输入。');
+      else if (e.status === 429) toast('请求太频繁，' + (e.message || '请稍后再试'), 'err');
+      else toast('伙伴回答失败：' + e.message, 'err');
+    } finally {
+      state.partnerSending = false;
+      savePartnerChats();
+      renderPartner();
+      input.focus();
+    }
+  }
+
+  /* ---------- 任务看板 ---------- */
+  const TASK_LANES = [
+    {key: 'todo', label: '待办', hint: '还没开始的事'},
+    {key: 'doing', label: '进行中', hint: '今天在推进'},
+    {key: 'done', label: '已完成', hint: '做完的留个痕'}
+  ];
+
+  function defaultTaskBoard() { return {tasks: [], archived: []}; }
+
+  function normalizeTask(t) {
+    const status = ['todo', 'doing', 'done'].indexOf(t.status) >= 0 ? t.status : 'todo';
+    return {
+      id: t.id || uid('t'),
+      title: String(t.title || '').slice(0, 80),
+      note: String(t.note || '').slice(0, 500),
+      status,
+      subject: String(t.subject || ''),
+      convId: String(t.convId || ''),
+      createdAt: t.createdAt || Date.now(),
+      updatedAt: t.updatedAt || Date.now()
+    };
+  }
+
+  function loadTaskBoard() {
+    const raw = loadJSON(TASK_KEY, null);
+    if (!raw || typeof raw !== 'object') return defaultTaskBoard();
+    return {
+      tasks: Array.isArray(raw.tasks) ? raw.tasks.filter(t => t && t.title).map(normalizeTask) : [],
+      archived: Array.isArray(raw.archived) ? raw.archived.filter(t => t && t.title).map(normalizeTask) : []
+    };
+  }
+
+  function saveBoard() { saveKey(TASK_KEY, state.taskBoard); }
+
+  function taskById(id) {
+    return state.taskBoard.tasks.find(t => t.id === id) ||
+      state.taskBoard.archived.find(t => t.id === id) || null;
+  }
+
+  function boardCounts() {
+    const tasks = state.taskBoard.tasks;
+    return {
+      todo: tasks.filter(t => t.status === 'todo').length,
+      doing: tasks.filter(t => t.status === 'doing').length,
+      done: tasks.filter(t => t.status === 'done').length,
+      total: tasks.length,
+      archived: state.taskBoard.archived.length
+    };
+  }
+
+  function renderKanban() {
+    const root = clearNode('#kanban-root');
+    if (!root) return;
+    const bar = el('div', 'kanban-toolbar');
+    const left = el('div', 'small');
+    left.textContent = state.kanbanArchived
+      ? '归档只是收起来，随时可以恢复。'
+      : '拖动卡片，或点卡片右下角的箭头移动。';
+    bar.appendChild(left);
+    const tools = el('div', 'page-actions');
+    const archivedBtn = el('button', 'ghost' + (state.kanbanArchived ? ' active' : ''),
+      '已归档 ' + state.taskBoard.archived.length);
+    archivedBtn.addEventListener('click', () => {
+      state.kanbanArchived = !state.kanbanArchived;
+      renderKanban();
+    });
+    const add = el('button', 'primary', '新建任务');
+    add.addEventListener('click', () => openTaskEditor(null, 'todo'));
+    tools.appendChild(archivedBtn);
+    tools.appendChild(add);
+    bar.appendChild(tools);
+    root.appendChild(bar);
+
+    if (state.kanbanArchived) {
+      renderArchived(root);
+      return;
+    }
+
+    const board = el('div', 'kanban-board');
+    TASK_LANES.forEach(lane => {
+      const col = el('div', 'kanban-col');
+      col.dataset.status = lane.key;
+      const head = el('div', 'kanban-col-head');
+      const dot = el('div', 'kanban-dot');
+      dot.style.background = lane.key === 'done' ? 'var(--ok)' :
+        (lane.key === 'doing' ? 'var(--warn)' : 'var(--brand)');
+      head.appendChild(dot);
+      const hb = el('div');
+      hb.appendChild(el('div', 'kanban-col-title', lane.label));
+      hb.appendChild(el('div', 'kanban-col-hint', lane.hint));
+      head.appendChild(hb);
+      const n = state.taskBoard.tasks.filter(t => t.status === lane.key).length;
+      head.appendChild(el('span', 'kanban-count', String(n)));
+      const plus = el('button', 'row-btn', '＋');
+      plus.setAttribute('aria-label', '在' + lane.label + '新建任务');
+      plus.addEventListener('click', () => openTaskEditor(null, lane.key));
+      head.appendChild(plus);
+      col.appendChild(head);
+
+      const tasks = state.taskBoard.tasks.filter(t => t.status === lane.key);
+      if (!tasks.length) {
+        col.appendChild(el('div', 'kanban-empty', lane.key === 'todo'
+          ? '暂时没有待办。' : (lane.key === 'doing' ? '拖动或新建一张卡片。' : '做完的任务会来这里。')));
+      }
+      tasks.forEach(t => col.appendChild(taskCard(t, lane.key)));
+      col.addEventListener('dragover', e => {
+        e.preventDefault();
+        col.classList.add('drop');
+      });
+      col.addEventListener('dragleave', () => col.classList.remove('drop'));
+      col.addEventListener('drop', e => {
+        e.preventDefault();
+        col.classList.remove('drop');
+        const id = e.dataTransfer.getData('text/plain') || state.dragTaskId;
+        if (id) moveTask(id, lane.key);
+      });
+      board.appendChild(col);
+    });
+    root.appendChild(board);
+
+    const c = boardCounts();
+    root.appendChild(el('div', 'kanban-foot',
+      '共 ' + c.total + ' 张卡片 · 待办 ' + c.todo + ' · 进行中 ' + c.doing +
+      ' · 已完成 ' + c.done + ' · 已归档 ' + c.archived +
+      '。看板只保存在这台设备上。'));
+  }
+
+  function taskCard(t, laneKey) {
+    const card = el('div', 'kanban-card');
+    card.draggable = true;
+    card.addEventListener('dragstart', e => {
+      state.dragTaskId = t.id;
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', t.id);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      state.dragTaskId = '';
+    });
+    card.appendChild(el('div', 'kanban-title', t.title));
+    if (t.note) card.appendChild(el('div', 'kanban-note', t.note));
+    const meta = el('div', 'kanban-meta');
+    if (t.subject || t.subject === '') {
+      if (t.subject) meta.appendChild(el('span', 'kanban-tag', subjectName(t.subject)));
+    }
+    if (t.convId) {
+      const conv = state.conversations.find(c => c.id === t.convId);
+      if (conv) {
+        const link = el('button', 'kanban-link', '对话 · ' + clip(conv.title, 16));
+        link.style.cssText = 'border:0;background:transparent;padding:0;cursor:pointer;';
+        link.addEventListener('click', () => openConversation(conv.id));
+        meta.appendChild(link);
+      }
+    }
+    if (meta.childNodes.length) card.appendChild(meta);
+
+    const acts = el('div', 'kanban-actions');
+    const idx = TASK_LANES.findIndex(l => l.key === laneKey);
+    const prev = el('button', null, '←');
+    prev.title = '移到上一列';
+    prev.disabled = idx <= 0;
+    prev.addEventListener('click', () => moveTask(t.id, TASK_LANES[idx - 1].key));
+    const next = el('button', null, '→');
+    next.title = '移到下一列';
+    next.disabled = idx >= TASK_LANES.length - 1;
+    next.addEventListener('click', () => moveTask(t.id, TASK_LANES[idx + 1].key));
+    const edit = el('button', null, '✎');
+    edit.title = '编辑';
+    edit.addEventListener('click', () => openTaskEditor(t, t.status));
+    const archive = el('button', null, '⌫');
+    archive.title = '归档';
+    archive.addEventListener('click', () => archiveTask(t));
+    acts.appendChild(prev);
+    acts.appendChild(next);
+    acts.appendChild(edit);
+    acts.appendChild(archive);
+    card.appendChild(acts);
+    return card;
+  }
+
+  function renderArchived(root) {
+    const list = el('div', 'stack');
+    if (!state.taskBoard.archived.length) {
+      root.appendChild(el('div', 'empty-panel',
+        '还没有归档的任务。看板上的卡片点「归档」后会收到这里。'));
+      return;
+    }
+    state.taskBoard.archived.forEach(t => {
+      const row = el('div', 'list-row');
+      const main = el('div', 'list-main');
+      main.appendChild(el('div', 'list-title', t.title));
+      if (t.note) main.appendChild(el('div', 'list-meta', t.note));
+      main.appendChild(el('div', 'list-meta',
+        (t.subject ? subjectName(t.subject) + ' · ' : '') +
+        '归档前在「' + (TASK_LANES.find(l => l.key === t.status) || {}).label + '」'));
+      row.appendChild(main);
+      const acts = el('div', 'list-actions');
+      const restore = el('button', 'row-btn', '恢复');
+      restore.addEventListener('click', () => {
+        state.taskBoard.archived = state.taskBoard.archived.filter(x => x.id !== t.id);
+        t.updatedAt = Date.now();
+        state.taskBoard.tasks.push(t);
+        state.kanbanArchived = false;
+        saveBoard();
+        renderKanban();
+        toast('任务已恢复');
+      });
+      const del = el('button', 'row-btn danger', '彻底删除');
+      del.addEventListener('click', () => {
+        if (!window.confirm('彻底删除「' + t.title + '」？不能恢复。')) return;
+        state.taskBoard.archived = state.taskBoard.archived.filter(x => x.id !== t.id);
+        saveBoard();
+        renderKanban();
+      });
+      acts.appendChild(restore);
+      acts.appendChild(del);
+      row.appendChild(acts);
+      list.appendChild(row);
+    });
+    root.appendChild(list);
+    root.appendChild(el('div', 'kanban-foot',
+      '归档 ' + state.taskBoard.archived.length + ' 条 · 只保存在这台设备上。'));
+  }
+
+  function moveTask(id, status) {
+    const t = taskById(id);
+    if (!t || t.status === status) return;
+    t.status = status;
+    t.updatedAt = Date.now();
+    saveBoard();
+    renderKanban();
+    if (status === 'done') {
+      journalAdd('task', '完成任务：' + t.title, '从看板移入「已完成」。');
+      toast('任务完成：' + t.title);
+    }
+  }
+
+  function archiveTask(t) {
+    state.taskBoard.tasks = state.taskBoard.tasks.filter(x => x.id !== t.id);
+    t.updatedAt = Date.now();
+    state.taskBoard.archived.unshift(t);
+    saveBoard();
+    renderKanban();
+    toast('已归档「' + t.title + '」');
+  }
+
+  function openTaskEditor(task, status) {
+    const wrap = el('div', 'form-grid');
+    const title = el('input');
+    title.value = task ? task.title : '';
+    title.placeholder = '例如：把 2023 年图论真题过一遍';
+    title.maxLength = 80;
+    const note = el('textarea');
+    note.value = task ? task.note : '';
+    note.placeholder = '补充一点背景，或者写清完成标准。';
+    note.maxLength = 500;
+    const subject = selectEl(subjectSelectOptions(true), task ? task.subject : '');
+    const conv = selectEl([['', '不关联对话']].concat(
+      state.conversations.slice(0, 20).map(c => [c.id, clip(c.title, 24)])),
+      task ? task.convId : '');
+    const statusSel = selectEl(TASK_LANES.map(l => [l.key, l.label]),
+      task ? task.status : (status || 'todo'));
+    wrap.appendChild(field('任务', title));
+    wrap.appendChild(field('备注', note));
+    wrap.appendChild(field('科目', subject));
+    wrap.appendChild(field('关联对话', conv, '关联后可以在卡片上直接跳回那段对话。'));
+    wrap.appendChild(field('所在列', statusSel));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', task ? '保存' : '添加');
+    save.addEventListener('click', () => {
+      const v = title.value.trim();
+      if (!v) { title.focus(); return; }
+      if (task) {
+        task.title = v;
+        task.note = note.value.trim();
+        task.subject = subject.value;
+        task.convId = conv.value;
+        task.status = statusSel.value;
+        task.updatedAt = Date.now();
+      } else {
+        state.taskBoard.tasks.unshift(normalizeTask({
+          id: uid('t'), title: v, note: note.value.trim(),
+          subject: subject.value, convId: conv.value,
+          status: statusSel.value
+        }));
+      }
+      saveBoard();
+      closeModal();
+      renderKanban();
+      toast(task ? '任务已保存' : '任务已添加');
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal(task ? '编辑任务' : '新建任务', wrap);
+    title.focus();
+  }
+
   function setHash(page, id) {
     const target = '#/' + page + (id ? '/' + encodeURIComponent(id) : '');
     if (location.hash === target) return;
     history.pushState(null, '', target);
+  }
+
+  const SPACE_PAGES = ['bank', 'knowledge', 'notebooks', 'journal', 'history',
+    'personas', 'skills', 'memory'];
+  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner'];
+
+  function navPageFor(page) {
+    if (page === 'practice' || page === 'mastery') return 'learning';
+    if (page === 'partner') return 'partners';
+    if (SPACE_PAGES.indexOf(page) >= 0) return 'space';
+    return page;
   }
 
   function parseHash() {
@@ -4239,14 +6918,22 @@
     const head = parts[0] || 'chat';
     if (head === 'q') return {page: state.page, qid: parts[1] || ''};
     if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
-    if (head === 'library') return {page: libraryPage()};
-    return {
-      page: Object.prototype.hasOwnProperty.call(PAGE_META, head) ? head : 'chat'
-    };
+    if (head === 'learning') return {page: 'mastery'};
+    if (head === 'library') return {page: 'bank'};
+    if (Object.prototype.hasOwnProperty.call(PAGE_META, head)) {
+      if (DETAIL_PAGES.indexOf(head) >= 0) {
+        return {page: head, id: parts[1] || ''};
+      }
+      return {page: head};
+    }
+    return {page: 'chat'};
   }
 
-  function libraryPage() {
-    return state.libraryTab === 'knowledge' ? 'knowledge' : 'bank';
+  function detailIdFor(page) {
+    if (page === 'mastery') return state.masteryId;
+    if (page === 'notebooks') return state.notebookId;
+    if (page === 'partner') return state.partnerId;
+    return '';
   }
 
   function pageSub(page) {
@@ -4255,40 +6942,57 @@
 
   function applyHash() {
     const r = parseHash();
-    if (r.page !== state.page) renderPage(r.page);
+    if (r.page !== state.page || (r.id || '') !== detailIdFor(r.page)) {
+      renderPage(r.page, r.id);
+    }
     if (r.qid && r.qid !== state.modalId) openQuestion(r.qid, true);
     else if (r.kid && r.kid !== state.modalId) openKnowledge(r.kid, true);
     else if (!r.qid && !r.kid && state.modalId) closeModal(true);
   }
 
-  function go(page) {
-    renderPage(page);
-    setHash(page);
+  function go(page, id) {
+    if (page === 'learning') page = 'mastery';
+    renderPage(page, id);
+    setHash(page, id);
   }
 
-  function renderPage(page) {
+  function renderPage(page, id) {
+    if (page === 'learning') page = 'mastery';
     state.page = page;
-    const navPage = (page === 'bank' || page === 'knowledge') ? 'library' : page;
+    if (page === 'mastery') state.masteryId = id || '';
+    else if (page === 'notebooks') state.notebookId = id || '';
+    else if (page === 'partner') state.partnerId = id || state.partnerId || '';
+    const navPage = navPageFor(page);
     const mainEl = $('.main');
-    if (mainEl) mainEl.dataset.page = navPage;
+    if (mainEl) {
+      // 伙伴对话页要独占高度并隐藏顶栏，用 partner 自己的标记
+      mainEl.dataset.page = page === 'partner' ? 'partner' : navPage;
+      mainEl.dataset.subpage = (navPage === 'space' && page !== 'space') ? page : '';
+    }
     $$('#nav button, #tabbar button').forEach(b =>
       b.classList.toggle('active', b.dataset.page === navPage));
-    const subnav = $('#library-subnav');
-    if (subnav) {
-      const onLibrary = page === 'bank' || page === 'knowledge';
-      subnav.hidden = !onLibrary;
-      if (onLibrary) {
-        state.libraryTab = page;
-        localStorage.setItem(LIB_TAB_KEY, page);
-        $$('button', subnav).forEach(b =>
-          b.classList.toggle('active', b.dataset.lib === page));
-      }
+
+    const learnSub = $('#learning-subnav');
+    if (learnSub) {
+      const onLearning = page === 'mastery' || page === 'practice';
+      learnSub.hidden = !onLearning;
+      $$('button', learnSub).forEach(b =>
+        b.classList.toggle('active', b.dataset.learn === page));
     }
+    const spaceSub = $('#space-subnav');
+    if (spaceSub) {
+      const onSpace = SPACE_PAGES.indexOf(page) >= 0;
+      spaceSub.hidden = !onSpace;
+      $$('button', spaceSub).forEach(b =>
+        b.classList.toggle('active', b.dataset.space === page));
+    }
+
     $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
     const meta = PAGE_META[page] || PAGE_META.chat;
     $('#page-title').textContent = meta.title;
     $('#page-sub').textContent = pageSub(page);
     closeSidebar();
+
     if (page === 'today') {
       renderToday();
       ensureMeta(true).then(m => {
@@ -4298,6 +7002,7 @@
       });
     } else if (page === 'chat') {
       renderMessages();
+      renderPersonaChip();
       if (window.innerWidth > 860) {
         setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
       }
@@ -4329,6 +7034,31 @@
           renderPracticePage();
         }
       });
+    } else if (page === 'mastery') {
+      renderMastery();
+      ensureMeta(true).then(m => { if (m && state.page === 'mastery' && !state.masteryId) renderMastery(); });
+    } else if (page === 'space') {
+      renderSpace();
+      ensureMeta(true).then(m => { if (m && state.page === 'space') renderSpace(); });
+    } else if (page === 'history') {
+      renderHistory();
+    } else if (page === 'notebooks') {
+      renderNotebooks();
+    } else if (page === 'journal') {
+      renderJournal();
+    } else if (page === 'personas') {
+      renderPersonas();
+    } else if (page === 'skills') {
+      renderSkills();
+    } else if (page === 'memory') {
+      renderMemory();
+      ensureMeta(true).then(m => { if (m && state.page === 'memory') renderMemory(); });
+    } else if (page === 'partners') {
+      renderPartners();
+    } else if (page === 'partner') {
+      renderPartner();
+    } else if (page === 'kanban') {
+      renderKanban();
     } else if (page === 'quality') {
       fetchQuality();
     }
@@ -4489,13 +7219,28 @@
 
   function bind() {
     $$('#nav button, #tabbar button').forEach(b => {
-      b.addEventListener('click', () => {
-        go(b.dataset.page === 'library' ? libraryPage() : b.dataset.page);
+      b.addEventListener('click', () => go(b.dataset.page));
+    });
+    $$('#learning-subnav button').forEach(b => {
+      b.addEventListener('click', () => go(b.dataset.learn));
+    });
+    $$('#space-subnav button').forEach(b => {
+      b.addEventListener('click', () => go(b.dataset.space));
+    });
+    const personaChip = $('#persona-chip');
+    if (personaChip) personaChip.addEventListener('click', openPersonaPicker);
+    const partnerComposer = $('#partner-composer');
+    if (partnerComposer) {
+      partnerComposer.addEventListener('input', autoGrowPartner);
+      partnerComposer.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          sendPartner();
+        }
       });
-    });
-    $$('#library-subnav button').forEach(b => {
-      b.addEventListener('click', () => go(b.dataset.lib));
-    });
+    }
+    const partnerSend = $('#partner-send');
+    if (partnerSend) partnerSend.addEventListener('click', sendPartner);
     const todayAsk = $('#today-ask');
     if (todayAsk) {
       todayAsk.addEventListener('submit', e => {
@@ -4631,7 +7376,8 @@
   function init() {
     bind();
     renderToken();
-    renderPage(parseHash().page);
+    const route = parseHash();
+    renderPage(route.page, route.id);
     applyHash();
     renderConvList();
     autoGrow();

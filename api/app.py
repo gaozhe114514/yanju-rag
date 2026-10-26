@@ -20,6 +20,7 @@
   KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
   KB_FEEDBACK_LOG   没有数据库时反馈写到哪里，默认 data/work/feedback.jsonl
 """
+import hashlib
 import os
 import threading
 import time
@@ -63,6 +64,8 @@ GUARD = AccessGuard.from_env()
 
 class AskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
+    # 讲解风格（人格预设 / 技能 / 学习记忆），只影响措辞，不改变引用规则
+    style: str = Field("", max_length=400)
 
 
 class ChatTurn(BaseModel):
@@ -73,6 +76,7 @@ class ChatTurn(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     history: List[ChatTurn] = Field(default_factory=list)
+    style: str = Field("", max_length=400)
 
 
 class FeedbackRequest(BaseModel):
@@ -364,25 +368,38 @@ def _log_gap(query: str, res) -> None:
         pass  # 日志写失败不能影响答题
 
 
-def _cache_lookup(query: str) -> Optional[dict]:
+def _clean_style(style: str) -> str:
+    """把风格文本压成单行并截断，避免换行被模型当成新指令。"""
+    return " ".join((style or "").split())[:400]
+
+
+def _cache_namespace(style: str = "") -> str:
+    """缓存命名空间额外带上风格指纹：同一问题换个伙伴要重新生成。"""
+    ns = _state.get("cache_ns", "")
+    if style:
+        ns += "\nstyle:" + hashlib.sha1(style.encode("utf-8")).hexdigest()[:16]
+    return ns
+
+
+def _cache_lookup(query: str, style: str = "") -> Optional[dict]:
     """按「实际用于检索的问题」查缓存；没有数据库或关闭 TTL 时直接跳过。"""
     store = _state.get("store")
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0:
         return None
-    key = cache_key(query, _state.get("cache_ns", ""))
+    key = cache_key(query, _cache_namespace(style))
     try:
         return store.get_answer_cache(key, ttl)
     except Exception:  # 缓存故障降级为直接答题
         return None
 
 
-def _cache_store(query: str, payload: dict) -> None:
+def _cache_store(query: str, payload: dict, style: str = "") -> None:
     store = _state.get("store")
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0 or payload.get("refused"):
         return
-    key = cache_key(query, _state.get("cache_ns", ""))
+    key = cache_key(query, _cache_namespace(style))
     try:
         store.put_answer_cache(key, query, storable_payload(payload), ttl)
     except Exception:
@@ -413,18 +430,19 @@ def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
                 "reason": "server_not_ready", "hits": [], "latency_ms": 0}
     t0 = time.time()
     metrics.bump("ask_total")
-    hit = _cache_lookup(req.query)
+    style = _clean_style(req.style)
+    hit = _cache_lookup(req.query, style)
     if hit is not None:
         metrics.bump("cache_hit")
         return cached_payload(hit["payload"], hit["age_s"],
                               int((time.time() - t0) * 1000))
     # 模型推理是 CPU 密集的，单 worker 内串行，避免线程争抢
     with _lock:
-        res = pipeline.answer(req.query)
+        res = pipeline.answer(req.query, style)
     _log_gap(req.query, res)
     metrics.bump("ask_refused" if res.refused else "ask_answered")
     payload = with_cache_meta(_answer_payload(res, t0))
-    _cache_store(req.query, payload)
+    _cache_store(req.query, payload, style)
     return payload
 
 
@@ -451,7 +469,8 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
         return with_cache_meta(_non_kb_payload(plan, t0))
 
     # 多轮按「改写后的问题」查缓存：同一轮追问得到同一独立问题时复用答案。
-    hit = _cache_lookup(plan.rewritten)
+    style = _clean_style(req.style)
+    hit = _cache_lookup(plan.rewritten, style)
     if hit is not None:
         metrics.bump("cache_hit")
         out = cached_payload(hit["payload"], hit["age_s"],
@@ -463,11 +482,11 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
         return out
 
     with _lock:
-        res = pipeline.answer(plan.rewritten)
+        res = pipeline.answer(plan.rewritten, style)
     _log_gap(req.query, res)
     metrics.bump("chat_refused" if res.refused else "chat_answered")
     payload = with_cache_meta(_answer_payload(res, t0, plan))
-    _cache_store(plan.rewritten, payload)
+    _cache_store(plan.rewritten, payload, style)
     return payload
 
 

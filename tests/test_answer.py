@@ -171,6 +171,29 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(res.citations[0]["chunk_id"], "2019-408-31")
 
 
+class StyleTest(unittest.TestCase):
+    """伙伴 / 人格 / 技能只改措辞，不能改事实与引用规则。"""
+
+    def test_style_reaches_system_prompt(self):
+        p = FakeProvider([payload()])
+        AnswerPipeline(FakeSearcher(make_hits()), p).answer(
+            "页目录号怎么算", "像同桌一样讲，语气轻松一点")
+        system = p.calls[0][0]["content"]
+        self.assertIn("像同桌一样讲", system)
+        self.assertIn("不得改变事实", system)
+        self.assertIn("不得放宽", system)
+
+    def test_empty_style_leaves_prompt_unchanged(self):
+        p = FakeProvider([payload()])
+        AnswerPipeline(FakeSearcher(make_hits()), p).answer("页目录号")
+        self.assertNotIn("【讲解方式】", p.calls[0][0]["content"])
+
+    def test_style_survives_retry(self):
+        p = FakeProvider([payload(quote="编造的引用一"), payload()])
+        AnswerPipeline(FakeSearcher(make_hits()), p).answer("页目录号", "先给结论")
+        self.assertIn("先给结论", p.calls[1][0]["content"])
+
+
 class KnowledgePromptTest(unittest.TestCase):
     def _knowledge_hit(self):
         from retrieval.chunk import Chunk
