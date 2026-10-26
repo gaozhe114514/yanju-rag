@@ -843,6 +843,21 @@
       border-color: #e5c99a; background: #fbf3e2; color: #7a4a12;
     }
     .banner button { background: #9a5a24; }
+    .subnav {
+      flex: none; display: flex; gap: 6px; width: 100%; max-width: 1060px;
+      margin: 0 auto; padding: 12px 24px 0;
+    }
+    .subnav[hidden] { display: none; }
+    .subnav button {
+      padding: 7px 16px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--card); color: var(--muted); font-size: 13px;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    .subnav button:hover { color: var(--brand-dark); border-color: #cdbfa9; }
+    .subnav button.active {
+      border-color: var(--brand); background: var(--brand); color: #fff;
+      box-shadow: 0 4px 12px rgba(47, 93, 80, .16);
+    }
 
     /* 今日 */
     .today-hero {
@@ -888,6 +903,30 @@
     .today-row-title { color: #2a2722; }
     .today-row-meta { color: var(--muted); }
     .today-empty { color: var(--muted); }
+    .today-ask {
+      display: flex; gap: 8px; margin-top: 14px; padding: 6px;
+      border: 1px solid #ddd2bf; border-radius: 14px; background: var(--card);
+      box-shadow: 0 8px 24px rgba(70, 58, 38, .055);
+    }
+    .today-ask input {
+      flex: 1; min-width: 0; padding: 8px 10px; border: 0; background: transparent;
+      color: var(--ink); font-size: 14px; outline: none;
+    }
+    .today-ask input::placeholder { color: #9a9184; }
+    .today-ask .primary {
+      flex: none; padding: 9px 20px; border-radius: 10px; font-size: 13.5px;
+    }
+    .today-ask-hint {
+      margin: 7px 3px 0; color: var(--muted); font-size: 11.5px; line-height: 1.6;
+    }
+    .today-next {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+      padding-top: 12px; border-top: 1px dashed #ece4d6;
+    }
+    .today-next .primary, .today-next .ghost {
+      flex: 1 1 120px; justify-content: center; padding: 9px 14px; font-size: 13px;
+    }
+    .tabbar { display: none; }
 
     /* 问答 */
     .messages::-webkit-scrollbar-thumb { background: #d7cdbc; }
@@ -1069,6 +1108,7 @@
       .scrim { position: fixed; inset: 0; z-index: 30; background: rgba(15, 23, 42, .42); }
       .scrim.show { display: block; }
       .menu-btn { display: inline-flex !important; }
+      #nav { display: none; }
       .topbar { height: 60px; padding: 0 14px; }
       #page-title { font-size: 15px; }
       .sub { font-size: 11px; }
@@ -1095,6 +1135,29 @@
       .wrong-actions { width: 100%; }
       .modal { padding: 12px; }
       .modal-body { padding: 14px; }
+      .main { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+      .subnav { padding: 10px 16px 0; }
+      .subnav button { min-height: 44px; padding: 9px 18px; }
+      .today-ask { margin-top: 12px; }
+      .today-ask input { min-height: 40px; }
+      .today-ask .primary { padding: 9px 16px; }
+      .tabbar {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        padding: 5px 8px calc(5px + env(safe-area-inset-bottom));
+        border-top: 1px solid var(--line);
+        background: rgba(251, 247, 238, .96);
+        backdrop-filter: blur(12px);
+        box-shadow: 0 -8px 24px rgba(70, 58, 38, .06);
+      }
+      .tabbar button {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 3px; min-height: 50px; padding: 3px 0; border: 0; border-radius: 10px;
+        background: transparent; color: #8a8174; font-size: 11px;
+      }
+      .tabbar button.active { color: var(--brand); background: rgba(47, 93, 80, .06); }
+      .tabbar .nav-ico { width: auto; color: inherit; }
+      .tabbar .nav-ico svg { width: 21px; height: 21px; }
     }
   </style>
 </head>
@@ -1136,17 +1199,15 @@
       <div class="logo">408</div>
       <div>
         <h1>真题知识库</h1>
-        <p>RAG · 引用可核对</p>
+        <p>真题为据 · 句句可查</p>
       </div>
     </div>
     <button class="new-chat" id="new-chat">＋ 新建对话</button>
     <nav class="nav" id="nav">
       <button data-page="today" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
       <button data-page="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
-      <button data-page="bank"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-list"></use></svg></span>题库</button>
-      <button data-page="knowledge"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>知识库</button>
       <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
-      <button data-page="quality"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"></use></svg></span>质量</button>
+      <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
     </nav>
     <div class="side-section">
       <div class="side-title">最近对话</div>
@@ -1158,7 +1219,7 @@
         <span id="token-label">未配置口令</span>
         <span class="token-gear"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear"></use></svg></span>
       </button>
-      <div class="side-note"><span id="side-facts">正在读取题库…</span><br>未覆盖的问题会明确拒答</div>
+      <div class="side-note"><span id="side-facts">正在读取题库…</span><br>资料里没有的，会直说没有</div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -1170,8 +1231,13 @@
         <div id="page-title">今日</div>
         <div class="sub" id="page-sub">每天只做一件小事</div>
       </div>
-      <div class="top-actions"><span class="pill" id="health-pill">连接中…</span></div>
+      <div class="top-actions"><span class="pill" id="health-pill" hidden>连接中…</span></div>
     </header>
+
+    <div class="subnav" id="library-subnav" hidden>
+      <button data-lib="bank" class="active">题库</button>
+      <button data-lib="knowledge">考点</button>
+    </div>
 
     <div class="banner" id="auth-banner" hidden>
       <span>这个站点需要访问口令。</span>
@@ -1191,6 +1257,13 @@
             <span class="today-chip" id="today-week"></span>
           </div>
         </div>
+
+        <form class="today-ask" id="today-ask">
+          <input id="today-ask-input" maxlength="500" autocomplete="off"
+                 placeholder="有不会的，直接问一句…" aria-label="直接提问">
+          <button class="primary" type="submit">问</button>
+        </form>
+        <div class="today-ask-hint">答案只引用真题或考点原文；资料里没有会直说。</div>
 
         <div class="today-section">
           <div class="today-section-head">
@@ -1345,6 +1418,13 @@
   </main>
 </div>
 
+<nav class="tabbar" id="tabbar" aria-label="主要页面">
+  <button data-page="today" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"></use></svg></span>今日</button>
+  <button data-page="chat"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+  <button data-page="practice"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>练习</button>
+  <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"></use></svg></span>资料</button>
+</nav>
+
 <div class="modal" id="modal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true">
     <div class="modal-head">
@@ -1376,14 +1456,15 @@
   const HISTORY_KEY = '408-practice-history-v1';
   const EXAM_DATE_KEY = '408-exam-date-v1';
   const TODAY_KEY = '408-today-question-v1';
+  const LIB_TAB_KEY = '408-library-tab-v1';
   const SUBJECT_FALLBACK = {
     ds: '数据结构', co: '计算机组成原理', os: '操作系统', cn: '计算机网络', '': '未分类'
   };
   const PAGE_META = {
     today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
-    bank: {title: '题库', sub: '按年份和科目浏览真题'},
-    knowledge: {title: '考点知识库', sub: '四科考点卡片 · 与真题双向关联'},
+    bank: {title: '资料', sub: '真题题库 · 按年份和科目浏览'},
+    knowledge: {title: '资料', sub: '考点卡片 · 与真题双向关联'},
     practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
     quality: {title: '质量看板', sub: '拒答、缓存与语料的运行状况'}
   };
@@ -1411,6 +1492,7 @@
     meta: null,
     conversations: loadJSON(CONV_KEY, []),
     activeId: localStorage.getItem(ACTIVE_KEY) || '',
+    libraryTab: localStorage.getItem(LIB_TAB_KEY) === 'knowledge' ? 'knowledge' : 'bank',
     sending: false,
     loadingStart: 0,
     loadingTimer: null,
@@ -1671,10 +1753,10 @@
   function emptyState() {
     const wrap = el('div', 'empty');
     wrap.appendChild(el('div', 'logo-lg', '408'));
-    wrap.appendChild(el('h2', null, '真题 + 考点，双库检索'));
+    wrap.appendChild(el('h2', null, '有问题，直接问。'));
     wrap.appendChild(el('p', null,
-      '直接问题目或知识点。答案只从真题原文和考点卡片里找依据，每条结论都带可核对的引用；' +
-      '两个库都没覆盖时会明确拒答，并记录缺口。'));
+      '答案只从真题原文和考点卡片里找依据，每条结论都附上原话；' +
+      '资料里没有的，会直说没有，不猜。'));
     const examples = el('div', 'examples');
     [
       '快速排序的时间复杂度',
@@ -1729,13 +1811,6 @@
     return ['badge', '已作答 · 引用已校验'];
   }
 
-  function cacheAgeText(sec) {
-    sec = Math.max(0, Number(sec) || 0);
-    if (sec < 60) return Math.max(1, Math.round(sec)) + ' 秒前';
-    if (sec < 3600) return Math.round(sec / 60) + ' 分钟前';
-    return (sec / 3600).toFixed(1) + ' 小时前';
-  }
-
   function renderBotMessage(msg) {
     const row = el('div', 'msg bot');
     row.appendChild(el('div', 'avatar', '408'));
@@ -1756,11 +1831,6 @@
     const b = badgeFor(data);
     const line = el('div', 'badge-line');
     line.appendChild(el('span', b[0], b[1]));
-    const bits = [];
-    if (data.latency_ms) bits.push((data.latency_ms / 1000).toFixed(1) + ' 秒');
-    if (data.cached) bits.push('缓存回答 · ' + cacheAgeText(data.cache_age_s));
-    else if (data.attempts) bits.push('生成 ' + data.attempts + ' 次');
-    if (bits.length) line.appendChild(el('span', 'badge-meta', bits.join(' · ')));
     body.appendChild(line);
 
     const card = el('div', 'answer-card');
@@ -2421,20 +2491,34 @@
         ok.addEventListener('click', () => assessToday('known'));
         const no = el('button', 'primary no-btn', '还不太会');
         no.addEventListener('click', () => assessToday('unknown'));
+        const full = el('button', 'ghost', '看完整原题');
+        full.addEventListener('click', () => openQuestion(d.id));
         actions.appendChild(ok);
         actions.appendChild(no);
+        actions.appendChild(full);
+        card.appendChild(actions);
       } else {
         actions.appendChild(el('span', 'practice-note', t.assessed === 'known'
           ? '已记下：会了。'
           : '已记下：还不太会，之后还会再见到它。'));
-        const next = el('button', 'primary', '换一题');
-        next.addEventListener('click', () => loadToday(d.id));
-        actions.appendChild(next);
+        card.appendChild(actions);
+
+        const nextRow = el('div', 'today-next');
+        const another = el('button', 'primary', '再练一题');
+        another.addEventListener('click', () => loadToday(d.id));
+        const why = el('button', 'ghost', '问为什么');
+        why.addEventListener('click', () => askWhyFromToday(d));
+        const kp = el('button', 'ghost', '看考点');
+        kp.addEventListener('click', () => showTodayKnowledge(d));
+        nextRow.appendChild(another);
+        nextRow.appendChild(why);
+        nextRow.appendChild(kp);
+        card.appendChild(nextRow);
+
+        const full = el('button', 'link-btn', '看完整原题');
+        full.addEventListener('click', () => openQuestion(d.id));
+        card.appendChild(full);
       }
-      const full = el('button', 'ghost', '看完整原题');
-      full.addEventListener('click', () => openQuestion(d.id));
-      actions.appendChild(full);
-      card.appendChild(actions);
     }
 
     box.replaceChildren(card);
@@ -2448,6 +2532,31 @@
     recordAssessment(t.item, kind);
     saveTodayState();
     renderToday();
+  }
+
+  function askFromToday(text) {
+    const q = String(text || '').trim();
+    if (!q) return;
+    go('chat');
+    const composer = $('#composer');
+    composer.value = q;
+    autoGrow();
+    send();
+  }
+
+  function askWhyFromToday(d) {
+    const stem = clip(String(d.stem || '').replace(/\s+/g, ' '), 90);
+    askFromToday('请讲一下第 ' + d.id + ' 题：' + stem);
+  }
+
+  function showTodayKnowledge(d) {
+    const rel = (d.related_knowledge || [])[0];
+    if (rel && rel.id) {
+      openKnowledge(rel.id);
+      return;
+    }
+    go('knowledge');
+    toast('这道题还没有关联考点，可以在考点库里搜关键词。');
   }
 
   function renderTodayResume() {
@@ -2582,10 +2691,7 @@
       renderSubjects();
       renderPracticeSubjects();
       const facts = $('#side-facts');
-      if (facts) {
-        facts.textContent = state.meta.years.join(' / ') + ' 真题 · ' +
-          state.meta.chunks + ' 题 · ' + state.meta.knowledge + ' 个考点';
-      }
+      if (facts) facts.textContent = '资料已就绪';
       return state.meta;
     } catch (e) {
       if (e.status === 401) {
@@ -3807,11 +3913,16 @@
     wrap.appendChild(status);
     wrap.appendChild(el('div', 'settings-note',
       '口令只保存在本机浏览器，通过 X-Access-Token 请求头发送，不会写进日志。'));
+    const runRow = el('div', 'settings-row');
+    runRow.appendChild(el('label', null, '运行状态'));
+    const runBtn = el('button', 'ghost', '查看语料与拒答统计');
+    runBtn.addEventListener('click', () => { closeModal(); go('quality'); });
+    runRow.appendChild(runBtn);
+    wrap.appendChild(runRow);
     if (state.health) {
       wrap.appendChild(el('div', 'settings-note',
-        '服务状态：' + (state.health.chunks || 0) + ' 题 · ' +
-        (state.health.knowledge || 0) + ' 个考点 · ' +
-        (state.health.mode || '—') + ' · ' + (state.health.provider || '—')));
+        '当前已收录 ' + (state.health.chunks || 0) + ' 道真题 · ' +
+        (state.health.knowledge || 0) + ' 个考点。'));
     }
 
     async function verify(token, saveIt) {
@@ -3881,15 +3992,17 @@
     const head = parts[0] || 'today';
     if (head === 'q') return {page: state.page, qid: parts[1] || ''};
     if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
+    if (head === 'library') return {page: libraryPage()};
     return {
       page: Object.prototype.hasOwnProperty.call(PAGE_META, head) ? head : 'chat'
     };
   }
 
+  function libraryPage() {
+    return state.libraryTab === 'knowledge' ? 'knowledge' : 'bank';
+  }
+
   function pageSub(page) {
-    if (page === 'bank' && state.meta) {
-      return '按年份和科目浏览 ' + state.meta.chunks + ' 道真题';
-    }
     return (PAGE_META[page] || PAGE_META.chat).sub;
   }
 
@@ -3908,7 +4021,20 @@
 
   function renderPage(page) {
     state.page = page;
-    $$('#nav button').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+    const navPage = (page === 'bank' || page === 'knowledge') ? 'library' : page;
+    $$('#nav button, #tabbar button').forEach(b =>
+      b.classList.toggle('active', b.dataset.page === navPage));
+    const subnav = $('#library-subnav');
+    if (subnav) {
+      const onLibrary = page === 'bank' || page === 'knowledge';
+      subnav.hidden = !onLibrary;
+      if (onLibrary) {
+        state.libraryTab = page;
+        localStorage.setItem(LIB_TAB_KEY, page);
+        $$('button', subnav).forEach(b =>
+          b.classList.toggle('active', b.dataset.lib === page));
+      }
+    }
     $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
     const meta = PAGE_META[page] || PAGE_META.chat;
     $('#page-title').textContent = meta.title;
@@ -4111,9 +4237,25 @@
   }
 
   function bind() {
-    $$('#nav button').forEach(b => {
-      b.addEventListener('click', () => go(b.dataset.page));
+    $$('#nav button, #tabbar button').forEach(b => {
+      b.addEventListener('click', () => {
+        go(b.dataset.page === 'library' ? libraryPage() : b.dataset.page);
+      });
     });
+    $$('#library-subnav button').forEach(b => {
+      b.addEventListener('click', () => go(b.dataset.lib));
+    });
+    const todayAsk = $('#today-ask');
+    if (todayAsk) {
+      todayAsk.addEventListener('submit', e => {
+        e.preventDefault();
+        const input = $('#today-ask-input');
+        const text = input.value.trim();
+        if (!text) { input.focus(); return; }
+        input.value = '';
+        askFromToday(text);
+      });
+    }
     $('#new-chat').addEventListener('click', newChat);
     $('#send').addEventListener('click', send);
     const examEdit = $('#today-exam-edit');
