@@ -5,7 +5,7 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Iterator, List, Optional, Sequence
 
 from retrieval.search import SearchHit
 
@@ -59,6 +59,12 @@ class ExtractiveProvider:
             "citations": [{"chunk_id": c.id, "quote": quote}],
             "reason": "",
         }, ensure_ascii=False)
+
+    def generate_stream(self, messages: List[Dict],
+                        hits: Optional[Sequence[SearchHit]] = None,
+                        **_) -> Iterator[str]:
+        """离线实现没有真正的增量，一次给出完整 JSON。"""
+        yield self.generate(messages, hits=hits)
 
 
 class DeepSeekProvider:
@@ -122,3 +128,52 @@ class DeepSeekProvider:
                  **_) -> str:
         return self.complete(messages, temperature=self.temperature,
                              max_tokens=self.max_tokens, json_mode=True)
+
+    def _post_stream(self, body: Dict) -> Iterator[str]:
+        """按 SSE 读取 chat/completions，逐段吐出 delta.content。"""
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            self.base_url + "/chat/completions", data=data,
+            headers={"Content-Type": "application/json",
+                     "Accept": "text/event-stream",
+                     "Authorization": "Bearer " + self.api_key},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        delta = obj["choices"][0].get("delta", {}).get("content") or ""
+                    except (KeyError, IndexError, TypeError):
+                        continue
+                    if delta:
+                        yield delta
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            raise ProviderError("DeepSeek HTTP %d：%s" % (e.code, detail))
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise ProviderError("DeepSeek 流式请求失败：%s" % e)
+
+    def generate_stream(self, messages: List[Dict],
+                        hits: Optional[Sequence[SearchHit]] = None,
+                        **_) -> Iterator[str]:
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+            "response_format": {"type": "json_object"},
+        }
+        yield from self._post_stream(body)

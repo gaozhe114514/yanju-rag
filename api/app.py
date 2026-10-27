@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
@@ -38,6 +38,7 @@ from answer.cache import (cache_key, cached_payload, storable_payload,
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
+from answer.stream import sse
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
 
@@ -488,6 +489,73 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
     payload = with_cache_meta(_answer_payload(res, t0, plan))
     _cache_store(plan.rewritten, payload, style)
     return payload
+
+
+@app.post("/chat/stream")
+def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
+    """流式问答：先按 SSE 吐 answer 文本，收完再校验引用。
+
+    事件顺序：status(plan) → status(retrieve/gate) → delta* →
+    status(verify) → done。校验失败会先发 reset 让前端清空，再重试一次；
+    最终结果只认 done 里的 payload——引用校验和拒答规则与非流式完全一致。
+    """
+    agent = _state.get("agent")
+    pipeline = _state.get("pipeline")
+
+    def events():
+        if agent is None or pipeline is None:
+            yield sse({"type": "done", "data": {
+                "intent": "kb", "refused": True, "answer": "", "citations": [],
+                "reason": "server_not_ready", "hits": [], "attempts": 0,
+                "latency_ms": 0, "rewritten_query": "",
+                "trace": {"steps": [], "rewritten_query": "", "intent": "kb"}}})
+            return
+
+        t0 = time.time()
+        history = []
+        for turn in req.history:
+            history.append(turn.model_dump() if hasattr(turn, "model_dump") else turn.dict())
+
+        yield sse({"type": "status", "stage": "plan"})
+        plan = agent.plan(req.query, history)
+        metrics.bump("chat_total")
+        if plan.intent in ("chitchat", "clarify"):
+            metrics.bump("chat_nonkb")
+            yield sse({"type": "done", "data": with_cache_meta(_non_kb_payload(plan, t0))})
+            return
+
+        style = _clean_style(req.style)
+        hit = _cache_lookup(plan.rewritten, style)
+        if hit is not None:
+            metrics.bump("cache_hit")
+            out = cached_payload(hit["payload"], hit["age_s"],
+                                 int((time.time() - t0) * 1000))
+            rewritten = plan.rewritten if plan.rewritten != plan.query else ""
+            out["intent"] = plan.intent
+            out["rewritten_query"] = rewritten
+            out["trace"]["rewritten_query"] = rewritten
+            yield sse({"type": "status", "stage": "cache"})
+            yield sse({"type": "done", "data": out})
+            return
+
+        with _lock:
+            for ev in pipeline.answer_stream(plan.rewritten, style):
+                if ev.get("type") != "done":
+                    yield sse(ev)
+                    continue
+                res = ev["result"]
+                _log_gap(req.query, res)
+                metrics.bump("chat_refused" if res.refused else "chat_answered")
+                payload = with_cache_meta(_answer_payload(res, t0, plan))
+                _cache_store(plan.rewritten, payload, style)
+                yield sse({"type": "done", "data": payload})
+                return
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
 
 
 def _gap_stats_data(days: int, limit: int) -> dict:
