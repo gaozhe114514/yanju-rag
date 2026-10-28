@@ -1899,6 +1899,121 @@
       .lib-add { padding: 14px; }
       .doc-view { max-height: 52vh; padding: 12px 13px; }
     }
+
+    /* ---------- v0.27 对话界面（照 DeepTutor：无头像、无徽标、引用收成一行） ---------- */
+    #page-chat .messages { padding: 34px 40px 8px; }
+    #page-chat .msg { margin-bottom: 34px; }
+    #page-chat .msg.bot { display: block; }
+    #page-chat .bot-body { max-width: 100%; }
+    #page-chat .user-bubble {
+      max-width: min(560px, 78%); padding: 9px 14px; border-radius: 16px;
+      border: 1px solid var(--line); background: var(--wash);
+      color: var(--ink); font-size: 14px; line-height: 1.7;
+    }
+    #page-chat .answer-text {
+      color: var(--ink); font-size: 15px; line-height: 1.86;
+    }
+    #page-chat .answer-text + .cite-chips { margin-top: 16px; }
+
+    /* 引用：一行小胶囊，点开看原文；原话在弹层里高亮，不再铺三行 */
+    .cite-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cite-chip {
+      display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+      padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+      background: transparent; color: #57514a; font-size: 12px;
+      transition: border-color .15s, color .15s;
+    }
+    .cite-chip:hover { border-color: #cbbda4; color: var(--brand); }
+    .cite-kind { flex: none; color: var(--brand); font-size: 11px; font-weight: 500; }
+    .cite-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 20em;
+    }
+    .cite-arrow { flex: none; color: var(--muted); font-size: 11px; }
+
+    /* 回答下面的一行元信息：核对结果、召回与过程、动作 */
+    .msg-meta {
+      display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap;
+      margin-top: 14px; color: var(--muted); font-size: 11.5px;
+    }
+    .meta-note { display: inline-flex; align-items: center; gap: 5px; }
+    .meta-note.ok { color: var(--ok); }
+    .meta-note.warn { color: var(--warn); }
+    .meta-note::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .mini-det { margin: 0; }
+    .mini-det > summary {
+      padding: 0; color: var(--muted); font-size: 11.5px; font-weight: 400;
+    }
+    .mini-det > summary::before { content: none; }
+    .mini-det > summary:hover { color: var(--brand); }
+    .mini-det .hit-list, .mini-det .trace { margin-top: 8px; }
+    .msg-tools {
+      display: flex; align-items: center; gap: 2px; margin-left: auto;
+      opacity: 0; transition: opacity .15s ease;
+    }
+    .msg:hover .msg-tools, .msg:focus-within .msg-tools { opacity: 1; }
+    @media (hover: none) { .msg-tools { opacity: 1; } }
+    .msg-tools .tool-btn {
+      padding: 3px 8px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--muted); font-size: 11.5px;
+    }
+    .msg-tools .tool-btn:hover { background: var(--muted-surface); color: var(--brand); }
+    .msg-tools .tool-btn.copy-ok { color: var(--ok); }
+
+    /* 输入条：问题在上，库与伙伴在下，像 DeepTutor 那样只有一张卡 */
+    #page-chat .composer-wrap { padding: 10px 40px 22px; }
+    #page-chat .composer {
+      flex-direction: column; align-items: stretch; gap: 0;
+      padding: 12px 12px 10px 16px; border-radius: 26px; border-color: var(--line);
+      box-shadow: 0 1px 2px rgba(28, 24, 22, .03), 0 10px 28px -12px rgba(69, 49, 31, .16);
+    }
+    #page-chat .composer textarea {
+      min-height: 26px; max-height: 180px; padding: 2px 4px 10px 0;
+      font-size: 15px; line-height: 1.6;
+    }
+    .composer-bar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .composer-bar .composer-chip { margin-bottom: 0; background: var(--bg); }
+    .composer-bar .send { margin-left: auto; }
+    #page-chat .composer-hint { display: none; }
+
+    /* 欢迎态：一句问候 + 四行推荐，不再摆 2×2 卡片 */
+    #page-chat .empty.home {
+      justify-content: center; align-items: stretch;
+      padding: 40px 0 8px; max-width: 740px; margin: 0 auto;
+    }
+    #page-chat .home-kicker { display: none; }
+    #page-chat .home h2 { margin: 0 0 10px; font-size: 33px; letter-spacing: -.01em; }
+    #page-chat .home-sub { max-width: 520px; font-size: 13.5px; }
+    #page-chat .home-prompts {
+      display: flex; flex-direction: column; gap: 0; margin-top: 30px;
+      width: 100%; max-width: 560px;
+    }
+    #page-chat .prompt {
+      flex-direction: row; align-items: baseline; gap: 8px;
+      padding: 9px 2px; border: 0; border-radius: 0; background: transparent;
+      box-shadow: none; color: var(--ink); font-size: 13.5px;
+      border-bottom: 1px solid var(--line);
+    }
+    #page-chat .prompt:last-child { border-bottom: 0; }
+    #page-chat .prompt:hover { transform: none; box-shadow: none; color: var(--brand); }
+    #page-chat .prompt:hover .prompt-q { color: var(--brand); }
+    #page-chat .prompt-tag { flex: none; font-size: 11.5px; }
+    #page-chat .prompt-q { font-size: 13.5px; color: var(--ink); }
+    #page-chat .prompt::after { content: "→"; margin-left: auto; color: var(--muted); font-size: 12px; }
+    #page-chat .prompt:hover::after { color: var(--brand); }
+    #page-chat .home-note { display: none; }
+    #page-chat .home-own { align-self: flex-start; margin-top: 18px; font-size: 11.5px; }
+
+    @media (max-width: 860px) {
+      #page-chat .messages { padding: 20px 16px 4px; }
+      #page-chat .msg { margin-bottom: 26px; }
+      #page-chat .composer-wrap { padding: 8px 16px 14px; }
+      #page-chat .empty.home { padding: 24px 4px 4px; }
+      #page-chat .home h2 { font-size: 26px; }
+      #page-chat .answer-text { font-size: 14.5px; }
+      .msg-tools { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
@@ -2061,19 +2176,20 @@
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
-          <button class="composer-chip" id="collection-chip" type="button"
-                  aria-haspopup="dialog" title="选择回答依据的知识库">全部资料</button>
-          <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
           <textarea id="composer" rows="1" maxlength="500"
                     placeholder="有问题，直接问…"></textarea>
-          <button class="send" id="send" aria-label="发送" title="发送">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
-          </button>
-          <button class="send stop" id="stop-send" aria-label="停止生成" title="停止生成" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
-          </button>
+          <div class="composer-bar">
+            <button class="composer-chip" id="collection-chip" type="button"
+                    aria-haspopup="dialog" title="选择回答依据的知识库">全部资料</button>
+            <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
+            <button class="send" id="send" aria-label="发送" title="发送">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+            </button>
+            <button class="send stop" id="stop-send" aria-label="停止生成" title="停止生成" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+            </button>
+          </div>
         </div>
-        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用资料原文</div>
       </div>
     </section>
 
@@ -2646,7 +2762,7 @@
 
   function streamingBubble(avatarText) {
     const row = el('div', 'msg bot streaming');
-    row.appendChild(el('div', 'avatar', avatarText || 'AI'));
+    if (avatarText) row.appendChild(el('div', 'avatar', avatarText));
     const body = el('div', 'bot-body');
     const stage = el('div', 'stream-stage');
     stage.appendChild(el('span', 'spinner'));
@@ -2711,12 +2827,20 @@
     return !!item && item.kind === 'doc';
   }
 
+  // 正文里的引用已经收成一行胶囊，被引用的原话在这里交代清楚
+  function quoteBlock(quote) {
+    const box = el('div', 'cite');
+    box.appendChild(el('div', 'cite-head', '引用的原话'));
+    box.appendChild(el('div', 'cite-quote', '“' + quote + '”'));
+    return box;
+  }
+
   function openSource(item, collection) {
     const id = item.chunk_id || item.id;
     if (!id) return;
-    if (isKnowledge(item)) openKnowledge(id);
+    if (isKnowledge(item)) openKnowledge(id, false, item.quote);
     else if (isDoc(item)) openDocSource(item, collection);
-    else openQuestion(id);
+    else openQuestion(id, false, item.quote);
   }
 
   // 用户知识库的引用：打开整篇资料，并高亮被引用的那句话
@@ -2930,11 +3054,9 @@
 
   function emptyState() {
     const wrap = el('div', 'empty home');
-    wrap.appendChild(el('div', 'home-kicker', '资料问答'));
     wrap.appendChild(el('h2', null, salutation() + '，想问点什么？'));
     wrap.appendChild(el('p', 'home-sub',
-      '答案只从资料里找依据：内置 408 真题和考点，或者你自己贴进知识库的讲义。' +
-      '每条结论都附上原话；资料里没有的，会直说没有，不猜。'));
+      '答案只从资料里找依据，每条结论都附原话；资料里没有的，会直说没有。'));
 
     const ed = examDate();
     const left = daysUntil(ed);
@@ -2964,8 +3086,6 @@
       prompts.appendChild(b);
     });
     wrap.appendChild(prompts);
-    wrap.appendChild(el('div', 'home-note',
-      '多轮追问也可以：先问「快速排序」，再问「那它的时间复杂度呢」。'));
     // 不考 408 的人从这里进去：先把讲义贴进知识库，再回来提问
     const own = el('button', 'link-btn home-own',
       '想用自己的资料？把讲义贴进知识库 →');
@@ -3015,68 +3135,66 @@
     return ['badge', '已作答 · 引用已校验'];
   }
 
+  // 引用只留一行小胶囊：原话在弹层里高亮，正文不再被三大块引用挤满
+  function citationChips(citations, collection) {
+    const chips = el('div', 'cite-chips');
+    citations.forEach(c => {
+      const chip = el('button', 'cite-chip');
+      chip.type = 'button';
+      chip.title = c.quote ? '“' + c.quote + '”' : '';
+      chip.appendChild(el('span', 'cite-kind',
+        isDoc(c) ? '资料' : (isKnowledge(c) ? '考点' : '真题')));
+      chip.appendChild(el('span', 'cite-name',
+        c.title || c.chapter || c.chunk_id || '原文'));
+      chip.appendChild(el('span', 'cite-arrow', '↗'));
+      chip.addEventListener('click', () => openSource(c, collection));
+      chips.appendChild(chip);
+    });
+    return chips;
+  }
+
   function renderBotMessage(msg, avatarText) {
     const row = el('div', 'msg bot');
-    row.appendChild(el('div', 'avatar', avatarText || 'AI'));
+    // 问答页不带头像（DeepTutor 也没有）；伙伴页仍用伙伴首字
+    if (avatarText) row.appendChild(el('div', 'avatar', avatarText));
     const body = el('div', 'bot-body');
     const data = msg.data || {};
 
     if (msg.error) {
-      const line = el('div', 'badge-line');
-      line.appendChild(el('span', 'badge err', '请求失败'));
-      body.appendChild(line);
-      const card = el('div', 'answer-card');
-      card.appendChild(el('div', 'answer-text', msg.error));
-      body.appendChild(card);
+      body.appendChild(el('div', 'answer-text', msg.error));
+      const meta = el('div', 'msg-meta');
+      meta.appendChild(el('span', 'meta-note warn', '请求失败'));
+      body.appendChild(meta);
       row.appendChild(body);
       return row;
     }
 
-    const b = badgeFor(data);
-    const line = el('div', 'badge-line');
-    line.appendChild(el('span', b[0], b[1]));
-    body.appendChild(line);
+    body.appendChild(el('div', 'answer-text', answerText(data)));
 
-    const card = el('div', 'answer-card');
-    card.appendChild(el('div', 'answer-text', answerText(data)));
+    const cites = (data.citations || []).filter(Boolean);
+    if (cites.length) body.appendChild(citationChips(cites, data.collection));
 
-    if (data.citations && data.citations.length) {
-      card.appendChild(el('div', 'section-title', '引用'));
-      data.citations.forEach(c => {
-        const cite = el('div', 'cite');
-        const head = el('div', 'cite-head');
-        head.appendChild(el('span', 'cite-id', '[' + c.chunk_id + ']'));
-        const src = isDoc(c) ? '资料' : (isKnowledge(c) ? '考点' : '真题');
-        head.appendChild(el('span', 'q-tag' + (isKnowledge(c) ? ' k-tag' : ''),
-          src));
-        if (isDoc(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
-        else if (isKnowledge(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
-        const btn = el('button', 'link-btn',
-          isDoc(c) ? '查看原文' : (isKnowledge(c) ? '查看考点' : '查看原题'));
-        btn.addEventListener('click', () => openSource(c, data.collection));
-        head.appendChild(btn);
-        cite.appendChild(head);
-        cite.appendChild(el('div', 'cite-quote', '“' + (c.quote || '') + '”'));
-        card.appendChild(cite);
-      });
-    }
-
-    if (data.rewritten_query) {
-      const rw = el('div', 'rewrite');
-      rw.appendChild(document.createTextNode('检索时使用：'));
-      rw.appendChild(el('b', null, data.rewritten_query));
-      card.appendChild(rw);
+    const meta = el('div', 'msg-meta');
+    if (data.intent === 'clarify') {
+      meta.appendChild(el('span', 'meta-note warn', '需要补充'));
+    } else if (data.refused) {
+      // badgeFor 的文案是「未作答 · 原因」，这里只留原因
+      const reason = (badgeFor(data)[1] || '').replace(/^未作答\s*·\s*/, '');
+      meta.appendChild(el('span', 'meta-note warn', reason || '未作答'));
+    } else if (data.intent !== 'chitchat') {
+      meta.appendChild(el('span', 'meta-note ok',
+        cites.length ? '引用已核对 · ' + cites.length + ' 条' : '引用已核对'));
     }
 
     if (data.hits && data.hits.length) {
-      const dn = data.hits.filter(isDoc).length;
-      const kn = data.hits.filter(isKnowledge).length;
-      const qn = data.hits.length - kn - dn;
-      const label = dn
-        ? '召回的资料片段'
-        : (kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原文'));
-      const det = el('details');
-      det.appendChild(el('summary', null, label + '（' + data.hits.length + '）'));
+      const det = el('details', 'mini-det');
+      det.appendChild(el('summary', null, '召回 ' + data.hits.length + ' 条'));
+      if (data.rewritten_query) {
+        const rw = el('div', 'rewrite');
+        rw.appendChild(document.createTextNode('检索时使用：'));
+        rw.appendChild(el('b', null, data.rewritten_query));
+        det.appendChild(rw);
+      }
       const list = el('div', 'hit-list');
       data.hits.forEach(h => {
         const item = el('div', 'hit-item');
@@ -3102,11 +3220,11 @@
         list.appendChild(item);
       });
       det.appendChild(list);
-      card.appendChild(det);
+      meta.appendChild(det);
     }
 
     if (data.trace && data.trace.steps && data.trace.steps.length) {
-      const det = el('details');
+      const det = el('details', 'mini-det');
       det.appendChild(el('summary', null, '执行过程'));
       const trace = el('div', 'trace');
       data.trace.steps.forEach(s => {
@@ -3117,13 +3235,11 @@
         trace.appendChild(r);
       });
       det.appendChild(trace);
-      card.appendChild(det);
+      meta.appendChild(det);
     }
 
-    body.appendChild(card);
-
     if (msg.query && (data.answer || data.refused)) {
-      const tools = el('div', 'answer-tools');
+      const tools = el('div', 'msg-tools');
       const cp = el('button', 'tool-btn', '复制');
       cp.addEventListener('click', async () => {
         const text = data.refused ? ('（未作答：' + (data.reason || '资料不足') + '）') : data.answer;
@@ -3147,16 +3263,16 @@
       tools.appendChild(cp);
       tools.appendChild(nb);
       tools.appendChild(jr);
-      body.appendChild(tools);
+      meta.appendChild(tools);
     }
 
+    if (meta.childNodes.length) body.appendChild(meta);
     row.appendChild(body);
     return row;
   }
 
   function loadingBubble() {
     const row = el('div', 'msg bot');
-    row.appendChild(el('div', 'avatar', 'AI'));
     const body = el('div', 'bot-body');
     const box = el('div', 'typing');
     box.appendChild(el('span', 'spinner'));
@@ -5279,13 +5395,15 @@
     return card;
   }
 
-  async function openKnowledge(id, fromHash) {
+  async function openKnowledge(id, fromHash, quote) {
     state.modalId = id;
     if (!fromHash) setHash('k', id);
     openModal('考点详情', el('div', 'empty-row', '正在加载考点…'));
     try {
       const k = await api('/knowledge/' + encodeURIComponent(id));
-      $('#modal-body').replaceChildren(renderKnowledgeDetail(k));
+      const node = renderKnowledgeDetail(k);
+      if (quote) node.prepend(quoteBlock(quote));
+      $('#modal-body').replaceChildren(node);
     } catch (e) {
       const box = el('div', 'empty-row');
       box.textContent = e.status === 401 ? '需要访问口令。' : '考点加载失败：' + e.message;
@@ -5998,13 +6116,15 @@
   }
 
   /* ---------- question detail ---------- */
-  async function openQuestion(id, fromHash) {
+  async function openQuestion(id, fromHash, quote) {
     state.modalId = id;
     if (!fromHash) setHash('q', id);
     openModal('原题详情', el('div', 'empty-row', '正在加载原题…'));
     try {
       const q = await api('/chunks/' + encodeURIComponent(id));
-      $('#modal-body').replaceChildren(renderDetail(q));
+      const node = renderDetail(q);
+      if (quote) node.prepend(quoteBlock(quote));
+      $('#modal-body').replaceChildren(node);
     } catch (e) {
       const box = el('div', 'empty-row');
       box.textContent = e.status === 401 ? '需要访问口令。' : '原题加载失败：' + e.message;
