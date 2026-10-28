@@ -5,9 +5,23 @@ on:
     branches: [main]
   pull_request:
 
+# 连着推几个提交时只跑最后那次，旧任务直接取消，
+# 免得每推一次都跑一遍、每失败一次就发一封邮件。
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # 强制 UTF-8，避免 runner 上非 UTF-8 输出编码把中文用例名或断言打崩。
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,5 +31,12 @@ jobs:
       # 直接测纯函数，否则这里会因为没有这些包而红。
       - name: Install test deps
         run: python -m pip install "numpy<2"
+      # 红了先看这一步：版本对不上就能直接排除环境问题。
+      # 本地等价复现：在 python:3.9-slim 容器里跑同样的两条命令。
+      - name: Show environment
+        run: |
+          python -V
+          python -c "import numpy, sys; print('numpy', numpy.__version__, '|', sys.platform)"
+          python -m pip freeze
       - name: Run unit tests
         run: python -m unittest discover -s tests -t . -v
