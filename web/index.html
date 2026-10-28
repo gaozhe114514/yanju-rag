@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fdfcf9">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b0501e'/%3E%3Ctext x='32' y='43' font-family='Georgia,serif' font-size='26' font-weight='700' text-anchor='middle' fill='%23fff'%3E408%3C/text%3E%3C/svg%3E">
-  <title>408 真题知识库</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23b0501e'/%3E%3Ctext x='32' y='44' font-family='Songti SC,Serif' font-size='32' font-weight='700' text-anchor='middle' fill='%23fff'%3E%E5%BC%95%3C/text%3E%3C/svg%3E">
+  <title>引证 · 可引用知识库</title>
   <style>
     :root {
       --bg: #fdfcf9; --card: #ffffff; --ink: #1c1816; --muted: #6d645a;
@@ -46,7 +46,7 @@
     .logo {
       width: 38px; height: 38px; flex: none; border-radius: 11px; color: #fff;
       background: linear-gradient(135deg, #d08a5f, #8f3d16);
-      display: grid; place-items: center; font-size: 12px; font-weight: 800; letter-spacing: .4px;
+      display: grid; place-items: center; font-size: 17px; font-weight: 700; letter-spacing: 0;
     }
     .brand h1 { margin: 0; font-size: 15px; color: #faf8f2; letter-spacing: .2px; }
     .brand p { margin: 1px 0 0; font-size: 11px; color: #8b8175; }
@@ -1120,6 +1120,7 @@
     .prompt-tag { color: var(--brand); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
     .prompt-q { color: var(--ink); font-size: 13.5px; line-height: 1.6; }
     .home-note { margin-top: 22px; color: var(--muted); font-size: 11.5px; }
+    .home-own { margin-top: 10px; font-size: 11.5px; }
 
     /* ---------- 资料 ---------- */
     .bank-head { gap: 12px; margin-bottom: 14px; }
@@ -1956,10 +1957,10 @@
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="logo">408</div>
+      <div class="logo">引</div>
       <div>
-        <h1>真题知识库</h1>
-        <p>真题为据 · 句句可查</p>
+        <h1>引证</h1>
+        <p>资料为据 · 句句可查</p>
       </div>
     </div>
     <button class="new-chat" id="new-chat">＋ 新建对话</button>
@@ -1989,7 +1990,7 @@
     <header class="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"></use></svg></button>
       <div class="top-title">
-        <div id="page-title">真题问答</div>
+        <div id="page-title">问答</div>
         <div class="sub" id="page-sub">多轮追问 · 每条结论都可核对</div>
       </div>
       <div class="top-actions"><span class="pill" id="health-pill" hidden>连接中…</span></div>
@@ -2036,7 +2037,7 @@
                  placeholder="有不会的，直接问一句…" aria-label="直接提问">
           <button class="primary" type="submit">问</button>
         </form>
-        <div class="today-ask-hint">答案只引用真题或考点原文；资料里没有会直说。</div>
+        <div class="today-ask-hint">答案只引用资料原文；资料里没有会直说。</div>
 
         <div class="today-section">
           <div class="today-section-head">
@@ -2072,7 +2073,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
           </button>
         </div>
-        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用真题或考点原文</div>
+        <div class="composer-hint">Enter 发送 · Shift+Enter 换行 · 答案只引用资料原文</div>
       </div>
     </section>
 
@@ -2085,7 +2086,7 @@
           <span class="bank-meta" id="deck-meta"></span>
         </div>
         <div class="deck-grid" id="deck-grid"></div>
-        <div class="practice-note">408 真题来自服务端语料；自建题库、导入与生成的题目只保存在这台设备上。</div>
+        <div class="practice-note">内置 408 真题来自服务端语料；自建题库、导入与生成的题目只保存在这台设备上。</div>
       </div>
     </section>
 
@@ -2274,7 +2275,7 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
             </button>
           </div>
-          <div class="composer-hint" id="partner-hint">伙伴只改变讲法，结论仍逐字引用真题或考点原文</div>
+          <div class="composer-hint" id="partner-hint">伙伴只改变讲法，结论仍逐字引用资料原文</div>
         </div>
       </div>
     </section>
@@ -2389,11 +2390,11 @@
   };
   const PAGE_META = {
     today: {title: '今日', sub: '每天只做一件小事'},
-    chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
+    chat: {title: '问答', sub: '多轮追问 · 每条结论都可核对'},
     mastery: {title: '精通之路', sub: '从考点到自测，一步一步走完'},
     library: {title: '知识库', sub: '把自己的资料放进来，问答只引用这些原文'},
     collection: {title: '知识库', sub: '资料详情 · 切分后逐段可被引用'},
-    bank: {title: '题库', sub: '408 真题与自建题库，标签和出处都随题保存'},
+    bank: {title: '题库', sub: '内置 408 真题与自建题库，标签和出处都随题保存'},
     deck: {title: '题库', sub: '题库详情 · 按标签筛选、按出处核对'},
     knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
     practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
@@ -2631,7 +2632,7 @@
   function streamStageText(stage, evt) {
     if (stage === 'plan') return '正在理解问题…';
     if (stage === 'cache') return '命中缓存，正在取出答案…';
-    if (stage === 'retrieve') return '正在检索真题与考点…';
+    if (stage === 'retrieve') return '正在检索资料…';
     if (stage === 'gate') {
       const n = evt && typeof evt.hits === 'number' ? evt.hits : 0;
       return n ? '找到 ' + n + ' 条相关资料，正在组织答案…' : '正在组织答案…';
@@ -2645,7 +2646,7 @@
 
   function streamingBubble(avatarText) {
     const row = el('div', 'msg bot streaming');
-    row.appendChild(el('div', 'avatar', avatarText || '408'));
+    row.appendChild(el('div', 'avatar', avatarText || 'AI'));
     const body = el('div', 'bot-body');
     const stage = el('div', 'stream-stage');
     stage.appendChild(el('span', 'spinner'));
@@ -2929,11 +2930,11 @@
 
   function emptyState() {
     const wrap = el('div', 'empty home');
-    wrap.appendChild(el('div', 'home-kicker', '408 真题知识库'));
+    wrap.appendChild(el('div', 'home-kicker', '资料问答'));
     wrap.appendChild(el('h2', null, salutation() + '，想问点什么？'));
     wrap.appendChild(el('p', 'home-sub',
-      '答案只从真题原文和考点卡片里找依据，每条结论都附上原话；' +
-      '资料里没有的，会直说没有，不猜。'));
+      '答案只从资料里找依据：内置 408 真题和考点，或者你自己贴进知识库的讲义。' +
+      '每条结论都附上原话；资料里没有的，会直说没有，不猜。'));
 
     const ed = examDate();
     const left = daysUntil(ed);
@@ -2941,8 +2942,8 @@
     const week = recentActivity(7);
     const stats = el('div', 'home-stats');
     stats.appendChild(el('span', 'home-stat',
-      left > 0 ? '距 ' + (ed.getFullYear() + 1) + ' 初试 ' + left + ' 天'
-        : (left === 0 ? '今天就是初试' : '初试已过')));
+      left > 0 ? '距 ' + (ed.getFullYear() + 1) + ' 考试 ' + left + ' 天'
+        : (left === 0 ? '今天就是考试日' : '考试已过')));
     stats.appendChild(el('span', 'home-stat',
       st.streak ? '连续 ' + st.streak + ' 天' : '今天开个头'));
     stats.appendChild(el('span', 'home-stat',
@@ -2965,6 +2966,11 @@
     wrap.appendChild(prompts);
     wrap.appendChild(el('div', 'home-note',
       '多轮追问也可以：先问「快速排序」，再问「那它的时间复杂度呢」。'));
+    // 不考 408 的人从这里进去：先把讲义贴进知识库，再回来提问
+    const own = el('button', 'link-btn home-own',
+      '想用自己的资料？把讲义贴进知识库 →');
+    own.addEventListener('click', () => go('library'));
+    wrap.appendChild(own);
     return wrap;
   }
 
@@ -2991,7 +2997,7 @@
     }
     return data.collection
       ? '这个知识库里没有足够依据回答这个问题。可以换个问法，或往库里再补一些资料。'
-      : '真题和考点里都没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
+      : '资料里没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
   }
 
   function badgeFor(data) {
@@ -3011,7 +3017,7 @@
 
   function renderBotMessage(msg, avatarText) {
     const row = el('div', 'msg bot');
-    row.appendChild(el('div', 'avatar', avatarText || '408'));
+    row.appendChild(el('div', 'avatar', avatarText || 'AI'));
     const body = el('div', 'bot-body');
     const data = msg.data || {};
 
@@ -3068,7 +3074,7 @@
       const qn = data.hits.length - kn - dn;
       const label = dn
         ? '召回的资料片段'
-        : (kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原题'));
+        : (kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原文'));
       const det = el('details');
       det.appendChild(el('summary', null, label + '（' + data.hits.length + '）'));
       const list = el('div', 'hit-list');
@@ -3150,11 +3156,11 @@
 
   function loadingBubble() {
     const row = el('div', 'msg bot');
-    row.appendChild(el('div', 'avatar', '408'));
+    row.appendChild(el('div', 'avatar', 'AI'));
     const body = el('div', 'bot-body');
     const box = el('div', 'typing');
     box.appendChild(el('span', 'spinner'));
-    const text = el('span', null, '正在检索真题与考点并生成答案…');
+    const text = el('span', null, '正在检索资料并生成答案…');
     text.id = 'loading-text';
     box.appendChild(text);
     body.appendChild(box);
@@ -3169,7 +3175,7 @@
       const node = $('#loading-text');
       if (!node) return;
       const s = Math.floor((Date.now() - state.loadingStart) / 1000);
-      node.textContent = '正在检索真题与考点并生成答案…已等待 ' + s + ' 秒（首次加载模型会更久）';
+      node.textContent = '正在检索资料并生成答案…已等待 ' + s + ' 秒（首次加载模型会更久）';
     }, 1000);
   }
 
@@ -3328,7 +3334,7 @@
     return s.length > n ? s.slice(0, n) + '…' : s;
   }
 
-  // 初试通常在 12 月倒数第二个周六；用户可以在本机改成官方日期。
+  // 考试日期默认按考研初试估（12 月倒数第二个周六），用户可改成本机日期；用户可以在本机改成官方日期。
   function secondLastSaturday(year) {
     const sats = [];
     for (let day = 1; day <= 31; day += 1) {
@@ -3913,9 +3919,9 @@
     const ed = examDate();
     const n = daysUntil(ed);
     let countdown;
-    if (n > 0) countdown = '距 ' + (ed.getFullYear() + 1) + ' 初试 ' + n + ' 天';
-    else if (n === 0) countdown = '今天就是初试';
-    else countdown = (ed.getFullYear() + 1) + ' 初试已结束';
+    if (n > 0) countdown = '距 ' + (ed.getFullYear() + 1) + ' 考试 ' + n + ' 天';
+    else if (n === 0) countdown = '今天就是考试日';
+    else countdown = (ed.getFullYear() + 1) + ' 考试已结束';
     $('#today-countdown').textContent = countdown;
 
     const st = streakInfo();
@@ -3932,7 +3938,7 @@
   function editExamDate() {
     const wrap = el('div');
     const row = el('div', 'settings-row');
-    row.appendChild(el('label', null, '初试日期'));
+    row.appendChild(el('label', null, '考试日期'));
     const input = el('input');
     input.type = 'date';
     const cur = examDate();
@@ -3961,7 +3967,7 @@
       closeModal();
       renderToday();
     });
-    openModal('初试日期', wrap);
+    openModal('考试日期', wrap);
   }
 
   /* ---------- question bank ---------- */
@@ -4262,7 +4268,7 @@
     const sub = $('#page-sub');
     if (sub) {
       sub.textContent = preset
-        ? '408 真题 · 按科目和年份浏览'
+        ? '内置 408 · 按科目和年份浏览'
         : deckQuestionCount(deck.id) + ' 题 · 标签与出处都随题保存';
     }
     $('#deck-practice').hidden = preset;
@@ -6133,8 +6139,8 @@
     wrap.appendChild(runRow);
     if (state.health) {
       wrap.appendChild(el('div', 'settings-note',
-        '当前已收录 ' + (state.health.chunks || 0) + ' 道真题 · ' +
-        (state.health.knowledge || 0) + ' 个考点。'));
+        '内置语料现有 ' + (state.health.chunks || 0) + ' 道真题 · ' +
+        (state.health.knowledge || 0) + ' 个考点；自建知识库另算。'));
     }
 
     async function verify(token, saveIt) {
@@ -6560,7 +6566,7 @@
     if (cur && cur.messages.length) newConversation();
     else if (state.page !== 'chat') go('chat');
     toast(id ? '之后的提问只用「' + c.name + '」里的资料'
-      : '之后的提问使用 408 内置语料');
+      : '之后的提问使用内置 408 语料');
   }
 
   function deleteCollection(c) {
@@ -6797,7 +6803,7 @@
          desc: '当前目标、上次交接和确认过的学习记录。',
          count: state.journal.records.length + ' 条记录'},
         {page: 'bank', icon: 'i-list', title: '题库',
-         desc: '408 真题是预置题库，也可以导入或用自己的资料出题。',
+         desc: '内置 408 真题是预置题库，也可以导入或用自己的资料出题。',
          count: (1 + state.decks.length) + ' 个题库' +
            (meta.chunks != null ? ' · ' + meta.chunks + ' 道真题' : '')},
         {page: 'knowledge', icon: 'i-book', title: '考点',
@@ -7338,7 +7344,7 @@
       });
       list.appendChild(row);
     };
-    mk('', '默认 408 助教', '直接、克制，只讲资料里有的。');
+    mk('', '默认助教', '直接、克制，只讲资料里有的。');
     state.personas.forEach(p => mk(p.id, p.name, p.desc || p.style));
     wrap.appendChild(list);
     const acts = el('div', 'form-actions');
@@ -7454,7 +7460,7 @@
     form.style.marginTop = '14px';
     const goal = el('input');
     goal.value = m.goal || '';
-    goal.placeholder = '例如：2027 年 408 上岸，目标 120+';
+    goal.placeholder = '例如：11 月前把机器学习讲义过一遍，能讲清每个公式';
     goal.maxLength = 80;
     const score = el('input');
     score.value = m.score || '';
