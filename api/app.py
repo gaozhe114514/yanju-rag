@@ -20,7 +20,6 @@
   KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
   KB_FEEDBACK_LOG   没有数据库时反馈写到哪里，默认 data/work/feedback.jsonl
 """
-import hashlib
 import os
 import threading
 import time
@@ -33,8 +32,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
-from answer.cache import (cache_key, cached_payload, storable_payload,
-                          ttl_from_env, with_cache_meta)
+from answer.cache import (cache_key, cached_payload, namespace,
+                          storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
@@ -492,12 +491,8 @@ def _clean_style(style: str) -> str:
 
 def _cache_namespace(style: str = "", collection: str = "") -> str:
     """缓存命名空间额外带上风格指纹和知识库：换个伙伴、换个库都重新生成。"""
-    ns = _state.get("cache_ns", "")
-    if not _is_preset(collection):
-        ns += "\ncollection:" + collection
-    if style:
-        ns += "\nstyle:" + hashlib.sha1(style.encode("utf-8")).hexdigest()[:16]
-    return ns
+    return namespace(_state.get("cache_ns", ""), style, collection,
+                     _is_preset(collection))
 
 
 def _cache_lookup(query: str, style: str = "",

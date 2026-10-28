@@ -24,6 +24,21 @@ def cache_key(query: str, namespace: str = "") -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def namespace(base: str, style: str = "", collection: str = "",
+              preset: bool = True) -> str:
+    """在基础命名空间上叠加伙伴风格与知识库。
+
+    内置语料沿用原命名空间（历史缓存还能命中）；自建库各自加一段，
+    否则甲的答案会被喂给乙的资料。风格按原文指纹入键，换个伙伴重新生成。
+    """
+    ns = base or ""
+    if not preset:
+        ns += "\ncollection:" + (collection or "")
+    if style:
+        ns += "\nstyle:" + hashlib.sha1(style.encode("utf-8")).hexdigest()[:16]
+    return ns
+
+
 def ttl_from_env(name: str = "KB_CACHE_TTL", default: int = DEFAULT_TTL_S) -> int:
     """读取 TTL（秒）；非法值回退默认，0 或负数表示关闭缓存。"""
     raw = (os.environ.get(name) or "").strip()

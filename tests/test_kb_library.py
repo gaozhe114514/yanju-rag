@@ -7,6 +7,7 @@ import os
 import tempfile
 import unittest
 
+from answer.cache import namespace
 from answer.pipeline import AnswerPipeline
 from answer.prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_DOC, build_messages, format_hits
 from kb import PRESET_COLLECTION, Library, LibraryError
@@ -239,26 +240,24 @@ class DocPromptTest(unittest.TestCase):
 class CacheNamespaceTest(unittest.TestCase):
     """不同知识库不能共用应答缓存，否则甲的答案会喂给乙的资料。"""
 
-    def setUp(self):
-        from api import app as app_mod
-        self.app = app_mod
-        self.old = dict(app_mod._state)
-        app_mod._state["cache_ns"] = "hybrid|mock|k10|fp"
-
-    def tearDown(self):
-        self.app._state.clear()
-        self.app._state.update(self.old)
+    BASE = "hybrid|mock|k10|fp"
 
     def test_doc_collection_gets_own_namespace(self):
-        base = self.app._cache_namespace("")
-        self.assertNotEqual(self.app._cache_namespace("", "lib-aaaaaaaaaa"), base)
-        self.assertNotEqual(self.app._cache_namespace("", "lib-aaaaaaaaaa"),
-                            self.app._cache_namespace("", "lib-bbbbbbbbbb"))
+        base = namespace(self.BASE)
+        self.assertNotEqual(namespace(self.BASE, "", "lib-aaaaaaaaaa", False), base)
+        self.assertNotEqual(namespace(self.BASE, "", "lib-aaaaaaaaaa", False),
+                            namespace(self.BASE, "", "lib-bbbbbbbbbb", False))
 
     def test_preset_keeps_original_namespace(self):
-        base = self.app._cache_namespace("")
-        self.assertEqual(self.app._cache_namespace("", PRESET_COLLECTION), base)
-        self.assertEqual(self.app._cache_namespace("", ""), base)
+        base = namespace(self.BASE)
+        self.assertEqual(namespace(self.BASE, "", PRESET_COLLECTION, True), base)
+        self.assertEqual(namespace(self.BASE, "", "", True), base)
+
+    def test_style_fingerprint_isolates_partners(self):
+        base = namespace(self.BASE)
+        self.assertNotEqual(namespace(self.BASE, "严格一点"), base)
+        self.assertEqual(namespace(self.BASE, "严格一点"),
+                         namespace(self.BASE, "严格一点"))
 
 
 if __name__ == "__main__":
