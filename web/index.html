@@ -1795,6 +1795,73 @@
     .send.stop { padding: 8px 12px; background: var(--wash); color: var(--ink); }
     .send.stop:hover { background: var(--muted-surface); }
     .answer-tools .tool-btn.copy-ok { color: var(--ok); border-color: var(--ok-surface); }
+
+    /* ---------- 题库：多题库 / 标签 / 出处 ---------- */
+    .deck-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .deck-toolbar .grow { flex: 1; }
+    .deck-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .deck-card {
+      display: flex; flex-direction: column; gap: 8px; padding: 18px;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+      box-shadow: var(--shadow-sm); cursor: pointer;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
+    }
+    .deck-card:hover {
+      border-color: #cbbda4; transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(28, 24, 22, .06);
+    }
+    .deck-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .deck-title { color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.45; }
+    .deck-desc { min-height: 2.6em; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .deck-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .deck-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; color: var(--muted); font-size: 11.5px; }
+    .deck-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .mini-btn {
+      padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--bg); color: #57514a; font-size: 11.5px;
+    }
+    .mini-btn:hover { border-color: #cbbda4; color: var(--brand); }
+    .mini-btn.danger:hover { border-color: #e0a79e; color: var(--danger); }
+    .deck-kind {
+      flex: none; padding: 1px 8px; border-radius: 999px;
+      background: var(--muted-surface); color: var(--muted); font-size: 10.5px;
+    }
+    .deck-kind.preset { background: var(--brand-soft); color: #8f3d16; }
+    .deck-bar { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .deck-bar .grow { flex: 1; min-width: 220px; }
+    .deck-bar h2 { margin: 0; color: var(--ink); font: 600 17px/1.45 var(--display); }
+    .deck-bar p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .deck-tags-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .import-box {
+      width: 100%; min-height: 150px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+      color: var(--ink); font-size: 12.5px; line-height: 1.6; resize: vertical;
+    }
+    .import-box:focus { border-color: #cbbda4; box-shadow: 0 0 0 3px rgba(176, 80, 30, .1); outline: 0; }
+    .import-preview { margin-top: 8px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+    .import-preview.err { color: var(--danger); }
+    .q-source {
+      display: flex; gap: 6px; align-items: flex-start; padding: 10px 13px;
+      margin-top: 10px; border-left: 2px solid var(--brand); border-radius: 0 10px 10px 0;
+      background: #faf7f0; color: #3a352f; font-size: 12.5px; line-height: 1.7;
+    }
+    .q-source .src-cap { flex: none; color: var(--brand); font-weight: 600; }
+    .deck-practice-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; flex-wrap: wrap; margin-bottom: 10px; color: var(--muted); font-size: 12px;
+    }
+    .m-opt.selected { border-color: var(--brand); background: var(--wash); color: var(--ink); }
+    .m-opt:disabled { cursor: default; }
+    .m-opt:disabled:hover { border-color: var(--line); }
+    .m-opt.right:disabled:hover { border-color: #b9d9c4; }
+    .m-opt.wrong:disabled:hover { border-color: #e0a79e; }
+    .deck-practice-box:not(:empty) { margin-bottom: 14px; }
+    .deck-practice-box .practice-card { max-width: 900px; }
+    .import-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+    @media (max-width: 860px) {
+      .deck-grid { grid-template-columns: 1fr; }
+      .deck-toolbar .grow { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -1972,9 +2039,35 @@
 
     <section class="page" id="page-bank">
       <div class="page-inner">
+        <div class="deck-toolbar">
+          <button class="primary" id="deck-new">新建题库</button>
+          <button class="ghost" id="deck-import">导入题库</button>
+          <span class="grow"></span>
+          <span class="bank-meta" id="deck-meta"></span>
+        </div>
+        <div class="deck-grid" id="deck-grid"></div>
+        <div class="practice-note">408 真题来自服务端语料；自建题库、导入与生成的题目只保存在这台设备上。</div>
+      </div>
+    </section>
+
+    <section class="page" id="page-deck">
+      <div class="page-inner">
+        <div class="deck-bar">
+          <div class="grow">
+            <h2 id="deck-title">题库</h2>
+            <p id="deck-desc"></p>
+          </div>
+          <button class="ghost" id="deck-back">返回题库</button>
+          <button class="ghost" id="deck-import-in" hidden>导入</button>
+          <button class="ghost" id="deck-generate" hidden>用资料出题</button>
+          <button class="ghost" id="deck-export" hidden>导出</button>
+          <button class="primary" id="deck-practice" hidden>开始练习</button>
+        </div>
+        <div class="deck-tags-row" id="deck-tags"></div>
+        <div class="deck-practice-box" id="deck-practice-box"></div>
         <div class="bank-head">
           <div class="search">
-            <input id="bank-q" placeholder="搜索题干、选项、题号或科目…">
+            <input id="bank-q" placeholder="搜索题干、选项、标签或出处…">
             <span class="search-ico">⌕</span>
           </div>
           <div class="chips" id="bank-subjects"></div>
@@ -2206,6 +2299,13 @@
   const PERSONA_KEY = '408-personas-v1';
   const SKILL_KEY = '408-skills-v1';
   const MEMORY_KEY = '408-learning-memory-v1';
+  const DECK_KEY = '408-decks-v1';
+  const DECK_Q_KEY = '408-deck-questions-v1';
+  const PRESET_DECK = {
+    id: 'cs408', preset: true, name: '408 真题',
+    desc: '2019–2024 五卷真题，按科目和年份筛选；解析与出处来自服务端语料。',
+    tags: ['数据结构', '计算机组成原理', '操作系统', '计算机网络']
+  };
   const SUBJECT_FALLBACK = {
     ds: '数据结构', co: '计算机组成原理', os: '操作系统', cn: '计算机网络', '': '未分类'
   };
@@ -2213,7 +2313,8 @@
     today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
     mastery: {title: '精通之路', sub: '从考点到自测，一步一步走完'},
-    bank: {title: '题库', sub: '真题题库 · 按年份和科目浏览'},
+    bank: {title: '题库', sub: '408 真题与自建题库，标签和出处都随题保存'},
+    deck: {title: '题库', sub: '题库详情 · 按标签筛选、按出处核对'},
     knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
     practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
     space: {title: '学习空间', sub: '对话、笔记、题目与个性化设置，集中在一处'},
@@ -2257,6 +2358,30 @@
         done: p.done && typeof p.done === 'object' ? p.done : {},
         picks: p.picks && typeof p.picks === 'object' ? p.picks : {}
       }));
+  }
+
+  function loadDecks() {
+    return loadList(DECK_KEY)
+      .filter(d => d.id && d.name && !d.preset)
+      .map(d => ({
+        id: d.id, name: d.name, desc: d.desc || '',
+        kind: d.kind === 'imported' || d.kind === 'generated' ? d.kind : 'custom',
+        tags: Array.isArray(d.tags) ? d.tags.filter(t => typeof t === 'string') : [],
+        createdAt: d.createdAt || Date.now(),
+        updatedAt: d.updatedAt || d.createdAt || Date.now(),
+        attempted: Number(d.attempted) || 0,
+        correct: Number(d.correct) || 0
+      }));
+  }
+
+  function loadDeckQuestions() {
+    const raw = loadJSON(DECK_Q_KEY, {});
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    Object.keys(raw).forEach(k => {
+      if (Array.isArray(raw[k])) out[k] = raw[k].filter(q => q && q.id && q.stem);
+    });
+    return out;
   }
 
   function loadPartnerChats() {
@@ -2315,6 +2440,11 @@
     masteryQuestions: {},
     taskBoard: loadTaskBoard(),
     kanbanArchived: false,
+    decks: loadDecks(),
+    deckQuestions: loadDeckQuestions(),
+    deckId: '',
+    deckView: {q: '', tag: ''},
+    deckPractice: null,
     chatPersonaId: ''
   };
 
@@ -3838,6 +3968,8 @@
   function renderBank(forceEmpty) {
     const list = $('#bank-list');
     if (!list) return;
+    // 只在 408 预置题库页渲染服务端结果，避免慢响应覆盖自建题库的列表
+    if (state.page !== 'deck' || state.deckId !== PRESET_DECK.id) return;
     list.replaceChildren();
     const b = state.bank;
     if (b.loading && !b.items.length) {
@@ -3864,10 +3996,932 @@
     meta.appendChild(el('span', 'q-id', q.id));
     meta.appendChild(el('span', 'q-tag', q.subject_label || subjectLabel(q.subject)));
     meta.appendChild(el('span', 'q-tag', typeLabel(q.type)));
+    if (q.year) meta.appendChild(el('span', 'q-tag', String(q.year)));
     card.appendChild(meta);
     card.appendChild(el('div', 'q-stem', q.stem));
     card.addEventListener('click', () => openQuestion(q.id));
     return card;
+  }
+
+  /* ---------- 题库：多题库 / 标签 / 出处 ---------- */
+  function saveDecks() { saveKey(DECK_KEY, state.decks); }
+  function saveDeckQuestions() { saveKey(DECK_Q_KEY, state.deckQuestions); }
+
+  function deckById(id) {
+    if (id === PRESET_DECK.id) return PRESET_DECK;
+    return state.decks.find(d => d.id === id) || null;
+  }
+
+  function deckQuestionList(id) {
+    return Array.isArray(state.deckQuestions[id]) ? state.deckQuestions[id] : [];
+  }
+
+  function deckQuestionCount(id) { return deckQuestionList(id).length; }
+
+  function deckTagsOf(deck) {
+    const out = [];
+    const push = t => {
+      const tag = String(t || '').trim();
+      if (tag && out.indexOf(tag) < 0) out.push(tag);
+    };
+    (deck.tags || []).forEach(push);
+    deckQuestionList(deck.id).forEach(q => (q.tags || []).forEach(push));
+    return out;
+  }
+
+  function deckKindLabel(deck) {
+    if (deck.preset) return '预置';
+    if (deck.kind === 'imported') return '导入';
+    if (deck.kind === 'generated') return '生成';
+    return '自建';
+  }
+
+  function renderDecks() {
+    const grid = clearNode('#deck-grid');
+    if (!grid) return;
+    grid.appendChild(deckCardNode(PRESET_DECK, state.meta ? state.meta.chunks : null));
+    state.decks.forEach(d => grid.appendChild(deckCardNode(d, deckQuestionCount(d.id))));
+    const meta = $('#deck-meta');
+    if (meta) meta.textContent = (1 + state.decks.length) + ' 个题库';
+  }
+
+  function deckCardNode(deck, count) {
+    const card = el('div', 'deck-card');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.addEventListener('click', () => go('deck', deck.id));
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go('deck', deck.id); }
+    });
+
+    const top = el('div', 'deck-top');
+    top.appendChild(el('span', 'deck-title', deck.name));
+    top.appendChild(el('span', 'deck-kind' + (deck.preset ? ' preset' : ''),
+      deckKindLabel(deck)));
+    card.appendChild(top);
+    card.appendChild(el('div', 'deck-desc', deck.desc || '还没有说明。'));
+
+    const tags = el('div', 'deck-tags');
+    deckTagsOf(deck).slice(0, 4).forEach(t => tags.appendChild(el('span', 'q-tag', t)));
+    card.appendChild(tags);
+
+    const foot = el('div', 'deck-foot');
+    foot.appendChild(el('span', null,
+      (count == null ? '—' : count) + ' 题' +
+      (deck.preset ? ' · 服务端语料' : ' · 只在本机')));
+    if (!deck.preset && deck.attempted) {
+      foot.appendChild(el('span', null,
+        '正确率 ' + Math.round(deck.correct / deck.attempted * 100) + '%'));
+    }
+    card.appendChild(foot);
+
+    if (!deck.preset) {
+      const acts = el('div', 'deck-actions');
+      const exp = el('button', 'mini-btn', '导出');
+      exp.addEventListener('click', e => { e.stopPropagation(); exportDeck(deck); });
+      const del = el('button', 'mini-btn danger', '删除');
+      del.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteDeck(deck);
+      });
+      acts.appendChild(exp);
+      acts.appendChild(del);
+      card.appendChild(acts);
+    }
+    return card;
+  }
+
+  function deleteDeck(deck) {
+    if (!window.confirm('删除题库「' + deck.name + '」？里面的 ' +
+      deckQuestionCount(deck.id) + ' 道题会一起删掉，不能恢复。')) return;
+    state.decks = state.decks.filter(d => d.id !== deck.id);
+    delete state.deckQuestions[deck.id];
+    saveDecks();
+    saveDeckQuestions();
+    if (state.deckId === deck.id) state.deckId = '';
+    renderDecks();
+    toast('题库已删除');
+  }
+
+  function renderDeckPage(id) {
+    const deck = deckById(id);
+    if (!deck) {
+      go('bank');
+      return;
+    }
+    state.deckId = deck.id;
+    state.deckView = {q: '', tag: ''};
+    state.deckPractice = null;
+    const preset = !!deck.preset;
+    const title = $('#deck-title');
+    const desc = $('#deck-desc');
+    if (title) title.textContent = deck.name;
+    if (desc) desc.textContent = deck.desc || '';
+    const sub = $('#page-sub');
+    if (sub) {
+      sub.textContent = preset
+        ? '408 真题 · 按科目和年份浏览'
+        : deckQuestionCount(deck.id) + ' 题 · 标签与出处都随题保存';
+    }
+    $('#deck-practice').hidden = preset;
+    $('#deck-generate').hidden = preset;
+    $('#deck-import-in').hidden = preset;
+    $('#deck-export').hidden = preset;
+    $('#deck-tags').hidden = preset;
+    $('#deck-practice-box').replaceChildren();
+    const head = $('#page-deck .bank-head');
+    if (head) head.hidden = false;
+    $('#bank-meta').hidden = false;
+    $('#bank-subjects').hidden = !preset;
+    $('#bank-years').hidden = true;
+    const box = $('#bank-list');
+    if (box) box.replaceChildren();
+    $('#bank-meta').textContent = '';
+    $('#bank-more').hidden = true;
+
+    if (preset) {
+      ensureMeta().then(m => {
+        if (!m || state.page !== 'deck' || state.deckId !== PRESET_DECK.id) return;
+        $('#bank-q').value = state.bank.q || '';
+        renderSubjects();
+        renderBankYears();
+        if (!state.bank.items.length) fetchBank(true);
+        else renderBank(false);
+      });
+    } else {
+      $('#bank-q').value = '';
+      renderDeckTagChips(deck);
+      renderDeckQuestions(deck);
+    }
+  }
+
+  function renderDeckTagChips(deck) {
+    const box = clearNode('#deck-tags');
+    if (!box) return;
+    const tags = deckTagsOf(deck);
+    box.hidden = !tags.length;
+    if (!tags.length) return;
+    const all = el('button', 'chip' + (state.deckView.tag === '' ? ' active' : ''), '全部');
+    all.addEventListener('click', () => {
+      state.deckView.tag = '';
+      renderDeckTagChips(deck);
+      renderDeckQuestions(deck);
+    });
+    box.appendChild(all);
+    tags.forEach(t => {
+      const chip = el('button', 'chip' + (state.deckView.tag === t ? ' active' : ''), t);
+      chip.addEventListener('click', () => {
+        state.deckView.tag = state.deckView.tag === t ? '' : t;
+        renderDeckTagChips(deck);
+        renderDeckQuestions(deck);
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function deckHaystack(q) {
+    return [q.stem, (q.options || []).join(' '), q.explanation, (q.tags || []).join(' '),
+      (q.source && (q.source.title + ' ' + q.source.quote)) || '']
+      .join(' ').toLowerCase();
+  }
+
+  function renderDeckQuestions(deck) {
+    const list = clearNode('#bank-list');
+    if (!list) return;
+    const qText = state.deckView.q.trim().toLowerCase();
+    const tag = state.deckView.tag;
+    const all = deckQuestionList(deck.id);
+    const items = all.filter(q => {
+      if (tag && (q.tags || []).indexOf(tag) < 0) return false;
+      if (qText && deckHaystack(q).indexOf(qText) < 0) return false;
+      return true;
+    });
+    if (!items.length) {
+      list.appendChild(el('div', 'empty-row',
+        all.length ? '没有匹配的题目。'
+          : '这个题库还是空的：点右上「用资料出题」，或者回题库列表导入 CSV / Markdown。'));
+    } else {
+      items.forEach(q => list.appendChild(deckQuestionCard(q)));
+    }
+    $('#bank-meta').textContent = '共 ' + all.length + ' 题 · 已显示 ' + items.length + ' 题' +
+      (tag ? ' · 标签「' + tag + '」' : '') +
+      (state.deckView.q ? ' · 搜索“' + state.deckView.q + '”' : '');
+    $('#bank-more').hidden = true;
+  }
+
+  function deckQuestionCard(q) {
+    const card = el('div', 'q-card');
+    const meta = el('div', 'q-meta');
+    meta.appendChild(el('span', 'q-id', q.type === 'fill' ? '填空' : '单选'));
+    (q.tags || []).slice(0, 3).forEach(t => meta.appendChild(el('span', 'q-tag', t)));
+    if (q.source && q.source.title) meta.appendChild(el('span', 'q-tag', '出处 · ' + q.source.title));
+    card.appendChild(meta);
+    card.appendChild(el('div', 'q-stem', q.stem));
+    card.addEventListener('click', () => openDeckQuestion(q.id));
+    return card;
+  }
+
+  function openDeckQuestion(id) {
+    const deck = deckById(state.deckId);
+    if (!deck) return;
+    const q = deckQuestionList(deck.id).find(x => x.id === id);
+    if (!q) return;
+    const wrap = el('div');
+    const meta = el('div', 'detail-meta');
+    meta.appendChild(el('span', 'q-tag', q.type === 'fill' ? '填空题' : '单选题'));
+    (q.tags || []).forEach(t => meta.appendChild(el('span', 'q-tag', t)));
+    wrap.appendChild(meta);
+    wrap.appendChild(el('div', 'detail-stem', q.stem));
+
+    if (q.type === 'fill') {
+      const ans = el('div', 'answer-box');
+      ans.appendChild(el('div', 'section-title', '参考答案'));
+      ans.appendChild(el('div', 'detail-answer', q.answer || ''));
+      wrap.appendChild(ans);
+    } else {
+      (q.options || []).forEach((text, i) => {
+        const letter = 'ABCD'[i];
+        const row = el('div', 'detail-opt');
+        if (String(q.answer || '').toUpperCase() === letter) row.classList.add('correct');
+        row.textContent = letter + '. ' + text;
+        wrap.appendChild(row);
+      });
+    }
+
+    if (q.explanation) {
+      wrap.appendChild(el('div', 'section-title', '解析'));
+      wrap.appendChild(el('div', 'analysis', q.explanation));
+    }
+    if (q.source && (q.source.quote || q.source.title)) {
+      const src = el('div', 'q-source');
+      src.appendChild(el('span', 'src-cap', '出处'));
+      const body = el('span');
+      const quote = (q.source.quote || '').trim();
+      body.textContent = q.source.title && quote
+        ? q.source.title + '：' + quote
+        : (quote || q.source.title || '');
+      src.appendChild(body);
+      wrap.appendChild(src);
+    }
+
+    const acts = el('div', 'btn-row');
+    const del = el('button', 'ghost', '删除这道题');
+    del.addEventListener('click', () => {
+      if (!window.confirm('删除这道题？')) return;
+      const arr = deckQuestionList(deck.id).filter(x => x.id !== q.id);
+      state.deckQuestions[deck.id] = arr;
+      saveDeckQuestions();
+      closeModal();
+      renderDeckTagChips(deck);
+      renderDeckQuestions(deck);
+      renderDecks();
+      toast('题目已删除');
+    });
+    const close = el('button', 'primary', '关闭');
+    close.addEventListener('click', () => closeModal());
+    acts.appendChild(del);
+    acts.appendChild(close);
+    wrap.appendChild(acts);
+    openModal('题目详情', wrap);
+  }
+
+  /* ---------- 新建 / 导入 / 生成 ---------- */
+  function newDeckId() {
+    return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function createDeck(name, desc, tags, kind) {
+    const deck = {
+      id: newDeckId(), name: name.trim(), desc: (desc || '').trim(),
+      tags: (tags || []).map(t => String(t).trim()).filter(Boolean).slice(0, 6),
+      kind: kind || 'custom',
+      createdAt: Date.now(), updatedAt: Date.now(),
+      attempted: 0, correct: 0
+    };
+    state.decks.unshift(deck);
+    state.deckQuestions[deck.id] = [];
+    saveDecks();
+    saveDeckQuestions();
+    return deck;
+  }
+
+  function openNewDeckModal() {
+    const wrap = el('div');
+    const nameRow = el('div', 'settings-row');
+    nameRow.appendChild(el('label', null, '题库名称'));
+    const name = el('input');
+    name.placeholder = '例如：产品经理面试题';
+    name.maxLength = 40;
+    nameRow.appendChild(name);
+    wrap.appendChild(nameRow);
+
+    const descRow = el('div', 'settings-row');
+    descRow.appendChild(el('label', null, '说明（可选）'));
+    const desc = el('input');
+    desc.placeholder = '这个题库练什么，来自哪里';
+    desc.maxLength = 120;
+    descRow.appendChild(desc);
+    wrap.appendChild(descRow);
+
+    const tagRow = el('div', 'settings-row');
+    tagRow.appendChild(el('label', null, '标签（可选，逗号分隔）'));
+    const tags = el('input');
+    tags.placeholder = '例如：面试, 需求分析';
+    tags.maxLength = 80;
+    tagRow.appendChild(tags);
+    wrap.appendChild(tagRow);
+
+    const note = el('div', 'practice-note',
+      '创建后可以导入 CSV / Markdown，或粘贴资料让 AI 出题。数据只保存在这台设备上。');
+    wrap.appendChild(note);
+
+    const acts = el('div', 'btn-row');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', () => closeModal());
+    const save = el('button', 'primary', '创建');
+    save.addEventListener('click', () => {
+      if (!name.value.trim()) { toast('给题库起个名字', 'err'); name.focus(); return; }
+      const deck = createDeck(name.value, desc.value,
+        tags.value.split(/[,，;；]/).map(t => t.trim()).filter(Boolean));
+      closeModal();
+      go('deck', deck.id);
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('新建题库', wrap);
+    name.focus();
+  }
+
+  const CSV_KEYS = {
+    'stem': 'stem', '题干': 'stem', '题目': 'stem',
+    'option_a': 'option_a', '选项a': 'option_a', 'a': 'option_a',
+    'option_b': 'option_b', '选项b': 'option_b', 'b': 'option_b',
+    'option_c': 'option_c', '选项c': 'option_c', 'c': 'option_c',
+    'option_d': 'option_d', '选项d': 'option_d', 'd': 'option_d',
+    'answer': 'answer', '答案': 'answer', '参考答案': 'answer',
+    'explanation': 'explanation', '解析': 'explanation', '说明': 'explanation',
+    'tags': 'tags', '标签': 'tags',
+    'source': 'source', '出处': 'source', '来源': 'source',
+    'type': 'type', '题型': 'type'
+  };
+
+  function parseCSV(text) {
+    const rows = [];
+    let row = [], cell = '', quoted = false;
+    const s = String(text || '').replace(/^﻿/, '');
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (quoted) {
+        if (ch === '"') {
+          if (s[i + 1] === '"') { cell += '"'; i++; }
+          else quoted = false;
+        } else cell += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ',') { row.push(cell); cell = ''; }
+      else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+      else if (ch !== '\r') cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  }
+
+  function normalizeAnswerLetter(value, options) {
+    const s = String(value || '').trim();
+    const m = s.match(/^([A-Da-d])(?:\b|[\s\.、\)）:：])/);
+    if (m) return m[1].toUpperCase();
+    if (s.length === 1 && 'ABCD'.includes(s.toUpperCase())) return s.toUpperCase();
+    const idx = options.findIndex(o => o.trim() === s);
+    return idx >= 0 ? 'ABCD'[idx] : '';
+  }
+
+  function buildImportedQuestion(fields, rowNo, kind) {
+    const stem = String(fields.stem || '').trim();
+    if (stem.length < 4) return {error: '第 ' + rowNo + ' 行：题干太短'};
+    const opts = ['option_a', 'option_b', 'option_c', 'option_d']
+      .map(k => String(fields[k] || '').trim());
+    const filled = opts.filter(Boolean).length;
+    if (filled && filled !== 4) {
+      return {error: '第 ' + rowNo + ' 行：选项要么四个都填，要么都不填（填空）'};
+    }
+    const typeText = String(fields.type || '').toLowerCase();
+    const isFill = !filled || typeText.indexOf('fill') >= 0 || typeText.indexOf('填空') >= 0;
+    let answer = String(fields.answer || '').trim();
+    if (!answer) return {error: '第 ' + rowNo + ' 行：缺少答案'};
+    let type = 'fill';
+    let options = [];
+    if (!isFill) {
+      type = 'single';
+      options = opts;
+      answer = normalizeAnswerLetter(answer, options);
+      if (!answer) return {error: '第 ' + rowNo + ' 行：答案不是 A/B/C/D'};
+    }
+    const tags = String(fields.tags || '').split(/[,，;；]/)
+      .map(t => t.trim()).filter(Boolean).slice(0, 5);
+    return {
+      item: {
+        id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        type, stem, options, answer,
+        explanation: String(fields.explanation || '').trim(),
+        tags,
+        source: {
+          kind: kind || 'import',
+          title: String(fields.source || '').trim() || (kind === 'material' ? '资料' : '导入'),
+          quote: '', offset: -1
+        },
+        createdAt: Date.now()
+      }
+    };
+  }
+
+  function parseCSVQuestions(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) return {questions: [], errors: ['CSV 至少要有表头和一行题目']};
+    const header = rows[0].map(h => CSV_KEYS[String(h).trim().toLowerCase()] || '');
+    if (header.indexOf('stem') < 0) {
+      return {questions: [], errors: ['第一行需要表头，至少包含 stem（题干）']};
+    }
+    const questions = [], errors = [];
+    rows.slice(1).forEach((row, i) => {
+      const lineNo = i + 2;
+      // 列数比表头多，多半是中间漏了逗号，硬读会把答案错位
+      if (row.length > header.length) {
+        errors.push('第 ' + lineNo + ' 行：有 ' + row.length + ' 列，表头只有 ' +
+          header.length + ' 列');
+        return;
+      }
+      const fields = {};
+      header.forEach((key, idx) => { if (key && !(key in fields)) fields[key] = row[idx] || ''; });
+      const built = buildImportedQuestion(fields, lineNo, 'import');
+      if (built.error) errors.push(built.error);
+      else questions.push(built.item);
+    });
+    return {questions, errors};
+  }
+
+  function parseMarkdownQuestions(text) {
+    const blocks = String(text || '').split(/\n(?=##\s+)/)
+      .filter(b => /^##\s+\S/.test(b.trim()));
+    if (!blocks.length) {
+      return {questions: [], errors: ['没有找到「## 题干」，每题用一行 ## 开头']};
+    }
+    const questions = [], errors = [];
+    blocks.forEach((block, idx) => {
+      const lines = block.trim().split(/\r?\n/);
+      const fields = {stem: lines[0].replace(/^##\s*/, '').trim()};
+      const opts = ['', '', '', ''];
+      lines.slice(1).forEach(line => {
+        const opt = line.match(/^\s*([A-Da-d])\s*[\.、\)）]\s*(.+)$/);
+        if (opt) { opts['ABCD'.indexOf(opt[1].toUpperCase())] = opt[2].trim(); return; }
+        const kv = line.match(/^\s*(答案|参考答案|解析|说明|标签|tags?|出处|来源)\s*[：:]\s*(.*)$/i);
+        if (!kv) return;
+        const key = kv[1].toLowerCase();
+        const val = kv[2].trim();
+        if (key === '答案' || key === '参考答案') fields.answer = val;
+        else if (key === '解析' || key === '说明') fields.explanation = val;
+        else if (key === '标签' || key === 'tag' || key === 'tags') fields.tags = val;
+        else fields.source = val;
+      });
+      opts.forEach((v, i) => { fields['option_' + 'abcd'[i]] = v; });
+      const built = buildImportedQuestion(fields, idx + 1, 'import');
+      if (built.error) errors.push(built.error);
+      else questions.push(built.item);
+    });
+    return {questions, errors};
+  }
+
+  function fillImportPreview(container, parsed) {
+    container.replaceChildren();
+    container.className = 'import-preview' + (parsed.errors.length ? ' err' : '');
+    const lines = ['将导入 ' + parsed.questions.length + ' 道题。'];
+    if (parsed.errors.length) {
+      lines.push('有 ' + parsed.errors.length + ' 行没能通过检查，先修好再导入：');
+      parsed.errors.slice(0, 6).forEach(e => lines.push('· ' + e));
+      if (parsed.errors.length > 6) lines.push('· 还有 ' + (parsed.errors.length - 6) + ' 行…');
+    }
+    container.textContent = lines.join('\n');
+  }
+
+  function openImportModal(presetId) {
+    const wrap = el('div');
+    const deckRow = el('div', 'settings-row');
+    deckRow.appendChild(el('label', null, '导入到'));
+    const sel = el('select');
+    const optNew = el('option', null, '新建题库…');
+    optNew.value = '__new__';
+    sel.appendChild(optNew);
+    state.decks.forEach(d => {
+      const o = el('option', null, d.name);
+      o.value = d.id;
+      sel.appendChild(o);
+    });
+    deckRow.appendChild(sel);
+    wrap.appendChild(deckRow);
+
+    const newRow = el('div', 'settings-row');
+    newRow.appendChild(el('label', null, '新题库名称'));
+    const newName = el('input');
+    newName.placeholder = '例如：英语面试题库';
+    newName.maxLength = 40;
+    newRow.appendChild(newName);
+    wrap.appendChild(newRow);
+
+    const fmtRow = el('div', 'import-tabs');
+    const csvBtn = el('button', 'chip active', 'CSV');
+    const mdBtn = el('button', 'chip', 'Markdown');
+    fmtRow.appendChild(csvBtn);
+    fmtRow.appendChild(mdBtn);
+    wrap.appendChild(fmtRow);
+
+    const fileRow = el('div', 'settings-row');
+    fileRow.appendChild(el('label', null, '选择文件（也可以直接粘贴）'));
+    const file = el('input');
+    file.type = 'file';
+    file.accept = '.csv,.md,.markdown,.txt,text/csv,text/markdown';
+    fileRow.appendChild(file);
+    wrap.appendChild(fileRow);
+
+    const box = el('textarea', 'import-box');
+    box.placeholder = 'CSV：stem,option_a,option_b,option_c,option_d,answer,explanation,tags,source\n' +
+      'Markdown：## 题干 / A. 选项 / 答案：B / 解析：… / 标签：… / 出处：…';
+    wrap.appendChild(box);
+
+    const hint = el('div', 'practice-note');
+    wrap.appendChild(hint);
+    const preview = el('div', 'import-preview');
+    wrap.appendChild(preview);
+
+    let format = 'csv';
+    const header = {
+      csv: '表头固定：stem,option_a,option_b,option_c,option_d,answer,explanation,tags,source。' +
+        'answer 填 A/B/C/D；四个选项都空就是填空题，答案写文字，例如：\n' +
+        '页表项记录什么？,,,,,页框号,页表项记录页框号。,内存,操作系统讲义\n' +
+        '每行列数要和表头一致，中间的空格子也要留逗号。',
+      md: '每题以「## 题干」开头，选项写 A. / B. / C. / D.，再写答案、解析、标签、出处。' +
+        '没有选项就是填空题。'
+    };
+    function parsed() {
+      return format === 'csv' ? parseCSVQuestions(box.value) : parseMarkdownQuestions(box.value);
+    }
+    function refresh() {
+      hint.textContent = header[format];
+      if (!box.value.trim()) { preview.replaceChildren(); return; }
+      fillImportPreview(preview, parsed());
+    }
+    csvBtn.addEventListener('click', () => {
+      format = 'csv';
+      csvBtn.classList.add('active'); mdBtn.classList.remove('active');
+      refresh();
+    });
+    mdBtn.addEventListener('click', () => {
+      format = 'md';
+      mdBtn.classList.add('active'); csvBtn.classList.remove('active');
+      refresh();
+    });
+    box.addEventListener('input', refresh);
+    file.addEventListener('change', () => {
+      const f = file.files && file.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => { box.value = String(reader.result || ''); refresh(); };
+      reader.readAsText(f, 'utf-8');
+    });
+    sel.addEventListener('change', () => { newRow.hidden = sel.value !== '__new__'; });
+    if (presetId && state.decks.some(d => d.id === presetId)) sel.value = presetId;
+    newRow.hidden = sel.value !== '__new__';
+    refresh();
+
+    const acts = el('div', 'btn-row');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', () => closeModal());
+    const goBtn = el('button', 'primary', '导入');
+    goBtn.addEventListener('click', () => {
+      const result = parsed();
+      if (result.errors.length) {
+        fillImportPreview(preview, result);
+        toast('还有 ' + result.errors.length + ' 行没通过检查', 'err');
+        return;
+      }
+      if (!result.questions.length) {
+        toast('没有可导入的题目', 'err');
+        return;
+      }
+      let deck;
+      if (sel.value === '__new__') {
+        if (!newName.value.trim()) { toast('给新题库起个名字', 'err'); newName.focus(); return; }
+        deck = createDeck(newName.value, '从 CSV / Markdown 导入', [], 'imported');
+      } else {
+        deck = deckById(sel.value);
+      }
+      if (!deck || deck.preset) { toast('请选择自建题库', 'err'); return; }
+      const added = addQuestionsToDeck(deck, result.questions);
+      closeModal();
+      go('deck', deck.id);
+      toast('已导入 ' + added + ' 道题' + (added < result.questions.length
+        ? '，' + (result.questions.length - added) + ' 道题干重复已跳过' : ''));
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(goBtn);
+    wrap.appendChild(acts);
+    openModal('导入题库', wrap);
+    box.focus();
+  }
+
+  function addQuestionsToDeck(deck, items) {
+    const arr = deckQuestionList(deck.id).slice();
+    const seen = new Set(arr.map(q => String(q.stem || '').replace(/\s+/g, '').toLowerCase()));
+    let added = 0;
+    items.forEach(q => {
+      const key = String(q.stem || '').replace(/\s+/g, '').toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      arr.push(q);
+      added++;
+    });
+    state.deckQuestions[deck.id] = arr;
+    items.forEach(q => (q.tags || []).forEach(t => {
+      if (deck.tags.length < 6 && deck.tags.indexOf(t) < 0) deck.tags.push(t);
+    }));
+    deck.updatedAt = Date.now();
+    saveDecks();
+    saveDeckQuestions();
+    return added;
+  }
+
+  function openGenerateModal() {
+    const deck = deckById(state.deckId);
+    if (!deck || deck.preset) return;
+    const wrap = el('div');
+    const titleRow = el('div', 'settings-row');
+    titleRow.appendChild(el('label', null, '资料标题'));
+    const title = el('input');
+    title.value = deck.name;
+    title.maxLength = 80;
+    titleRow.appendChild(title);
+    wrap.appendChild(titleRow);
+
+    const textRow = el('div', 'settings-row');
+    textRow.appendChild(el('label', null, '粘贴资料（至少 80 字，最多 2 万字）'));
+    const text = el('textarea', 'import-box');
+    text.placeholder = '粘贴笔记、讲义、手册或会议纪要。出题只依据这段文字，每道题都会标出处。';
+    text.maxLength = 20000;
+    textRow.appendChild(text);
+    wrap.appendChild(textRow);
+
+    const countRow = el('div', 'settings-row');
+    countRow.appendChild(el('label', null, '生成几道题'));
+    const count = el('select');
+    [3, 5, 8, 10].forEach(n => {
+      const o = el('option', null, n + ' 道');
+      o.value = String(n);
+      if (n === 5) o.selected = true;
+      count.appendChild(o);
+    });
+    countRow.appendChild(count);
+    wrap.appendChild(countRow);
+
+    wrap.appendChild(el('div', 'practice-note',
+      '只生成单选题；题目和出处只存在这台设备上，服务端不保存资料。' +
+      '出处对不上原文的题会被丢掉，生成数量可能少于预期。'));
+
+    const status = el('div', 'import-preview');
+    wrap.appendChild(status);
+
+    const acts = el('div', 'btn-row');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', () => closeModal());
+    const run = el('button', 'primary', '开始出题');
+    run.addEventListener('click', async () => {
+      if (text.value.trim().length < 80) {
+        toast('资料太短，至少 80 个字', 'err');
+        text.focus();
+        return;
+      }
+      run.disabled = true;
+      cancel.disabled = true;
+      status.className = 'import-preview';
+      status.textContent = '正在出题…大约 10–30 秒，请不要关闭。';
+      try {
+        const out = await api('/bank/generate', {
+          method: 'POST',
+          body: {text: text.value.trim(), count: Number(count.value), title: title.value.trim()}
+        });
+        const added = addQuestionsToDeck(deck, out.questions || []);
+        closeModal();
+        renderDeckTagChips(deck);
+        renderDeckQuestions(deck);
+        renderDecks();
+        toast('生成了 ' + added + ' 道题' + (out.skipped ? '，' + out.skipped + ' 道没通过出处校验' : ''));
+      } catch (e) {
+        run.disabled = false;
+        cancel.disabled = false;
+        status.className = 'import-preview err';
+        status.textContent = e.status === 401
+          ? '需要先填写访问口令。'
+          : (e.message || '出题失败');
+      }
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(run);
+    wrap.appendChild(acts);
+    openModal('用资料出题', wrap);
+    title.focus();
+  }
+
+  /* ---------- 导出 ---------- */
+  function downloadText(filename, content, mime) {
+    const blob = new Blob([content], {type: mime || 'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function csvCell(value) {
+    const s = String(value == null ? '' : value);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function exportDeck(deck) {
+    if (!deck || deck.preset) return;
+    const items = deckQuestionList(deck.id);
+    if (!items.length) { toast('这个题库还没有题目', 'err'); return; }
+    const rows = [['stem', 'option_a', 'option_b', 'option_c', 'option_d',
+      'answer', 'explanation', 'tags', 'source']];
+    items.forEach(q => {
+      const opts = q.type === 'single' ? (q.options || []) : [];
+      rows.push([q.stem, opts[0] || '', opts[1] || '', opts[2] || '', opts[3] || '',
+        q.answer || '', q.explanation || '', (q.tags || []).join(', '),
+        (q.source && q.source.title) || '']);
+    });
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+    const safe = deck.name.replace(/[\\\/:*?"<>|\s]+/g, '-');
+    downloadText(safe + '.csv', '﻿' + csv, 'text/csv;charset=utf-8');
+    toast('已导出 CSV');
+  }
+
+  /* ---------- 题库练习（本地题库） ---------- */
+  function startDeckPractice() {
+    const deck = deckById(state.deckId);
+    if (!deck || deck.preset) return;
+    const items = deckQuestionList(deck.id);
+    if (!items.length) { toast('这个题库还没有题目', 'err'); return; }
+    const order = items.map(q => q.id).sort(() => Math.random() - 0.5);
+    state.deckPractice = {
+      deckId: deck.id, order, idx: 0,
+      picked: '', text: '', submitted: false,
+      correct: 0, answered: 0
+    };
+    renderDeckPractice();
+  }
+
+  function endDeckPractice() {
+    state.deckPractice = null;
+    const box = clearNode('#deck-practice-box');
+    if (box) box.replaceChildren();
+    const list = $('#bank-list');
+    if (list) list.hidden = false;
+    const head = $('#page-deck .bank-head');
+    if (head) head.hidden = false;
+    const meta = $('#bank-meta');
+    if (meta) meta.hidden = false;
+    const deck = deckById(state.deckId);
+    if (deck) renderDeckQuestions(deck);
+    const btn = $('#deck-practice');
+    if (btn) btn.hidden = false;
+  }
+
+  function renderDeckPractice() {
+    const p = state.deckPractice;
+    const box = clearNode('#deck-practice-box');
+    const list = $('#bank-list');
+    if (!p) { if (list) list.hidden = false; return; }
+    if (list) list.hidden = true;
+    // 练习时收起搜索与题目列表，只留一张答题卡
+    const filters = $('#page-deck .bank-head');
+    if (filters) filters.hidden = true;
+    const meta = $('#bank-meta');
+    if (meta) { meta.textContent = ''; meta.hidden = true; }
+    $('#bank-more').hidden = true;
+    $('#deck-practice').hidden = true;
+    const deck = deckById(p.deckId);
+    if (!deck) { endDeckPractice(); return; }
+    const q = deckQuestionList(deck.id).find(x => x.id === p.order[p.idx]);
+    if (!q) { endDeckPractice(); return; }
+
+    const card = el('div', 'practice-card');
+    const head = el('div', 'deck-practice-head');
+    head.appendChild(el('span', null, '第 ' + (p.idx + 1) + ' / ' + p.order.length + ' 题'));
+    head.appendChild(el('span', null, '答对 ' + p.correct + ' · 已答 ' + p.answered));
+    card.appendChild(head);
+    card.appendChild(el('h2', null, q.stem));
+
+    if (q.type === 'fill') {
+      const input = el('input');
+      input.className = 'import-box';
+      input.style.minHeight = '42px';
+      input.placeholder = '填写答案';
+      input.value = p.text;
+      input.disabled = p.submitted;
+      input.addEventListener('input', e => {
+        p.text = e.target.value;
+        // 输入即启用「提交答案」，不用等重绘
+        const submitBtn = $('#deck-practice-box button.primary');
+        if (submitBtn) submitBtn.disabled = !e.target.value.trim();
+      });
+      card.appendChild(input);
+    } else {
+      const opts = el('div', 'm-options');
+      (q.options || []).forEach((text, i) => {
+        const letter = 'ABCD'[i];
+        const btn = el('button', 'm-opt' +
+          (p.picked === letter && !p.submitted ? ' selected' : ''));
+        btn.type = 'button';
+        btn.disabled = p.submitted;
+        const isRight = String(q.answer).toUpperCase() === letter;
+        if (p.submitted && isRight) btn.classList.add('right');
+        else if (p.submitted && p.picked === letter) btn.classList.add('wrong');
+        btn.appendChild(el('span', 'm-opt-key', letter + '.'));
+        btn.appendChild(el('span', null, text));
+        btn.addEventListener('click', () => {
+          p.picked = letter;
+          renderDeckPractice();
+        });
+        opts.appendChild(btn);
+      });
+      card.appendChild(opts);
+    }
+
+    if (p.submitted) {
+      const userAnswer = q.type === 'fill'
+        ? String(p.text || '').trim().toLowerCase().replace(/\s+/g, '')
+        : p.picked;
+      const accepted = q.type === 'fill'
+        ? String(q.answer || '').split('|').map(x => x.trim().toLowerCase().replace(/\s+/g, ''))
+        : [String(q.answer || '').toUpperCase()];
+      const ok = accepted.indexOf(userAnswer) >= 0;
+      card.appendChild(el('div', 'quiz-note' + (ok ? ' ok' : ''),
+        ok ? '答对了。' : '正确答案：' + (q.answer || '')));
+      if (q.explanation) card.appendChild(el('div', 'analysis', q.explanation));
+      if (q.source && (q.source.quote || q.source.title)) {
+        const src = el('div', 'q-source');
+        src.appendChild(el('span', 'src-cap', '出处'));
+        src.appendChild(el('span', null,
+          (q.source.title ? q.source.title + '：' : '') + (q.source.quote || '')));
+        card.appendChild(src);
+      }
+    }
+
+    const acts = el('div', 'btn-row');
+    const quit = el('button', 'ghost', '退出练习');
+    quit.addEventListener('click', () => {
+      if (!window.confirm('退出练习？已答的题会记入这个题库的统计。')) return;
+      endDeckPractice();
+    });
+    acts.appendChild(quit);
+    if (!p.submitted) {
+      const submit = el('button', 'primary', '提交答案');
+      submit.disabled = q.type === 'fill' ? !String(p.text || '').trim() : !p.picked;
+      submit.addEventListener('click', () => {
+        p.submitted = true;
+        p.answered += 1;
+        const userAnswer = q.type === 'fill'
+          ? String(p.text || '').trim().toLowerCase().replace(/\s+/g, '')
+          : p.picked;
+        const accepted = q.type === 'fill'
+          ? String(q.answer || '').split('|').map(x => x.trim().toLowerCase().replace(/\s+/g, ''))
+          : [String(q.answer || '').toUpperCase()];
+        const ok = accepted.indexOf(userAnswer) >= 0;
+        if (ok) p.correct += 1;
+        deck.attempted = (deck.attempted || 0) + 1;
+        if (ok) deck.correct = (deck.correct || 0) + 1;
+        deck.updatedAt = Date.now();
+        saveDecks();
+        renderDeckPractice();
+      });
+      acts.appendChild(submit);
+    } else if (p.idx < p.order.length - 1) {
+      const next = el('button', 'primary', '下一题');
+      next.addEventListener('click', () => {
+        p.idx += 1; p.picked = ''; p.text = ''; p.submitted = false;
+        renderDeckPractice();
+      });
+      acts.appendChild(next);
+    } else {
+      const done = el('button', 'primary', '完成练习');
+      done.addEventListener('click', () => {
+        toast('练习完成：答对 ' + p.correct + ' / ' + p.answered);
+        endDeckPractice();
+        renderDecks();
+      });
+      acts.appendChild(done);
+    }
+    card.appendChild(acts);
+    box.appendChild(card);
   }
 
   /* ---------- knowledge ---------- */
@@ -5274,8 +6328,9 @@
          desc: '当前目标、上次交接和确认过的学习记录。',
          count: state.journal.records.length + ' 条记录'},
         {page: 'bank', icon: 'i-list', title: '题库',
-         desc: '按年份和科目浏览真题，勾选后直接开练。',
-         count: meta.chunks != null ? meta.chunks + ' 道题' : '真题题库'},
+         desc: '408 真题是预置题库，也可以导入或用自己的资料出题。',
+         count: (1 + state.decks.length) + ' 个题库' +
+           (meta.chunks != null ? ' · ' + meta.chunks + ' 道真题' : '')},
         {page: 'knowledge', icon: 'i-book', title: '考点',
          desc: '考点卡片与关联真题，按章节查看。',
          count: meta.knowledge != null ? meta.knowledge + ' 张卡片' : '考点卡片'}
@@ -7115,11 +8170,12 @@
 
   const SPACE_PAGES = ['bank', 'knowledge', 'notebooks', 'journal', 'history',
     'personas', 'skills', 'memory'];
-  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner'];
+  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner', 'deck'];
 
   function navPageFor(page) {
     if (page === 'practice' || page === 'mastery') return 'learning';
     if (page === 'partner') return 'partners';
+    if (page === 'deck') return 'space';
     if (SPACE_PAGES.indexOf(page) >= 0) return 'space';
     return page;
   }
@@ -7147,6 +8203,7 @@
     if (page === 'mastery') return state.masteryId;
     if (page === 'notebooks') return state.notebookId;
     if (page === 'partner') return state.partnerId;
+    if (page === 'deck') return state.deckId;
     return '';
   }
 
@@ -7195,10 +8252,11 @@
     }
     const spaceSub = $('#space-subnav');
     if (spaceSub) {
-      const onSpace = SPACE_PAGES.indexOf(page) >= 0;
+      const onSpace = SPACE_PAGES.indexOf(page) >= 0 || page === 'deck';
+      const spaceActive = page === 'deck' ? 'bank' : page;
       spaceSub.hidden = !onSpace;
       $$('button', spaceSub).forEach(b =>
-        b.classList.toggle('active', b.dataset.space === page));
+        b.classList.toggle('active', b.dataset.space === spaceActive));
     }
 
     $$('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + page));
@@ -7221,17 +8279,12 @@
         setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
       }
     } else if (page === 'bank') {
+      renderDecks();
       ensureMeta().then(m => {
-        if (m) {
-          $('#page-sub').textContent = pageSub('bank');
-          renderSubjects();
-          renderBankYears();
-          if (!state.bank.items.length) fetchBank(true);
-          else renderBank(false);
-        } else {
-          renderBank(true);
-        }
+        if (m && state.page === 'bank') renderDecks();
       });
+    } else if (page === 'deck') {
+      renderDeckPage(id || state.deckId);
     } else if (page === 'knowledge') {
       ensureMeta().then(m => {
         if (!m) { renderKnowledge(); return; }
@@ -7503,12 +8556,28 @@
     let bankTimer = null;
     $('#bank-q').addEventListener('input', e => {
       clearTimeout(bankTimer);
+      const value = e.target.value.trim();
       bankTimer = setTimeout(() => {
-        state.bank.q = e.target.value.trim();
+        if (state.page === 'deck' && state.deckId !== PRESET_DECK.id) {
+          const deck = deckById(state.deckId);
+          if (!deck) return;
+          state.deckView.q = value;
+          renderDeckQuestions(deck);
+          return;
+        }
+        state.bank.q = value;
         fetchBank(true);
       }, 320);
     });
     $('#bank-more').addEventListener('click', () => fetchBank(false));
+
+    $('#deck-new').addEventListener('click', openNewDeckModal);
+    $('#deck-import').addEventListener('click', () => openImportModal(''));
+    $('#deck-import-in').addEventListener('click', () => openImportModal(state.deckId));
+    $('#deck-back').addEventListener('click', () => go('bank'));
+    $('#deck-generate').addEventListener('click', openGenerateModal);
+    $('#deck-export').addEventListener('click', () => exportDeck(deckById(state.deckId)));
+    $('#deck-practice').addEventListener('click', startDeckPractice);
 
     let knTimer = null;
     $('#kn-q').addEventListener('input', e => {

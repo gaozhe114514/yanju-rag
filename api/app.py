@@ -38,6 +38,7 @@ from answer.cache import (cache_key, cached_payload, storable_payload,
 from answer.gate import RefusalGate
 from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
+from answer.qgen import generate_questions
 from answer.stream import sse
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
@@ -78,6 +79,13 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     history: List[ChatTurn] = Field(default_factory=list)
     style: str = Field("", max_length=400)
+
+
+class GenerateQuestionsRequest(BaseModel):
+    # 用户粘贴的资料；出题结果只存在浏览器，服务端不落盘
+    text: str = Field(..., min_length=80, max_length=20000)
+    count: int = Field(5, ge=1, le=10)
+    title: str = Field("", max_length=80)
 
 
 class FeedbackRequest(BaseModel):
@@ -209,6 +217,7 @@ def _load() -> None:
         "mode": mode,
         "fuse_k": fuse_k,
         "provider": provider_name,
+        "provider_impl": provider,
         "storage": "postgres" if store is not None else "memory",
         "store": store,
         "gap_log": str(gap_path),
@@ -758,6 +767,27 @@ def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
         item["related_knowledge"] = _state.get(
             "knowledge_by_question", {}).get(chunk_id, [])
     return item
+
+
+@app.post("/bank/generate")
+def bank_generate(req: GenerateQuestionsRequest,
+                  _: None = Depends(enforce_guard)) -> dict:
+    """用自己的资料出题：题目与出处只在响应里返回，服务端不保存资料。"""
+    provider = _state.get("provider_impl")
+    if _state.get("provider") != "deepseek" or provider is None:
+        raise HTTPException(status_code=503,
+                            detail="当前是离线演示模式，配置 DEEPSEEK_API_KEY 后才能用资料出题")
+    try:
+        out = generate_questions(provider, req.text, count=req.count, title=req.title)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail="出题失败：%s" % e)
+    if not out["questions"]:
+        note = out["notes"][0] if out["notes"] else "模型没有给出可用题目"
+        raise HTTPException(status_code=422,
+                            detail="没有生成可用题目（%s），换一段更完整的资料试试" % note)
+    return out
 
 
 @app.get("/")
