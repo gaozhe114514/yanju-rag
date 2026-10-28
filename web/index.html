@@ -15,6 +15,10 @@
       --ok: #237a4b; --ok-surface: #ecf8f0;
       --warn: #a15c00; --warn-surface: #fff7df;
       --danger: #c53a2c; --danger-surface: #fbeae7;
+      /* DeepTutor 借用色：学习区用 snow 主题的蓝，伙伴用 glass 主题的紫 */
+      --info: #2563eb; --info-dark: #1d4ed8;
+      --info-surface: #eff6ff; --info-line: #c7d8fb;
+      --violet: #7c3aed; --violet-surface: #f5f3ff; --violet-line: #ddd6fe;
       --paper: #f5f2ea; --paper-deep: #ece7d8;
       --accent: #b0501e; --accent-soft: #f7e9e1; --pine-soft: #ece7d8;
       --display: "Lora", "Source Han Serif SC", "Source Han Serif CN", "Noto Serif SC", "Noto Serif CJK SC", "STZhongsong", "Songti SC", "SimSun", Georgia, serif;
@@ -1530,61 +1534,7 @@
     .tl-text { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.65; }
     .tl-time { flex: none; color: var(--muted); font-size: 10.5px; }
 
-    /* 精通之路 */
-    .path-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .path-card {
-      display: flex; flex-direction: column; gap: 10px; padding: 18px;
-      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
-      box-shadow: var(--shadow-sm); text-align: left; cursor: pointer;
-      transition: border-color .15s, box-shadow .15s, transform .15s;
-    }
-    .path-card:hover {
-      border-color: #d5c8b0; transform: translateY(-1px);
-      box-shadow: 0 8px 22px rgba(28, 24, 22, .06);
-    }
-    .path-top { display: flex; align-items: center; gap: 12px; }
-    .path-ring {
-      --p: 0; display: grid; place-items: center; flex: none;
-      width: 46px; height: 46px; border-radius: 50%;
-      background: conic-gradient(var(--brand) calc(var(--p) * 1%), var(--muted-surface) 0);
-    }
-    .path-ring span {
-      display: grid; place-items: center; width: 36px; height: 36px;
-      border-radius: 50%; background: var(--card); color: var(--ink);
-      font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
-    }
-    .path-name { color: var(--ink); font-size: 14.5px; font-weight: 600; line-height: 1.5; }
-    .path-meta { color: var(--muted); font-size: 11.5px; line-height: 1.6; }
-    .path-foot {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-      color: var(--muted); font-size: 11px;
-    }
-    .path-bar { flex: 1; min-width: 80px; height: 6px; border-radius: 999px; background: var(--muted-surface); overflow: hidden; }
-    .path-bar i { display: block; height: 100%; border-radius: 999px; background: var(--brand); }
-    .module {
-      padding: 16px 18px; border: 1px solid var(--line); border-radius: 16px;
-      background: var(--card); box-shadow: var(--shadow-sm); margin-bottom: 12px;
-    }
-    .module-head { display: flex; align-items: flex-start; gap: 10px; }
-    .module-num {
-      display: grid; place-items: center; flex: none; width: 24px; height: 24px;
-      border-radius: 7px; background: var(--muted-surface); color: var(--muted);
-      font-size: 11px; font-weight: 600;
-    }
-    .module-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
-    .module-sum { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.65; }
-    .stage-row {
-      display: flex; align-items: center; gap: 9px; padding: 10px 0 0;
-      margin-top: 10px; border-top: 1px dashed var(--line);
-      color: var(--muted); font-size: 12px;
-    }
-    .stage-check {
-      display: grid; place-items: center; flex: none; width: 18px; height: 18px;
-      border: 1px solid #cbbda4; border-radius: 50%; color: transparent; font-size: 11px;
-    }
-    .stage-check.done { border-color: var(--ok); background: var(--ok-surface); color: var(--ok); }
-    .stage-text { flex: 1; min-width: 0; }
-    .stage-text b { color: var(--ink); font-weight: 500; }
+    /* 精通之路 自测卡（v0.28 起路线列表与清单样式在文件末尾） */
     .quiz-inline {
       margin-top: 10px; padding: 12px 14px; border-radius: 12px;
       background: var(--bg); border: 1px solid var(--line);
@@ -1750,7 +1700,7 @@
     .composer-chip.on { background: var(--wash); border-color: transparent; color: #8f3d16; }
 
     @media (max-width: 860px) {
-      .space-grid, .path-grid, .partner-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .space-grid, .partner-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
       .kanban-board { grid-template-columns: 1fr; }
       .kanban-col { min-height: 120px; }
       .page-head-row { gap: 10px; }
@@ -2013,6 +1963,145 @@
       #page-chat .home h2 { font-size: 26px; }
       #page-chat .answer-text { font-size: 14.5px; }
       .msg-tools { margin-left: 0; }
+    }
+
+    /* ---------- v0.28 精通之路（照 DeepTutor：进度条 + 下一步 + 分组清单 + 展开自测） ---------- */
+    /* 学习区用 DeepTutor snow 主题的蓝，完成度仍用绿，避免只靠一个色相表意 */
+    .mp-list { display: flex; flex-direction: column; gap: 8px; max-width: 760px; }
+    .mp-card {
+      display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px;
+      border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+      box-shadow: var(--shadow-sm); cursor: pointer;
+      transition: border-color .15s, background .15s, box-shadow .15s;
+    }
+    .mp-card:hover, .mp-card:focus-visible {
+      border-color: var(--info-line); background: var(--info-surface);
+      box-shadow: 0 8px 22px rgba(37, 99, 235, .07); outline: 0;
+    }
+    .mp-card-main { flex: 1; min-width: 0; }
+    .mp-card-name { color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
+    .mp-card-meta { margin-top: 2px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .mp-card-side { flex: none; text-align: right; }
+    .mp-card-pct {
+      color: var(--info); font-size: 12px; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .mp-card-bar {
+      width: 88px; height: 4px; margin-top: 6px; border-radius: 999px;
+      background: var(--muted-surface); overflow: hidden;
+    }
+    .mp-card-bar i { display: block; height: 100%; border-radius: 999px; background: var(--ok); }
+    .mp-card-del {
+      flex: none; margin-left: 2px; padding: 4px 8px; border: 0; border-radius: 7px;
+      background: transparent; color: var(--muted); font-size: 11px;
+      opacity: 0; transition: opacity .15s, color .15s, background .15s;
+    }
+    .mp-card:hover .mp-card-del, .mp-card:focus-within .mp-card-del { opacity: 1; }
+    .mp-card-del:hover { background: var(--danger-surface); color: var(--danger); }
+    @media (hover: none) { .mp-card-del { opacity: 1; } }
+
+    .mp-toolbar { align-items: center; }
+    .mp-toolbar .primary { background: var(--info); }
+    .mp-toolbar .primary:hover { background: var(--info-dark); }
+    .mp-back {
+      padding: 0 0 10px; border: 0; background: transparent;
+      color: var(--muted); font-size: 12px;
+    }
+    .mp-back:hover { color: var(--info); }
+    .mp-summary {
+      display: flex; align-items: center; gap: 12px; max-width: 760px;
+      margin: 4px 0 0;
+    }
+    .mp-count { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+    .mp-count b { color: var(--ink); font-weight: 600; }
+    .mp-bar {
+      flex: 1; min-width: 90px; height: 5px; border-radius: 999px;
+      background: var(--muted-surface); overflow: hidden;
+    }
+    .mp-bar i {
+      display: block; height: 100%; border-radius: 999px; background: var(--ok);
+      transition: width .3s ease;
+    }
+    .mp-next {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+      width: 100%; max-width: 760px; margin-top: 18px; padding: 13px 16px;
+      border: 1px solid var(--info-line); border-radius: 14px; background: var(--card);
+      text-align: left; transition: border-color .15s, box-shadow .15s;
+    }
+    .mp-next:hover {
+      border-color: var(--info);
+      box-shadow: 0 8px 22px rgba(37, 99, 235, .1);
+    }
+    .mp-next-label {
+      color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+    }
+    .mp-next-name { color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.5; }
+    .mp-next-link { margin-top: 2px; color: var(--info); font-size: 12px; }
+    .mp-done-banner {
+      max-width: 760px; margin-top: 18px; padding: 13px 16px;
+      border: 1px solid #b9d9c4; border-radius: 14px; background: var(--ok-surface);
+      color: var(--ok); font-size: 12.5px; line-height: 1.7;
+    }
+    .mp-done-banner b { font-weight: 600; }
+
+    .mp-groups {
+      display: flex; flex-direction: column; gap: 24px;
+      max-width: 760px; margin-top: 28px;
+    }
+    .mp-group-head { display: flex; align-items: baseline; gap: 10px; }
+    .mp-group-name { color: var(--ink); font-size: 13.5px; font-weight: 600; }
+    .mp-group-count {
+      margin-left: auto; color: var(--muted); font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .mp-rows { margin-top: 6px; }
+    .mp-row {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 8px 6px; border: 0; border-radius: 8px; background: transparent;
+      text-align: left; transition: background .15s;
+    }
+    .mp-row:hover, .mp-row.open { background: var(--info-surface); }
+    .mp-row:focus-visible { outline: 2px solid rgba(37, 99, 235, .5); outline-offset: 1px; }
+    .mp-dot {
+      display: grid; place-items: center; flex: none; width: 15px; height: 15px;
+      border: 1.5px solid var(--line); border-radius: 50%;
+      color: transparent; font-size: 9px;
+    }
+    .mp-row.done .mp-dot { border-color: var(--ok); background: var(--ok); color: #fff; }
+    .mp-row.current .mp-dot {
+      border-color: var(--info); box-shadow: 0 0 0 3px var(--info-surface);
+    }
+    .mp-row-name {
+      flex: 1; min-width: 0; color: #3a352f; font-size: 13px; line-height: 1.6;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mp-row.current .mp-row-name { color: var(--ink); font-weight: 600; }
+    .mp-row.done .mp-row-name { color: var(--muted); }
+    .mp-row-kind { flex: none; color: var(--muted); font-size: 10.5px; letter-spacing: .08em; }
+    .mp-row-state { flex: none; width: 52px; text-align: right; color: var(--muted); font-size: 11px; }
+    .mp-row.done .mp-row-state { color: var(--ok); }
+    .mp-row.current .mp-row-state { color: var(--info); }
+    .mp-detail {
+      margin: 4px 0 12px 21px; padding: 12px 14px;
+      border-left: 2px solid var(--info-line); border-radius: 0 10px 10px 0;
+      background: var(--bg);
+    }
+    .mp-detail-sum { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .mp-detail-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .mp-detail .quiz-inline { background: var(--card); }
+
+    /* 伙伴用 DeepTutor glass 主题的紫，和问答页的陶土、学习页的蓝区分开 */
+    .partner-avatar { background: var(--violet-surface); color: var(--violet); }
+    .tl-dot.mastery { background: var(--info); }
+
+    @media (max-width: 860px) {
+      .mp-card { padding: 12px 13px; gap: 10px; }
+      .mp-card-side { display: none; }
+      .mp-card-del { opacity: 1; }
+      .mp-row-kind { display: none; }
+      .mp-row-state { width: 44px; font-size: 10.5px; }
+      .mp-detail { margin-left: 10px; padding: 10px 12px; }
+      .mp-row-name { white-space: normal; }
     }
   </style>
 </head>
@@ -2507,7 +2596,7 @@
   const PAGE_META = {
     today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '问答', sub: '多轮追问 · 每条结论都可核对'},
-    mastery: {title: '精通之路', sub: '从考点到自测，一步一步走完'},
+    mastery: {title: '精通之路', sub: '按章节把考点排成路线，答对关联真题才算掌握'},
     library: {title: '知识库', sub: '把自己的资料放进来，问答只引用这些原文'},
     collection: {title: '知识库', sub: '资料详情 · 切分后逐段可被引用'},
     bank: {title: '题库', sub: '内置 408 真题与自建题库，标签和出处都随题保存'},
@@ -2634,6 +2723,8 @@
     journal: loadJournal(),
     mastery: loadMastery(),
     masteryId: '',
+    masteryOpen: '',
+    masteryOpenFor: '',
     masteryQuestions: {},
     taskBoard: loadTaskBoard(),
     kanbanArchived: false,
@@ -7668,11 +7759,11 @@
     if (path) { renderMasteryDetail(root, path); return; }
     state.masteryId = '';
 
-    const head = el('div', 'page-head-row');
+    // 页头已经有「精通之路」，这里只留一句说明和新建按钮，不再重复标题
+    const head = el('div', 'page-head-row mp-toolbar');
     const info = el('div');
-    info.appendChild(el('div', 'panel-title', '精通之路'));
     info.appendChild(el('div', 'panel-sub',
-      '选一科，把高频考点排成一条路线；每一步都有一道真题自测，答对才算走完。'));
+      '把一科的高频考点排成一条路线；每步配一道关联真题，答对才算掌握。'));
     head.appendChild(info);
     const acts = el('div', 'page-actions');
     const add = el('button', 'primary', '新建一条路');
@@ -7699,55 +7790,55 @@
       return;
     }
 
-    const grid = el('div', 'path-grid');
+    // 照 DeepTutor 的路线清单：一行一条，标题 + 元信息 + 完成度，不再铺卡片墙
+    const list = el('div', 'mp-list');
     state.mastery.slice().sort((a, b) =>
       (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(p => {
       const s = masteryStats(p);
-      const card = el('div', 'path-card');
-      const top = el('div', 'path-top');
-      const ring = el('div', 'path-ring');
-      ring.style.setProperty('--p', s.pct);
-      ring.appendChild(el('span', null, s.pct + '%'));
-      ring.setAttribute('role', 'progressbar');
-      ring.setAttribute('aria-valuemin', '0');
-      ring.setAttribute('aria-valuemax', String(s.total));
-      ring.setAttribute('aria-valuenow', String(s.done));
-      ring.setAttribute('aria-label', p.name + ' 完成度 ' + s.pct + '%');
-      top.appendChild(ring);
-      const titleBox = el('div');
-      titleBox.appendChild(el('div', 'path-name', p.name));
-      titleBox.appendChild(el('div', 'path-meta',
-        subjectName(p.subject) + ' · ' + s.done + ' / ' + s.total + ' 步'));
-      top.appendChild(titleBox);
-      card.appendChild(top);
-      const foot = el('div', 'path-foot');
-      const bar = el('div', 'path-bar');
+      const complete = s.total > 0 && s.done >= s.total;
+      const card = el('div', 'mp-card');
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label',
+        p.name + '，' + s.done + ' / ' + s.total + ' 个考点已掌握');
+      const main = el('div', 'mp-card-main');
+      main.appendChild(el('div', 'mp-card-name', p.name));
+      main.appendChild(el('div', 'mp-card-meta',
+        subjectName(p.subject) + ' · ' + s.total + ' 个考点 · ' +
+        (complete ? '已全部掌握' : '还差 ' + (s.total - s.done) + ' 步')));
+      card.appendChild(main);
+      const side = el('div', 'mp-card-side');
+      side.appendChild(el('div', 'mp-card-pct', s.pct + '%'));
+      const bar = el('div', 'mp-card-bar');
       const fill = el('i');
       fill.style.width = s.pct + '%';
       bar.appendChild(fill);
-      foot.appendChild(bar);
-      foot.appendChild(el('span', null, s.done === s.total && s.total ?
-        '已完成' : '还差 ' + (s.total - s.done) + ' 步'));
-      card.appendChild(foot);
-      const actions = el('div', 'partner-actions');
-      const open = el('button', 'primary', s.done ? '继续' : '开始');
-      open.addEventListener('click', () => {
-        state.masteryId = p.id;
-        go('mastery', p.id);
-      });
-      const del = el('button', 'row-btn danger', '删除');
-      del.addEventListener('click', () => {
+      side.appendChild(bar);
+      card.appendChild(side);
+      const del = el('button', 'mp-card-del', '删除');
+      del.type = 'button';
+      del.setAttribute('aria-label', '删除精通之路「' + p.name + '」');
+      del.addEventListener('click', e => {
+        e.stopPropagation();
         if (!window.confirm('删除精通之路「' + p.name + '」？进度会一起清掉。')) return;
         state.mastery = state.mastery.filter(x => x.id !== p.id);
         saveMastery();
         renderMastery();
       });
-      actions.appendChild(open);
-      actions.appendChild(del);
-      card.appendChild(actions);
-      grid.appendChild(card);
+      card.appendChild(del);
+      const enter = () => {
+        state.masteryId = p.id;
+        state.masteryOpen = '';
+        state.masteryOpenFor = '';
+        go('mastery', p.id);
+      };
+      card.addEventListener('click', enter);
+      card.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); enter(); }
+      });
+      list.appendChild(card);
     });
-    root.appendChild(grid);
+    root.appendChild(list);
   }
 
   async function openMasteryEditor(subject) {
@@ -7848,87 +7939,176 @@
     name.select();
   }
 
+  function nextMasteryStep(path) {
+    return (path.steps || []).find(st => !masteryStepDone(path, st.id)) || null;
+  }
+
+  // 展开某一步的面板：摘要 + 关联真题自测 + 回到考点原卡
+  function masteryStepDetail(path, step, done) {
+    const box = el('div', 'mp-detail');
+    if (step.summary) box.appendChild(el('div', 'mp-detail-sum', step.summary));
+    const acts = el('div', 'mp-detail-acts');
+    const hasQuiz = step.quiz && Object.keys(step.quiz.options || {}).length >= 2;
+    if (hasQuiz) {
+      renderMasteryQuiz(box, path, step);
+    } else {
+      box.appendChild(el('div', 'quiz-note', '这张卡片暂时没有关联真题。'));
+      const ok = el('button', 'ghost', done ? '已记住这一步' : '读完了，记住这一步');
+      ok.disabled = done;
+      ok.addEventListener('click', () => {
+        path.done[step.id] = true;
+        path.updatedAt = Date.now();
+        saveMastery();
+        const justDone = checkMasteryComplete(path);
+        saveMastery();
+        renderMastery();
+        if (justDone) toast('恭喜，这条路走完了');
+      });
+      acts.appendChild(ok);
+    }
+    const cardBtn = el('button', 'ghost', '看考点原卡 →');
+    cardBtn.addEventListener('click', () => openKnowledge(step.id));
+    acts.appendChild(cardBtn);
+    box.appendChild(acts);
+    return box;
+  }
+
   function renderMasteryDetail(root, path) {
     const stats = masteryStats(path);
-    const head = el('div', 'page-head-row');
-    const left = el('div');
-    const back = el('button', 'row-btn', '← 全部路线');
-    back.style.marginBottom = '8px';
+    const next = nextMasteryStep(path);
+    if (state.masteryOpenFor !== path.id) {
+      state.masteryOpenFor = path.id;
+      state.masteryOpen = next ? next.id : '';
+    }
+
+    const back = el('button', 'mp-back', '← 全部路线');
     back.addEventListener('click', () => {
       state.masteryId = '';
+      state.masteryOpen = '';
+      state.masteryOpenFor = '';
       go('mastery');
     });
-    left.appendChild(back);
+    root.appendChild(back);
+
+    const head = el('div', 'page-head-row');
+    const left = el('div');
     left.appendChild(el('div', 'panel-title', path.name));
     left.appendChild(el('div', 'panel-sub',
-      subjectName(path.subject) + ' · ' + stats.done + ' / ' + stats.total +
-      ' 步 · 答对关联真题才算完成'));
+      subjectName(path.subject) + ' · ' + stats.total +
+      ' 个考点 · 答对关联真题才算掌握'));
     head.appendChild(left);
     const acts = el('div', 'page-actions');
     const again = el('button', 'ghost', '重开一条');
     again.addEventListener('click', () => openMasteryEditor(path.subject));
     acts.appendChild(again);
+    const del = el('button', 'row-btn danger', '删除');
+    del.addEventListener('click', () => {
+      if (!window.confirm('删除精通之路「' + path.name + '」？进度会一起清掉。')) return;
+      state.mastery = state.mastery.filter(x => x.id !== path.id);
+      state.masteryId = '';
+      state.masteryOpen = '';
+      state.masteryOpenFor = '';
+      saveMastery();
+      go('mastery');
+    });
+    acts.appendChild(del);
     head.appendChild(acts);
     root.appendChild(head);
 
-    if (stats.done >= stats.total && stats.total) {
-      const banner = el('div', 'level-banner');
-      const b = el('b', null, '这条路走完了');
-      banner.appendChild(b);
-      banner.appendChild(el('span', null,
+    // 进度：一行「N / M 已掌握」+ 细进度条；完成数不只靠颜色表达
+    const sum = el('div', 'mp-summary');
+    const cnt = el('div', 'mp-count');
+    cnt.appendChild(el('b', null, String(stats.done)));
+    cnt.appendChild(document.createTextNode(' / ' + stats.total + ' 已掌握'));
+    if (stats.total > stats.done) {
+      cnt.appendChild(document.createTextNode(
+        ' · ' + (stats.total - stats.done) + ' 个待完成'));
+    }
+    sum.appendChild(cnt);
+    const bar = el('div', 'mp-bar');
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', String(stats.total));
+    bar.setAttribute('aria-valuenow', String(stats.done));
+    bar.setAttribute('aria-label', '已掌握 ' + stats.done + ' / ' + stats.total);
+    const fill = el('i');
+    fill.style.width = stats.pct + '%';
+    bar.appendChild(fill);
+    sum.appendChild(bar);
+    root.appendChild(sum);
+
+    if (next) {
+      const card = el('button', 'mp-next');
+      card.type = 'button';
+      card.appendChild(el('span', 'mp-next-label', '下一步'));
+      card.appendChild(el('span', 'mp-next-name', next.title));
+      card.appendChild(el('span', 'mp-next-link', '继续学这一步 →'));
+      card.addEventListener('click', () => {
+        state.masteryOpen = next.id;
+        renderMastery();
+        const row = document.querySelector('.mp-row.current') ||
+          document.querySelector('.mp-row');
+        if (row && row.scrollIntoView) {
+          row.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }
+      });
+      root.appendChild(card);
+    } else if (stats.total) {
+      const banner = el('div', 'mp-done-banner');
+      banner.appendChild(el('b', null, '这条路走完了。'));
+      banner.appendChild(document.createTextNode(
         ' ' + stats.total + ' 个考点都答对了。可以去练习里再混着做一组，确认不是记住了题面。'));
       root.appendChild(banner);
     }
 
-    path.steps.forEach((step, idx) => {
-      const done = masteryStepDone(path, step.id);
-      const mod = el('div', 'module');
-      const mh = el('div', 'module-head');
-      mh.appendChild(el('div', 'module-num', String(idx + 1)));
-      const mt = el('div', 'module-title');
-      mt.appendChild(document.createTextNode(step.title));
-      if (step.chapter) mt.appendChild(el('span', 'path-meta', ' · ' + step.chapter));
-      mh.appendChild(mt);
-      mod.appendChild(mh);
-      if (step.summary) mod.appendChild(el('div', 'module-sum', step.summary));
-
-      const stage = el('div', 'stage-row');
-      const check = el('span', 'stage-check' + (done ? ' done' : ''));
-      check.textContent = done ? '✓' : '';
-      stage.appendChild(check);
-      const st = el('div', 'stage-text');
-      st.appendChild(el('b', null, done ? '自测已通过' : '自测'));
-      st.appendChild(document.createTextNode(done
-        ? ' · 这道关联真题已经答对'
-        : ' · 用关联真题检验，答对后这一步才算完成'));
-      stage.appendChild(st);
-      const cardBtn = el('button', 'row-btn', '看考点');
-      cardBtn.addEventListener('click', () => openKnowledge(step.id));
-      stage.appendChild(cardBtn);
-      mod.appendChild(stage);
-
-      if (!step.quiz || Object.keys(step.quiz.options || {}).length < 2) {
-        const note = el('div', 'quiz-note', '这张卡片暂时没有关联真题。');
-        const ok = el('button', 'ghost', '读完了，记住这一步');
-        ok.style.marginTop = '8px';
-        ok.disabled = done;
-        ok.addEventListener('click', () => {
-          path.done[step.id] = true;
-          path.updatedAt = Date.now();
-          saveMastery();
-          const justDone = checkMasteryComplete(path);
-          saveMastery();
-          renderMastery();
-          if (justDone) toast('恭喜，这条路走完了');
-        });
-        note.appendChild(document.createElement('br'));
-        note.appendChild(ok);
-        mod.appendChild(note);
-      } else {
-        renderMasteryQuiz(mod, path, step);
-      }
-      root.appendChild(mod);
+    // 按章节分组（没有章节归到「未分章」），组内顺序沿用路线里的顺序
+    const groups = [];
+    const seen = {};
+    path.steps.forEach(st => {
+      const name = String(st.chapter || '').trim() || '未分章';
+      if (!seen[name]) { seen[name] = {name: name, steps: []}; groups.push(seen[name]); }
+      seen[name].steps.push(st);
     });
+
+    const wrap = el('div', 'mp-groups');
+    groups.forEach(g => {
+      const doneIn = g.steps.filter(st => masteryStepDone(path, st.id)).length;
+      const section = el('section', 'mp-group');
+      const gh = el('div', 'mp-group-head');
+      gh.appendChild(el('span', 'mp-group-name', g.name));
+      gh.appendChild(el('span', 'mp-group-count', doneIn + '/' + g.steps.length));
+      section.appendChild(gh);
+      const rows = el('div', 'mp-rows');
+      g.steps.forEach(st => {
+        const done = masteryStepDone(path, st.id);
+        const current = !!(next && next.id === st.id);
+        const open = state.masteryOpen === st.id;
+        const row = el('button', 'mp-row' +
+          (done ? ' done' : '') + (current && !done ? ' current' : '') +
+          (open ? ' open' : ''));
+        row.type = 'button';
+        row.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const dot = el('span', 'mp-dot');
+        if (done) dot.textContent = '✓';
+        row.appendChild(dot);
+        row.appendChild(el('span', 'mp-row-name', st.title));
+        row.appendChild(el('span', 'mp-row-kind', '考点'));
+        row.appendChild(el('span', 'mp-row-state',
+          done ? '已掌握' : (current ? '进行中' : '未开始')));
+        row.addEventListener('click', () => {
+          const page = document.querySelector('#page-mastery');
+          const y = page ? page.scrollTop : 0;
+          state.masteryOpen = open ? '' : st.id;
+          renderMastery();
+          if (page) requestAnimationFrame(() => { page.scrollTop = y; });
+        });
+        rows.appendChild(row);
+        if (open) rows.appendChild(masteryStepDetail(path, st, done));
+      });
+      section.appendChild(rows);
+      wrap.appendChild(section);
+    });
+    root.appendChild(wrap);
   }
 
   function renderMasteryQuiz(mod, path, step) {
