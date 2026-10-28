@@ -16,6 +16,6 @@ jobs:
       # 单测只许依赖标准库 + numpy；import fastapi / torch 的用例请改成
       # 直接测纯函数，否则这里会因为没有这些包而红。
       - name: Install test deps
-        run: python -m pip install numpy
+        run: python -m pip install "numpy<2"
       - name: Run unit tests
         run: python -m unittest discover -s tests -t . -v
