@@ -40,6 +40,7 @@ from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
+from kb import PRESET_COLLECTION, Library, LibraryError
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
 
@@ -68,6 +69,8 @@ class AskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     # 讲解风格（人格预设 / 技能 / 学习记忆），只影响措辞，不改变引用规则
     style: str = Field("", max_length=400)
+    # 检索哪个知识库：空字符串 / cs408 = 内置 408 语料，其余是用户自建资料库
+    collection: str = Field("", max_length=64)
 
 
 class ChatTurn(BaseModel):
@@ -79,6 +82,18 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     history: List[ChatTurn] = Field(default_factory=list)
     style: str = Field("", max_length=400)
+    collection: str = Field("", max_length=64)
+
+
+class CollectionRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=40)
+    description: str = Field("", max_length=200)
+
+
+class DocumentRequest(BaseModel):
+    # 用户在页面里粘贴的资料；切分后只有片段进检索库，原文整篇留档以便回跳
+    text: str = Field(..., min_length=20, max_length=50000)
+    title: str = Field("", max_length=80)
 
 
 class GenerateQuestionsRequest(BaseModel):
@@ -206,8 +221,18 @@ def _load() -> None:
     # 只有真实模型才做追问改写；mock 模式退化为规则拼接，保证离线也能跑。
     agent = QueryAgent(provider if provider_name == "deepseek" else None)
 
+    # 用户自建知识库：与 408 预置语料共用同一套 BM25/向量/精排/拒答，
+    # 只是换一份片段来源和一段 prompt。没有数据库时状态落在 data/work 下。
+    library_state = (None if store is not None
+                     else str(ROOT / "data/work/kb/library.json"))
+    library = Library(store=store, embedder=searcher.embedder, mode=mode,
+                      k_fuse=fuse_k, state_path=library_state)
+
     _state.update({
         "pipeline": AnswerPipeline(searcher, provider, gate=gate),
+        "library": library,
+        "gate": gate,
+        "doc_pipelines": {},
         "chunks": chunks,
         "questions": questions,
         "questions_by_id": {q["id"]: q for q in questions},
@@ -240,6 +265,84 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="408 考研知识库", version="0.15", lifespan=lifespan)
 
 
+def _is_preset(collection: str) -> bool:
+    return not collection or collection == PRESET_COLLECTION
+
+
+def _pipeline_for(collection: str):
+    """按知识库取问答管线；用户库各自一份，库里资料变了就重建。
+
+    返回 None 表示资料库存在但还没有资料（应答方要给出明确提示，
+    而不是装作「服务器没准备好」）。
+    """
+    if _is_preset(collection):
+        return _state.get("pipeline")
+    lib = _state.get("library")
+    if lib is None or lib.get_collection(collection) is None:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    searcher = lib.searcher(collection)
+    if searcher is None:
+        return None
+    pipes = _state["doc_pipelines"]
+    cached = pipes.get(collection)
+    if cached and cached[0] is searcher:
+        return cached[1]
+    pipe = AnswerPipeline(searcher, _state["provider_impl"],
+                          gate=_state.get("gate"), prompt_mode="doc")
+    pipes[collection] = (searcher, pipe)
+    return pipe
+
+
+def _preset_collection() -> dict:
+    questions = _state.get("questions", [])
+    knowledge = _state.get("knowledge", [])
+    return {
+        "id": PRESET_COLLECTION,
+        "name": "408 考研（内置）",
+        "description": "计算机统考真题与考点卡片，只读",
+        "builtin": True,
+        "documents": len(questions) + len(knowledge),
+        "chunks": len(questions) + len(knowledge),
+        "questions": len(questions),
+        "knowledge": len(knowledge),
+        "created_at": "",
+        "updated_at": "",
+    }
+
+
+def _collection_count() -> int:
+    lib = _state.get("library")
+    if lib is None:
+        return 0
+    try:
+        return len(lib.list_collections())
+    except Exception:  # 统计失败不能让健康检查挂掉
+        return 0
+
+
+def _corpus_label(collection: str) -> str:
+    if not _is_preset(collection):
+        lib = _state.get("library")
+        coll = lib.get_collection(collection) if lib is not None else None
+        if coll:
+            docs = coll.get("documents") or []
+            segs = sum(int(d.get("chunks") or 0) for d in docs)
+            return "资料库「%s」：%d 篇 / %d 段" % (coll["name"], len(docs), segs)
+    know_n = len(_state.get("knowledge", []))
+    q_n = len(_state.get("questions", []))
+    return "真题 %d + 考点 %d" % (q_n, know_n) if know_n else "真题 %d" % q_n
+
+
+def _empty_collection_payload(t0: float) -> dict:
+    return {
+        "intent": "kb", "refused": True, "answer": "",
+        "citations": [], "reason": "empty_collection", "hits": [],
+        "attempts": 0, "latency_ms": int((time.time() - t0) * 1000),
+        "rewritten_query": "",
+        "trace": {"intent": "kb", "rewritten_query": "", "steps": []},
+    }
+
+
 def _hit_payload(h) -> dict:
     c = h.chunk
     return {
@@ -256,7 +359,7 @@ def _hit_payload(h) -> dict:
     }
 
 
-def _steps(res, plan=None) -> list:
+def _steps(res, plan=None, collection: str = "") -> list:
     timings = res.timings or {}
     gen_ms = timings.get("generate", 0)
     steps = []
@@ -273,11 +376,9 @@ def _steps(res, plan=None) -> list:
             detail_text = plan.note or "独立问题，无需改写"
         steps.append({"name": "理解问题", "ms": plan.ms, "detail": detail_text})
 
-    know_n = len(_state.get("knowledge", []))
-    corpus = ("真题 %d + 考点 %d" % (len(_state.get("questions", [])), know_n)
-              if know_n else "真题 %d" % len(_state.get("questions", [])))
     steps.append({"name": "检索", "ms": timings.get("retrieve", 0),
-                  "detail": "%s：BM25 + 向量双路召回 → RRF → Cross-Encoder 精排" % corpus})
+                  "detail": "%s：BM25 + 向量双路召回 → RRF → Cross-Encoder 精排"
+                            % _corpus_label(collection)})
 
     gate_ok = not (res.refused and gen_ms == 0)
     steps.append({"name": "拒答判断", "ms": timings.get("gate", 0),
@@ -298,7 +399,7 @@ def _steps(res, plan=None) -> list:
     return steps
 
 
-def _answer_payload(res, t0: float, plan=None) -> dict:
+def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
     by_id = {h.chunk.id: h.chunk for h in res.hits}
     citations = []
     for c in res.citations:
@@ -316,6 +417,8 @@ def _answer_payload(res, t0: float, plan=None) -> dict:
     rewritten = plan.rewritten if plan and plan.rewritten != plan.query else ""
     return {
         "intent": plan.intent if plan else "kb",
+        # 前端据此把引用跳回知识库原文；空字符串表示内置 408 语料
+        "collection": "" if _is_preset(collection) else collection,
         "refused": res.refused,
         "answer": res.answer,
         "citations": citations,
@@ -327,7 +430,7 @@ def _answer_payload(res, t0: float, plan=None) -> dict:
         "trace": {
             "intent": plan.intent if plan else "kb",
             "rewritten_query": rewritten,
-            "steps": _steps(res, plan),
+            "steps": _steps(res, plan, collection),
         },
     }
 
@@ -359,21 +462,25 @@ def _non_kb_payload(plan, t0: float) -> dict:
     }
 
 
-def _log_gap(query: str, res) -> None:
+def _log_gap(query: str, res, collection: str = "") -> None:
     if not res.refused:
         return
+    # 用户库的缺口单独标出来：reason 里带库 id，看板才能区分
+    # 「408 语料没覆盖」和「这个人的资料没覆盖」。
+    reason = (res.reason if _is_preset(collection)
+              else "%s|collection:%s" % (res.reason, collection))
     top = res.hits[0] if res.hits else None
     store = _state.get("store")
     if store is not None:
         try:
-            store.log_gap(query, res.reason,
+            store.log_gap(query, reason,
                           top.chunk.id if top else None,
                           float(top.score) if top else None)
         except Exception:  # 日志写失败不能影响答题
             pass
         return
     try:
-        log_gap(_state["gap_log"], query, res.reason, top)
+        log_gap(_state["gap_log"], query, reason, top)
     except OSError:
         pass  # 日志写失败不能影响答题
 
@@ -383,33 +490,37 @@ def _clean_style(style: str) -> str:
     return " ".join((style or "").split())[:400]
 
 
-def _cache_namespace(style: str = "") -> str:
-    """缓存命名空间额外带上风格指纹：同一问题换个伙伴要重新生成。"""
+def _cache_namespace(style: str = "", collection: str = "") -> str:
+    """缓存命名空间额外带上风格指纹和知识库：换个伙伴、换个库都重新生成。"""
     ns = _state.get("cache_ns", "")
+    if not _is_preset(collection):
+        ns += "\ncollection:" + collection
     if style:
         ns += "\nstyle:" + hashlib.sha1(style.encode("utf-8")).hexdigest()[:16]
     return ns
 
 
-def _cache_lookup(query: str, style: str = "") -> Optional[dict]:
+def _cache_lookup(query: str, style: str = "",
+                  collection: str = "") -> Optional[dict]:
     """按「实际用于检索的问题」查缓存；没有数据库或关闭 TTL 时直接跳过。"""
     store = _state.get("store")
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0:
         return None
-    key = cache_key(query, _cache_namespace(style))
+    key = cache_key(query, _cache_namespace(style, collection))
     try:
         return store.get_answer_cache(key, ttl)
     except Exception:  # 缓存故障降级为直接答题
         return None
 
 
-def _cache_store(query: str, payload: dict, style: str = "") -> None:
+def _cache_store(query: str, payload: dict, style: str = "",
+                 collection: str = "") -> None:
     store = _state.get("store")
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0 or payload.get("refused"):
         return
-    key = cache_key(query, _cache_namespace(style))
+    key = cache_key(query, _cache_namespace(style, collection))
     try:
         store.put_answer_cache(key, query, storable_payload(payload), ttl)
     except Exception:
@@ -429,19 +540,22 @@ def health() -> dict:
         "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
         "cache_ttl_s": _state.get("cache_ttl", 0),
+        "collections": _collection_count(),
     }
 
 
 @app.post("/ask")
 def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
-    pipeline = _state.get("pipeline")
+    pipeline = _pipeline_for(req.collection)
     if pipeline is None:
-        return {"refused": True, "answer": "", "citations": [],
-                "reason": "server_not_ready", "hits": [], "latency_ms": 0}
+        if _is_preset(req.collection):
+            return {"refused": True, "answer": "", "citations": [],
+                    "reason": "server_not_ready", "hits": [], "latency_ms": 0}
+        return _empty_collection_payload(time.time())
     t0 = time.time()
     metrics.bump("ask_total")
     style = _clean_style(req.style)
-    hit = _cache_lookup(req.query, style)
+    hit = _cache_lookup(req.query, style, req.collection)
     if hit is not None:
         metrics.bump("cache_hit")
         return cached_payload(hit["payload"], hit["age_s"],
@@ -449,18 +563,21 @@ def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
     # 模型推理是 CPU 密集的，单 worker 内串行，避免线程争抢
     with _lock:
         res = pipeline.answer(req.query, style)
-    _log_gap(req.query, res)
+    _log_gap(req.query, res, req.collection)
     metrics.bump("ask_refused" if res.refused else "ask_answered")
-    payload = with_cache_meta(_answer_payload(res, t0))
-    _cache_store(req.query, payload, style)
+    payload = with_cache_meta(
+        _answer_payload(res, t0, collection=req.collection))
+    _cache_store(req.query, payload, style, req.collection)
     return payload
 
 
 @app.post("/chat")
 def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
     agent = _state.get("agent")
-    pipeline = _state.get("pipeline")
+    pipeline = _pipeline_for(req.collection)
     if agent is None or pipeline is None:
+        if pipeline is None and not _is_preset(req.collection):
+            return _empty_collection_payload(time.time())
         return {"intent": "kb", "refused": True, "answer": "", "citations": [],
                 "reason": "server_not_ready", "hits": [], "attempts": 0,
                 "latency_ms": 0, "rewritten_query": "",
@@ -480,7 +597,7 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 
     # 多轮按「改写后的问题」查缓存：同一轮追问得到同一独立问题时复用答案。
     style = _clean_style(req.style)
-    hit = _cache_lookup(plan.rewritten, style)
+    hit = _cache_lookup(plan.rewritten, style, req.collection)
     if hit is not None:
         metrics.bump("cache_hit")
         out = cached_payload(hit["payload"], hit["age_s"],
@@ -493,10 +610,11 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 
     with _lock:
         res = pipeline.answer(plan.rewritten, style)
-    _log_gap(req.query, res)
+    _log_gap(req.query, res, req.collection)
     metrics.bump("chat_refused" if res.refused else "chat_answered")
-    payload = with_cache_meta(_answer_payload(res, t0, plan))
-    _cache_store(plan.rewritten, payload, style)
+    payload = with_cache_meta(
+        _answer_payload(res, t0, plan, req.collection))
+    _cache_store(plan.rewritten, payload, style, req.collection)
     return payload
 
 
@@ -509,15 +627,19 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
     最终结果只认 done 里的 payload——引用校验和拒答规则与非流式完全一致。
     """
     agent = _state.get("agent")
-    pipeline = _state.get("pipeline")
+    pipeline = _pipeline_for(req.collection)
 
     def events():
         if agent is None or pipeline is None:
-            yield sse({"type": "done", "data": {
-                "intent": "kb", "refused": True, "answer": "", "citations": [],
-                "reason": "server_not_ready", "hits": [], "attempts": 0,
-                "latency_ms": 0, "rewritten_query": "",
-                "trace": {"steps": [], "rewritten_query": "", "intent": "kb"}}})
+            data = (_empty_collection_payload(time.time())
+                    if not _is_preset(req.collection) else {
+                        "intent": "kb", "refused": True, "answer": "",
+                        "citations": [], "reason": "server_not_ready",
+                        "hits": [], "attempts": 0, "latency_ms": 0,
+                        "rewritten_query": "",
+                        "trace": {"steps": [], "rewritten_query": "",
+                                  "intent": "kb"}})
+            yield sse({"type": "done", "data": data})
             return
 
         t0 = time.time()
@@ -534,7 +656,7 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
             return
 
         style = _clean_style(req.style)
-        hit = _cache_lookup(plan.rewritten, style)
+        hit = _cache_lookup(plan.rewritten, style, req.collection)
         if hit is not None:
             metrics.bump("cache_hit")
             out = cached_payload(hit["payload"], hit["age_s"],
@@ -553,10 +675,11 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
                     yield sse(ev)
                     continue
                 res = ev["result"]
-                _log_gap(req.query, res)
+                _log_gap(req.query, res, req.collection)
                 metrics.bump("chat_refused" if res.refused else "chat_answered")
-                payload = with_cache_meta(_answer_payload(res, t0, plan))
-                _cache_store(plan.rewritten, payload, style)
+                payload = with_cache_meta(
+                    _answer_payload(res, t0, plan, req.collection))
+                _cache_store(plan.rewritten, payload, style, req.collection)
                 yield sse({"type": "done", "data": payload})
                 return
 
@@ -684,6 +807,7 @@ def meta(_: None = Depends(enforce_content)) -> dict:
         "provider": _state.get("provider"),
         "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
+        "collections": _collection_count(),
     }
 
 
@@ -767,6 +891,108 @@ def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
         item["related_knowledge"] = _state.get(
             "knowledge_by_question", {}).get(chunk_id, [])
     return item
+
+
+# ---------- 知识库：用户自建资料库 ----------
+
+def _library() -> Library:
+    lib = _state.get("library")
+    if lib is None:
+        raise HTTPException(status_code=503, detail="资料库未就绪")
+    return lib
+
+
+def _lib_error(e: LibraryError) -> HTTPException:
+    msg = str(e)
+    if "不存在" in msg:
+        status = 404
+    elif "同名" in msg or "已经在库里" in msg:
+        status = 409
+    else:
+        status = 400
+    return HTTPException(status_code=status, detail=msg)
+
+
+@app.get("/collections")
+def collections_list(_: None = Depends(enforce_content)) -> dict:
+    """所有知识库；内置 408 语料排在第一位，只读。"""
+    return {"items": [_preset_collection()] + _library().list_collections(),
+            "storage": _state.get("storage", "memory")}
+
+
+@app.post("/collections")
+def collection_create(req: CollectionRequest,
+                      _: None = Depends(enforce_content)) -> dict:
+    try:
+        return _library().create_collection(req.name, req.description)
+    except LibraryError as e:
+        raise _lib_error(e)
+
+
+@app.get("/collections/{cid}")
+def collection_detail(cid: str, _: None = Depends(enforce_content)) -> dict:
+    if cid == PRESET_COLLECTION:
+        return _preset_collection()
+    coll = _library().get_collection(cid)
+    if coll is None:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    docs = coll.get("documents") or []
+    coll["builtin"] = False
+    coll["documents"] = docs
+    coll["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
+    return coll
+
+
+@app.delete("/collections/{cid}")
+def collection_delete(cid: str, _: None = Depends(enforce_content)) -> dict:
+    lib = _library()
+    try:
+        ok = lib.delete_collection(cid)
+    except LibraryError as e:
+        raise _lib_error(e)
+    if not ok:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    _state["doc_pipelines"].pop(cid, None)
+    return {"ok": True, "id": cid}
+
+
+@app.post("/collections/{cid}/documents")
+def document_add(cid: str, req: DocumentRequest,
+                 _: None = Depends(enforce_guard)) -> dict:
+    """把一段资料加进知识库：切分、算向量、入库，立即可问答。
+
+    出题接口不落盘；这里是反向的——用户明确要把资料存成可检索的库。
+    """
+    lib = _library()
+    try:
+        doc = lib.add_document(cid, req.text, req.title)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    return doc
+
+
+@app.get("/collections/{cid}/documents/{doc_id}")
+def document_detail(cid: str, doc_id: str,
+                    _: None = Depends(enforce_content)) -> dict:
+    lib = _library()
+    if lib.get_collection(cid) is None:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    row = lib.get_document(cid, doc_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    return {"id": row["id"], "title": row["title"], "text": row["text"],
+            "created_at": str(row.get("created_at") or "")}
+
+
+@app.delete("/collections/{cid}/documents/{doc_id}")
+def document_delete(cid: str, doc_id: str,
+                    _: None = Depends(enforce_content)) -> dict:
+    ok = _library().delete_document(cid, doc_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    _state["doc_pipelines"].pop(cid, None)
+    return {"ok": True, "id": doc_id}
 
 
 @app.post("/bank/generate")

@@ -26,11 +26,31 @@ JSON 格式：
 """
 
 
-def format_hits(hits: Sequence[SearchHit]) -> str:
+SYSTEM_PROMPT_DOC = """你是学习资料问答助手。用户带来了自己的资料，你只能根据这些资料回答。必须遵守以下规则：
+1. 只能使用【资料】中的内容回答，不得使用资料以外的知识，也不得补充资料里没有的细节。
+2. 每一条结论都必须有引用；没有引用就不许下结论。
+3. 引用必须逐字摘自资料原文，必须是连续的一段，长度不少于 10 个字；
+   优先引用包含结论的完整句子；不要用省略号拼接不连续的文字，
+   chunk_id 必须是资料中给出的 id。
+4. 资料按片段给出，同一篇文档可能被切成多段，也可能有重叠；
+   需要跨段综合时，每条结论分别引用对应的片段。
+5. 资料不足以回答时，refused 设为 true，并在 reason 中说明缺什么，严禁猜测。
+6. 只输出一个 JSON 对象，不要 Markdown 代码块，不要额外解释。
+
+JSON 格式：
+{"refused": false, "answer": "结论", "citations": [{"chunk_id": "doc-0123456789-001", "quote": "原文片段"}], "reason": ""}
+"""
+
+
+def format_hits(hits: Sequence[SearchHit], mode: str = "exam") -> str:
     blocks: List[str] = []
     for h in hits:
         c = h.chunk
-        if c.kind == "knowledge":
+        if c.kind == "doc":
+            lines = ["[%s] 来源=资料库 文档=%s 片段=%d"
+                     % (c.id, c.title or c.subject or "?", c.seq)]
+            lines.append(c.text)
+        elif c.kind == "knowledge":
             lines = ["[%s] 类型=考点 科目=%s 章节=%s 标题=%s"
                      % (c.id, c.subject or "?", c.chapter or "?", c.title or "?")]
             lines.append(c.text)
@@ -54,9 +74,9 @@ STYLE_PROMPT = """
 
 
 def build_messages(query: str, hits: Sequence[SearchHit],
-                   style: str = "") -> List[Dict]:
-    user = "【资料】\n%s\n\n【问题】\n%s" % (format_hits(hits), query.strip())
-    system = SYSTEM_PROMPT
+                   style: str = "", mode: str = "exam") -> List[Dict]:
+    user = "【资料】\n%s\n\n【问题】\n%s" % (format_hits(hits, mode), query.strip())
+    system = SYSTEM_PROMPT_DOC if mode == "doc" else SYSTEM_PROMPT
     style = " ".join((style or "").split())
     if style:
         system += STYLE_PROMPT % style[:400]
@@ -66,8 +86,8 @@ def build_messages(query: str, hits: Sequence[SearchHit],
 
 def build_retry_messages(query: str, hits: Sequence[SearchHit],
                          previous: str, errors: Sequence[str],
-                         style: str = "") -> List[Dict]:
-    msgs = build_messages(query, hits, style)
+                         style: str = "", mode: str = "exam") -> List[Dict]:
+    msgs = build_messages(query, hits, style, mode)
     msgs.append({"role": "assistant", "content": previous})
     feedback = "\n".join("- " + e for e in errors)
     msgs.append({

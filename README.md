@@ -1,8 +1,8 @@
 # 408 考研知识库
 
-面向 408（计算机学科专业基础综合）考生的真题问答知识库：**每个结论都能被考生自己验证，答不出来就明说，不硬编。**
+以 408（计算机学科专业基础综合）真题为内置语料的知识库问答系统：**每个结论都能被引用回原文，答不出来就明说，不硬编。** 不考 408 也能用——把讲义、笔记、手册贴进自建知识库，同一套检索、引用校验与拒答直接生效。
 
-> 状态：v0.24。数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。这一版把题库改成**多题库**：408 真题成为不可删除的**预置题库**（235 题，仍走服务端语料），用户可以自建题库、给题打**标签**、每道题都带**出处**字段；同时补上 **CSV / Markdown 导入导出**（文件选择或直接粘贴，导入前逐行报错）和**用资料出题**（`POST /bank/generate`：只根据用户粘贴的资料出单选题，每题的 `source_quote` 必须逐字命中资料原文，对不上的直接丢掉，服务端不保存资料）。自建题库、导入题与生成题只存在本机 localStorage，换设备不同步。v0.23 的三件事保持不变：**回答改为流式输出**（`POST /chat/stream`，阶段提示 + 逐字追加 + 停止键；引用未逐字校验通过前不展示，校验失败会清空重试一次，仍失败整条拒答）、**导航收敛为五项**（问答 / 学习 / 学习空间 / 伙伴 / 任务清单），**「看板」改叫「任务清单」、「空间」改叫「学习空间」**，「今日」暂时退出导航但 `#/today` 仍可用。v0.22 补齐的四块保持不变：**伙伴**（可建多个学习伙伴，各自有性格与讲法，对话记录保留）、**学习**（精通之路 / 练习）、**学习空间**（题库、考点、笔记本、学习日志、对话、人格预设、技能、学习记忆集中在一处）、**任务清单**（待办 / 进行中 / 已完成，拖动、归档、关联对话）。质量看板仍在设置的「运行状态」。伙伴、人格与技能只向生成阶段追加「讲解方式」，引用必须逐字命中、资料没覆盖就拒答这两条硬规则不变，服务端会单独校验。视觉沿用 DeepTutor Cream 主题：奶油画布、陶土主色、衬线页标题、16px 卡片，规范见 [design.md](design.md) v1.4。题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对。存储层已切到 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时自动退回内存索引。此前已有 **应答缓存**（`answer_cache`，默认 24h，拒答不缓存）、**缺口统计** `/stats/gaps` 与**反馈接口**（`answer_feedback`、`POST /feedback`、`GET /stats/feedback`）；按使用反馈，评分/差评的前端入口已撤掉，接口保留给后续分析。2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。所有伙伴、笔记本、题库、日志、精通之路与任务清单数据只存在浏览器 localStorage，不登录、不跨设备同步。
+> 状态：v0.25。这一版把「408 语料」抽象成**知识库**（照 DeepTutor 的三层：知识库 → 文档 → 片段）：内置「408 考研」只读库不可删，用户可自建知识库、贴资料（20–50000 字，切 512 字 / 50 重叠、保留原文偏移）、在输入条左侧切库提问，引用弹窗能高亮回原文原句。用户资料落在 `collections` / `documents` / `doc_chunks` 三张新表，与 408 的 `chunks` 物理隔离；每个库用独立 searcher（关掉题号解析）、独立缓存命名空间，拒答日志带 collection id。v0.24 的多题库、CSV / Markdown 导入导出与「用资料出题」保持不变。v0.24 之前的能力见下文各节：数据管线、检索、拒答、真实生成、引用校验、HTTP 服务与单机 Docker 部署已跑通，并在腾讯云轻量（2核4G）实机验证。408 真题是不可删除的**预置题库**（235 题，仍走服务端语料），用户自建题库、给题打**标签**、每道题都带**出处**字段；自建题库、导入题与生成题只存在本机 localStorage，换设备不同步。**回答为流式输出**（`POST /chat/stream`，阶段提示 + 逐字追加 + 停止键；引用未逐字校验通过前不展示，校验失败会清空重试一次，仍失败整条拒答），**导航为五项**（问答 / 学习 / 学习空间 / 伙伴 / 任务清单）。质量看板在设置的「运行状态」。伙伴、人格、技能与知识库只影响「用哪些资料」和「怎么说」，引用必须逐字命中、资料没覆盖就拒答这两条硬规则不变。视觉沿用 DeepTutor Cream 主题：奶油画布、陶土主色、衬线页标题、16px 卡片，规范见 [design.md](design.md) v1.5。408 题库现有 2019、2020、2021、2023、2024 五卷共 235 题，解析分别来自 AI 生成和公开文字版整理，均标为 `draft`、待人工校对；2022、2025 的解析源是扫描件或 OCR 噪声过大，暂未入库；答案正确率评测尚未接入。存储层为 **PostgreSQL 16 + pgvector**：JSONL 是构建产物和语料种子，启动时按指纹同步进库，向量召回走数据库；未配置 `DATABASE_URL` 时退回内存索引（知识库退到 `data/work/kb/library.json`）。另有**应答缓存**（`answer_cache`，默认 24h，拒答不缓存）、**缺口统计** `/stats/gaps` 与**反馈接口**（`answer_feedback`、`POST /feedback`、`GET /stats/feedback`）。伙伴、笔记本、题库、日志、精通之路与任务清单数据只存在浏览器 localStorage，不登录、不跨设备同步。
 
 ![系统架构](docs/fig2_architecture.png)
 
@@ -197,14 +197,15 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 `style` 是可选字段（≤400 字），服务端会压成单行再注入 system prompt 的【讲解方式】段。该段明确写出「只影响措辞、语气和组织顺序，不得改变事实与结论，不得放宽引用要求，也不得引入资料以外的知识」；生成结果仍要过同一套逐字引用校验，校验失败照样重试一次、仍失败则拒答。
 
-### 产品框架（v0.24，对话优先 + 流式问答 + 多题库 + 学习闭环）
+### 产品框架（v0.25，对话优先 + 流式问答 + 多题库 + 自建知识库 + 学习闭环）
 
-入口仍是「问答」：打开就是对话，欢迎态的问候、倒计时、连续天数、近 7 天问答量与推荐问题不变；侧栏「最近对话」按今天 / 昨天 / 最近 7 天 / 更早分组。主导航收敛为 **问答 / 学习 / 学习空间 / 伙伴 / 任务清单** 五项，手机底部同名 tab 栏；「今日」暂时退出导航，页面与 `#/today` 路由保留。所有个人数据（伙伴、笔记本、日志、精通之路、任务清单、人格、技能、记忆）只存在浏览器 localStorage，不登录、不设置、换设备不同步。界面按 [design.md](design.md) v1.4 的奶油 · 陶土规范实现：对话与伙伴对话 820px，题库 / 考点 / 学习空间总览 / 任务清单 1180px，今日 / 精通之路 / 练习 / 学习空间子页 900px；页头 27px 衬线标题，卡片 16px 圆角与 1px 暖边框。
+入口仍是「问答」：打开就是对话，欢迎态的问候、倒计时、连续天数、近 7 天问答量与推荐问题不变；侧栏「最近对话」按今天 / 昨天 / 最近 7 天 / 更早分组。主导航收敛为 **问答 / 学习 / 学习空间 / 伙伴 / 任务清单** 五项，手机底部同名 tab 栏；「今日」暂时退出导航，页面与 `#/today` 路由保留。所有个人数据（伙伴、笔记本、日志、精通之路、任务清单、人格、技能、记忆）只存在浏览器 localStorage，不登录、不设置、换设备不同步。界面按 [design.md](design.md) v1.5 的奶油 · 陶土规范实现：对话与伙伴对话 820px，题库 / 考点 / 知识库 / 学习空间总览 / 任务清单 1180px，今日 / 精通之路 / 练习 / 学习空间子页 900px；页头 27px 衬线标题，卡片 16px 圆角与 1px 暖边框。
 
 - **问答**：默认首页，流式输出。多轮对话；用户消息为浅奶油气泡，助手回答不套卡片、直接排版，边生成边显示（阶段提示 + 闪烁光标），引用于逐字校验通过后才出现；校验失败会清空未通过的文字并重试一次，仍失败则整条拒答。生成中发送键原位变停止键，点停止丢弃未校验内容并恢复输入。每条回答展示引用、召回资料、改写后的问题和执行过程，真题和考点都能被引用。输入条左侧的人格胶囊可以切换预设，把「讲解方式」随请求发给服务端；引用校验与拒答规则不变。助手回答下方可「复制」「存到笔记本」「记入日志」。底部是 24px 胶囊输入条 + 圆形发送键，桌面自动聚焦、手机不自动弹键盘。
 - **今日**：辅助工作台（不在主导航，保留 `#/today` 入口）。① 一句话开场，按时间、连续天数、上次学习间隔生成；② 初试倒计时（默认按「12 月倒数第二个周六」估算，可改成本机日期）与「连续 N 天」「近 7 天：问 X · 练 Y」；③ 常驻提问框；④ 今天这一题：优先从错题本、其次从上次提问引用过的真题里挑一道**单选题**，当天固定，答完记「会了/还不太会」；⑤ 接着上次：上次对话 + 上次练习，一键继续。断签不惩罚。
 - **学习 · 精通之路**：选一科，自动挑出关联真题最多（考频最高）的 3–5 个考点排成路线；每一步展示考点摘要、内联一道带选项的关联真题，选完才核对答案，答对这一步才算完成；答错可看考点、看原题、再试一次。走完全部步骤会写一条学习日志。路线进度存在本机，刷新后保留。
 - **学习 · 练习**：三个标签页。① 随机练习：随机抽题，先作答再展开答案，用「会了/还不会」做本地统计；也可从考点卡片进入「按考点练习」。② 错题本：按科目统计掌握度，支持单题重练和全部重练。③ 10 题小测：按科目抽 10 道单选题组卷，提交即自动判分，错题直接进错题本；完成后自动写学习日志。
+- **学习空间 · 知识库**：自己贴讲义、笔记、手册，切成可引用片段后直接提问，答案按资料原文逐字引用。内置「408 考研」只读知识库不可删；自建库带名称、说明，可加资料、看原文、整库删除。输入条左侧的知识库胶囊切换提问范围（不选就是内置 408 语料）。详见下节。
 - **学习空间 · 题库**：题库改成卡片墙，408 真题是不可删除的**预置题库**（按科目 / 年份筛选、分页、题目详情列出关联考点，仍走服务端语料），下面是用户自己的题库。自建题库带名称、说明与标签；题目按标签筛选，搜索同时命中题干、选项、解析、标签与出处；每道题都记 `source`（标题 + 原文摘句 + 偏移）。自建题库支持删除（连题一起删，二次确认）。
 - **题库 · 导入 / 导出**：CSV 表头 `stem,option_a,option_b,option_c,option_d,answer,explanation,tags,source`，四个选项全空即填空题；Markdown 用 `## 题干` + `A.` 选项 + `答案：` / `解析：` / `标签：` / `出处：`。可点选文件或直接粘贴，导入前把行级错误一次列清（行号 + 原因），有错不许导入；题干重复的自动跳过。导出为带 BOM 的 CSV，Excel 直接打开不乱码。
 - **题库 · 用资料出题**：粘贴讲义、笔记或手册（80–20000 字），选 3 / 5 / 8 / 10 道，`POST /bank/generate` 调模型出单选题。每道题必须附一段**逐字来自资料**的 `source_quote`（去空白后比对，至少 8 字），对不上的题直接丢弃并说明原因，生成的题数可能少于请求数；题目只落在本机。离线演示模式（未配 `DEEPSEEK_API_KEY`）会如实提示不能出题，不返回假题。
@@ -218,6 +219,17 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 - **任务清单**：三列待办 / 进行中 / 已完成；支持新建、编辑标题与备注、拖动或箭头移动、归档、查看归档并恢复、指定科目、关联一段对话（卡片上可直接跳回）。清单底部显示各列计数，所有数据只在本机。
 - **设置 · 运行状态**：质量看板从侧栏设置进入。顶部四张 KPI（窗口内拒答数、缓存命中率、本进程问答量、语料规模）；中部拒答原因条形与每日拒答柱图；底部最近拒答。数据源是 `/stats/overview`。
 
+### 自建知识库（v0.25）
+
+把「408 语料」抽象成「知识库」，同一套检索 / 拒答 / 引用校验直接复用到用户自己的资料上。结构照搬 DeepTutor 的三层：**知识库（collection）→ 文档（document）→ 片段（doc chunk）**。
+
+- **物理隔离**：内置 408 语料仍在 `chunks` 表（只读）；用户资料落在 `collections` / `documents` / `doc_chunks` 三张新表，`doc_chunks` 带 `collection_id`、`start_off` / `end_off`。删库靠外键级联，不影响预置语料。
+- **切分**：`kb/chunking.py` 是 DeepTutor `chunk_size=512 / chunk_overlap=50` 的纯标准库实现——先按句末标点攒到目标长度，叠加 50 字重叠；没有标点的长串按 400 字硬切。每段都记原文起止偏移，前端据此把引用原句高亮出来（`GET /collections/{cid}/documents/{doc_id}`，弹窗里滚动到 `<mark>`）。
+- **检索**：每个知识库各建一个 `HybridSearcher`（BM25 + pgvector → RRF → Cross-Encoder），`exact_refs=False` 关掉题号解析——用户资料里没有「2019 年第 10 题」，不能因为正则不命中就拒答。精排模型按名字缓存，多个库共享一份权重。
+- **prompt**：doc 模式换用 `SYSTEM_PROMPT_DOC`（「用户资料问答助手」），只允许引用给到的资料片段，仍然逐字校验、仍会拒答。
+- **不串库**：应答缓存键额外拼上 collection id（内置库沿用原命名空间），断拒答日志带 `|collection:<cid>`，甲的答案不会喂给乙的资料。
+- **边界**：单篇 20–50000 字、同库最多 200 篇、同名文档按 sha256 去重；空知识库提问直接回「这个知识库里还没有资料」，不硬编答案。
+
 问答检索同时覆盖真题和考点两个库：BM25 + 向量召回 → RRF → Cross-Encoder 精排，引用校验对两类 chunk 用同一套逐字规则。考点只作为概念解释的补充，涉及具体题目答案时以真题解析为准。
 
 后端在原有单轮链路前加了一层轻量 Agent：
@@ -229,10 +241,17 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 | 接口 | 说明 |
 |---|---|
-| `POST /ask` | 单轮问答：`{"query": "...", "style": "可选，≤400 字"}`，返回 answer / citations / refused / reason / hits / latency_ms / cached / cache_age_s |
-| `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}], "style": "可选，≤400 字"}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
+| `POST /ask` | 单轮问答：`{"query": "...", "style": "可选，≤400 字", "collection": "可选，自建知识库 id"}`，返回 answer / citations / refused / reason / hits / latency_ms / cached / cache_age_s；带 `collection` 且库不存在回 404 |
+| `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}], "style": "可选，≤400 字", "collection": "可选"}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
 | `POST /chat/stream` | 同参数的流式问答，返回 `text/event-stream`：`status`（plan / cache / retrieve / gate / generate / verify）、`delta`（增量文字，已从 JSON 里剥出 answer 字段）、`reset`（校验失败，清空已显示文字）、`error`、`done`（最终 payload，字段同 `/chat`）。校验未过时 `reset` → 重试一次 → 仍不过则 `done` 里是拒答 |
 | `POST /bank/generate` | 用资料出题：`{"text": "≥80 字的资料", "count": 5, "title": "资料标题"}`，返回 `{"questions": [...], "requested", "skipped", "notes"}`。每道题带 `options / answer / explanation / tags / source{title, quote, offset}`；`source.quote` 去空白后必须出现在 `text` 里，否则该题被丢弃并记进 `notes`。资料不落盘；离线演示模式返回 503 |
+| `GET /collections` | 知识库列表：内置 408（`builtin: true`）+ 自建库，各带 `documents` / `chunks` 计数 |
+| `POST /collections` | 新建知识库：`{"name": "≤40 字", "description": "≤200 字"}`，重名回 409 |
+| `GET /collections/{cid}` | 知识库详情（含文档列表） |
+| `DELETE /collections/{cid}` | 删除知识库：连文档和片段一起删，内置库拒绝（400） |
+| `POST /collections/{cid}/documents` | 加资料：`{"text": "20–50000 字", "title": "可选，≤80 字"}`，返回切出的片段数；同一份资料重复添加回 409 |
+| `GET /collections/{cid}/documents/{doc_id}` | 资料原文（前端用来高亮引用原句） |
+| `DELETE /collections/{cid}/documents/{doc_id}` | 删除一篇资料，删完该库的检索索引随之失效重建 |
 | `GET /chunks` | 题库列表：`q` / `subject` / `year` / `limit` / `offset`，只返回题干和选项 |
 | `GET /chunks/{id}` | 题目详情：题干、选项、答案、解析、`source_ref`、`related_knowledge` |
 | `GET /knowledge` | 考点列表：`q` / `subject` / `chapter` / `limit` / `offset`，附带科目计数和章节计数 |
@@ -246,7 +265,7 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `GET /health` | 题目数、考点数、检索模式、provider |
 | `GET /` | 对话优先的前端：默认问答，主导航问答 / 学习 / 学习空间 / 伙伴 / 任务清单，质量看板在设置内，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chat/stream`、`/bank/generate`、`/feedback`、`/chunks`、`/knowledge`、`/meta`、`/stats/gaps`、`/stats/feedback`、`/stats/overview`）都必须带
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chat/stream`、`/bank/generate`、`/feedback`、`/chunks`、`/knowledge`、`/collections` 及其子路径、`/meta`、`/stats/gaps`、`/stats/feedback`、`/stats/overview`）都必须带
 `X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
 限额（刷题库/知识库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
 
@@ -377,19 +396,22 @@ answer/
   eval_gate.py 拒答阈值标定
   eval_answer.py 真实生成评测（一次引用通过率 / 拒答分布 / 延迟）
   cli.py       命令行问答
-api/app.py     FastAPI 服务（/ask、/chat、/chat/stream、/bank/generate、/feedback、/chunks、/knowledge、/stats、/meta、/health、/）
+api/app.py     FastAPI 服务（/ask、/chat、/chat/stream、/bank/generate、/collections、/feedback、/chunks、/knowledge、/stats、/meta、/health、/）
 api/catalog.py 题库筛选、列表/详情序列化（纯函数）
 api/metrics.py 进程内问答计数（质量看板用，重启归零）
 api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联、章节考频树
 api/guard.py   访问口令 + 按 IP 限流 + 每日额度
 api/gap.py     拒答缺口日志（JSONL，仅内存模式）
 api/feedback.py 反馈标准化、JSONL 落盘与统计（纯函数 + 文件 IO）
+kb/
+  chunking.py  用户资料切分（512 字目标 / 50 字重叠，保留原文起止偏移）
+  library.py   知识库管理：建库、加资料（切分 + 向量）、删文档、按库惰性建 searcher
 db/
-  schema.sql   chunks / meta / gap_logs / answer_cache / answer_feedback 表与索引
+  schema.sql   chunks / collections / documents / doc_chunks / meta / gap_logs / answer_cache / answer_feedback 表与索引
   store.py     语料同步、向量召回、SQL 筛选、拒答与反馈日志、统计聚合
   load.py      手工重建语料（python -m db.load）
   wait.py      容器启动前等 Postgres 就绪
-web/index.html 对话优先的单页前端（默认问答；导航问答 / 学习 / 学习空间 / 伙伴 / 任务清单），流式对话，多题库与导入导出，质量在设置内，无构建步骤
+web/index.html 对话优先的单页前端（默认问答；导航问答 / 学习 / 学习空间 / 伙伴 / 任务清单），流式对话，多题库与导入导出，自建知识库与原文高亮，质量在设置内，无构建步骤
 deploy/nginx.conf  反向代理 + 第二层限流（问答与 /bank/generate 限流）
 tools/preload_models.py 构建期预下载模型
 Dockerfile / docker-compose.yml / .env.example

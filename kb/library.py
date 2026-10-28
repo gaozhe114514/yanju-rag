@@ -1,0 +1,352 @@
+# -*- coding: utf-8 -*-
+"""用户知识库：资料库 / 文档 / 片段的管理与检索。
+
+方向对标 DeepTutor 的 knowledge base（`deeptutor/knowledge/manager.py`、
+`deeptutor/services/rag/pipelines/llamaindex/ingestion.py`）：用户把资料带进来，
+切成带出处的片段，问答只在这个库里召回。差别是这里刻意做小：
+不接 llama-index，切分和检索复用现有 BM25 + pgvector + 精排 + 拒答链路。
+
+有 Postgres 时落库；没有数据库时退化成进程内 + 一个 JSON 文件，
+方便单测和本地开发（文件放 data/work/，不提交）。
+"""
+import hashlib
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from db.store import vector_literal
+from retrieval.chunk import Chunk
+from retrieval.rerank import CrossEncoderReranker, LexicalReranker
+from retrieval.search import HybridSearcher, build_searcher
+
+from .chunking import split_text
+
+# 408 预置语料不是 collections 里的一行，用固定 id 区分
+PRESET_COLLECTION = "cs408"
+MAX_NAME = 40
+MAX_DESC = 200
+MAX_TITLE = 80
+MAX_DOC_CHARS = 50000
+MAX_DOCS = 200
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _new_id(prefix: str) -> str:
+    return "%s-%s" % (prefix, uuid.uuid4().hex[:10])
+
+
+def _clean(text: str, limit: int) -> str:
+    return " ".join((text or "").split())[:limit]
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class LibraryError(ValueError):
+    """可以直接映射成 400/404 的错误。"""
+
+
+class Library:
+    def __init__(self, store=None, embedder=None, mode: str = "hybrid",
+                 k_fuse: int = 10, reranker_model: str = "BAAI/bge-reranker-v2-m3",
+                 state_path: Optional[str] = None):
+        self.store = store
+        self.embedder = embedder
+        self.mode = mode
+        self.k_fuse = k_fuse
+        self.reranker_model = reranker_model
+        self._searchers: Dict[str, tuple] = {}
+        self._mem = {"collections": [], "documents": [], "chunks": []}
+        self._state_path = Path(state_path) if (state_path and store is None) else None
+        if self._state_path is not None:
+            self._load_state()
+
+    # ---------- 进程内后备存储 ----------
+
+    def _load_state(self) -> None:
+        try:
+            raw = self._state_path.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return
+        for key in ("collections", "documents", "chunks"):
+            if isinstance(data.get(key), list):
+                self._mem[key] = data[key]
+
+    def _save_state(self) -> None:
+        if self._state_path is None:
+            return
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self._state_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self._mem, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(self._state_path))
+
+    def _mem_collection(self, cid: str) -> Optional[Dict]:
+        for c in self._mem["collections"]:
+            if c["id"] == cid:
+                return c
+        return None
+
+    # ---------- 资料库 ----------
+
+    def list_collections(self) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_collections()
+        else:
+            rows = []
+            for c in self._mem["collections"]:
+                docs = [d for d in self._mem["documents"]
+                        if d["collection_id"] == c["id"]]
+                chunks = [k for k in self._mem["chunks"]
+                          if k["collection_id"] == c["id"]]
+                rows.append({**c, "doc_count": len(docs),
+                             "chunk_count": len(chunks)})
+        out = []
+        for r in rows:
+            out.append({
+                "id": r["id"],
+                "name": r["name"],
+                "description": r.get("description") or "",
+                "created_at": str(r.get("created_at") or ""),
+                "updated_at": str(r.get("updated_at") or ""),
+                "documents": int(r.get("doc_count") or 0),
+                "chunks": int(r.get("chunk_count") or 0),
+            })
+        return out
+
+    def get_collection(self, cid: str) -> Optional[Dict]:
+        if self.store is not None:
+            row = self.store.get_collection(cid)
+        else:
+            row = self._mem_collection(cid)
+        if not row:
+            return None
+        docs = self.list_documents(cid)
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row.get("description") or "",
+            "created_at": str(row.get("created_at") or ""),
+            "updated_at": str(row.get("updated_at") or ""),
+            "documents": docs,
+        }
+
+    def create_collection(self, name: str, description: str = "") -> Dict:
+        name = _clean(name, MAX_NAME)
+        if not name:
+            raise LibraryError("资料库名称不能为空")
+        description = _clean(description, MAX_DESC)
+        if self.store is not None:
+            if any(c["name"] == name for c in self.store.list_collections()):
+                raise LibraryError("已经有同名资料库：%s" % name)
+        else:
+            if any(c["name"] == name for c in self._mem["collections"]):
+                raise LibraryError("已经有同名资料库：%s" % name)
+        cid = _new_id("lib")
+        now = _now()
+        if self.store is not None:
+            self.store.create_collection(cid, name, description)
+        else:
+            self._mem["collections"].append({
+                "id": cid, "name": name, "description": description,
+                "created_at": now, "updated_at": now})
+            self._save_state()
+        return {"id": cid, "name": name, "description": description,
+                "created_at": now, "updated_at": now,
+                "documents": [], "chunks": 0}
+
+    def delete_collection(self, cid: str) -> bool:
+        if cid == PRESET_COLLECTION:
+            raise LibraryError("内置资料库不能删除")
+        if self.store is not None:
+            ok = self.store.delete_collection(cid)
+        else:
+            before = len(self._mem["collections"])
+            self._mem["collections"] = [
+                c for c in self._mem["collections"] if c["id"] != cid]
+            self._mem["documents"] = [
+                d for d in self._mem["documents"] if d["collection_id"] != cid]
+            self._mem["chunks"] = [
+                k for k in self._mem["chunks"] if k["collection_id"] != cid]
+            ok = len(self._mem["collections"]) != before
+            if ok:
+                self._save_state()
+        self._searchers.pop(cid, None)
+        return ok
+
+    # ---------- 文档 ----------
+
+    def list_documents(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_documents(cid)
+        else:
+            rows = []
+            for d in self._mem["documents"]:
+                if d["collection_id"] != cid:
+                    continue
+                n = len([k for k in self._mem["chunks"] if k["document_id"] == d["id"]])
+                rows.append({"id": d["id"], "title": d["title"],
+                             "sha256": d.get("sha256", ""),
+                             "created_at": d["created_at"],
+                             "chars": len(d["text"]), "chunk_count": n})
+        return [{
+            "id": r["id"],
+            "title": r["title"] or "未命名资料",
+            "created_at": str(r.get("created_at") or ""),
+            "chars": int(r.get("chars") or 0),
+            "chunks": int(r.get("chunk_count") or 0),
+            "sha256": r.get("sha256") or "",
+        } for r in rows]
+
+    def add_document(self, cid: str, text: str, title: str = "") -> Dict:
+        if self.get_collection(cid) is None:
+            raise LibraryError("资料库不存在")
+        text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if len(text) < 20:
+            raise LibraryError("资料太短（至少 20 字），贴一段正文再来")
+        if len(text) > MAX_DOC_CHARS:
+            raise LibraryError("单篇资料最多 %d 字，当前 %d 字"
+                               % (MAX_DOC_CHARS, len(text)))
+        docs = self.list_documents(cid)
+        if len(docs) >= MAX_DOCS:
+            raise LibraryError("单个资料库最多 %d 篇，先删掉一些再加" % MAX_DOCS)
+        title = _clean(title, MAX_TITLE) or _clean(text.split("\n")[0], MAX_TITLE) \
+            or "未命名资料"
+        sha = _sha(text)
+        for d in docs:
+            if d.get("sha256") == sha:
+                raise LibraryError("这篇资料已经在库里了：%s" % d["title"])
+
+        pieces = split_text(text)
+        if not pieces:
+            raise LibraryError("没有切出可用片段，检查一下资料内容")
+        doc_id = _new_id("doc")
+        chunks = [{"id": "%s-%03d" % (doc_id, p["seq"]), "seq": p["seq"],
+                   "text": p["text"], "start": p["start"], "end": p["end"]}
+                  for p in pieces]
+
+        if self.store is not None:
+            vectors: Dict[str, str] = {}
+            if self.embedder is not None:
+                arr = self.embedder.embed([c["text"] for c in chunks])
+                vectors = {c["id"]: vector_literal(v)
+                           for c, v in zip(chunks, arr)}
+            self.store.add_document(doc_id, cid, title, text, sha, chunks, vectors)
+        else:
+            now = _now()
+            self._mem["documents"].append({
+                "id": doc_id, "collection_id": cid, "title": title,
+                "text": text, "sha256": sha, "created_at": now})
+            for c in chunks:
+                self._mem["chunks"].append({**c, "collection_id": cid,
+                                            "document_id": doc_id})
+            coll = self._mem_collection(cid)
+            if coll:
+                coll["updated_at"] = now
+            self._save_state()
+
+        self._searchers.pop(cid, None)
+        return {"id": doc_id, "title": title, "chars": len(text),
+                "chunks": len(chunks), "created_at": _now()}
+
+    def delete_document(self, cid: str, doc_id: str) -> bool:
+        if self.store is not None:
+            ok = self.store.delete_document(cid, doc_id)
+        else:
+            before = len(self._mem["documents"])
+            self._mem["documents"] = [
+                d for d in self._mem["documents"]
+                if not (d["id"] == doc_id and d["collection_id"] == cid)]
+            self._mem["chunks"] = [
+                k for k in self._mem["chunks"]
+                if not (k["document_id"] == doc_id and k["collection_id"] == cid)]
+            ok = len(self._mem["documents"]) != before
+            if ok:
+                self._save_state()
+        self._searchers.pop(cid, None)
+        return ok
+
+    def get_document(self, cid: str, doc_id: str) -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.get_document(cid, doc_id)
+        for d in self._mem["documents"]:
+            if d["id"] == doc_id and d["collection_id"] == cid:
+                return d
+        return None
+
+    def document_text(self, cid: str, doc_id: str) -> Optional[str]:
+        row = self.get_document(cid, doc_id)
+        return row["text"] if row else None
+
+    # ---------- 检索 ----------
+
+    def _chunks(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            return self.store.doc_chunks(cid)
+        # 键名与 db.store.doc_chunks 对齐，后面的检索代码不用分两种存储
+        return [{"id": k["id"], "document_id": k["document_id"], "seq": k["seq"],
+                 "text": k["text"],
+                 "start_off": int(k.get("start_off", k.get("start", 0))),
+                 "end_off": int(k.get("end_off", k.get("end", 0)))}
+                for k in self._mem["chunks"] if k["collection_id"] == cid]
+
+    def searcher(self, cid: str) -> Optional[HybridSearcher]:
+        """按库惰性建检索器；库变了就重建。"""
+        rows = self._chunks(cid)
+        if not rows:
+            return None
+        version = (len(rows), rows[-1]["id"])
+        cached = self._searchers.get(cid)
+        if cached and cached[0] == version:
+            return cached[1]
+
+        coll = self.get_collection(cid) or {"name": cid}
+        # 片段要带上所在文档的标题：内存后备存储的片段行里没有标题，
+        # 统一从文档表补，两种存储的行为才一致。
+        titles = {d["id"]: d["title"] for d in self.list_documents(cid)}
+        chunks = [Chunk(
+            id=r["id"],
+            seq=int(r["seq"]),
+            text=r["text"],
+            kind="doc",
+            title=r.get("title") or titles.get(r["document_id"], ""),
+            subject=coll.get("name") or "",
+            source_ref={"document_id": r["document_id"],
+                        "document_title": r.get("title")
+                        or titles.get(r["document_id"], ""),
+                        "start": int(r.get("start_off") or 0),
+                        "end": int(r.get("end_off") or 0)},
+        ) for r in rows]
+
+        vector_search = None
+        if self.store is not None and self.embedder is not None:
+            vector_search = lambda vec, k: self.store.vector_search_docs(vec, k, cid)
+
+        reranker = None
+        texts = [c.text for c in chunks]
+        if self.mode == "hybrid-ce":
+            reranker = CrossEncoderReranker(texts, model_name=self.reranker_model)
+        elif self.mode == "hybrid-rerank":
+            reranker = LexicalReranker(texts)
+
+        searcher = build_searcher(
+            chunks, mode=self.mode, k_fuse=self.k_fuse, k_final=5,
+            embedder=self.embedder, vector_search=vector_search,
+            reranker=reranker, exact_refs=False)
+        self._searchers[cid] = (version, searcher)
+        return searcher
+
+    def stats(self) -> Dict:
+        colls = self.list_collections()
+        return {"collections": len(colls),
+                "documents": sum(c["documents"] for c in colls),
+                "chunks": sum(c["chunks"] for c in colls)}

@@ -68,7 +68,8 @@ def match_exact_question(query: str, chunks: Sequence[Chunk]) -> Optional[Chunk]
 class HybridSearcher:
     def __init__(self, chunks: Sequence[Chunk], embedder=None,
                  reranker=None, k_each: int = 50, k_fuse: int = 30,
-                 k_final: int = 5, vector_search=None):
+                 k_final: int = 5, vector_search=None,
+                 exact_refs: bool = True):
         """vector_search：外部向量召回（如 pgvector），签名 (vec, top_k) -> [(id, score)]。
 
         传入后不再把语料向量放进进程内存，也不在构造时重复算一遍；
@@ -83,18 +84,24 @@ class HybridSearcher:
         self.embedder = embedder
         self.reranker = reranker
         self.vector_search = vector_search
+        # 用户资料库里没有「2019-408-10」这种题号，跳过显式题号解析
+        self.exact_refs = exact_refs
         self.vector_index: Optional[VectorIndex] = None
         if embedder is not None and vector_search is None:
             vecs = embedder.embed([c.text for c in self.chunks])
             self.vector_index = VectorIndex(vecs)
 
     def search(self, query: str) -> List[SearchHit]:
+        if not self.exact_refs:
+            return self._search(query)
         status, exact = resolve_exact_question(query, self.chunks)
         if status in ("missing", "ambiguous"):
             # 用户点名了题号，但库里要么没有、要么对不上年份：
             # 用别的题作答等于答非所问，直接返回空让拒答闸门拦下。
             return []
+        return self._search(query, exact)
 
+    def _search(self, query: str, exact: Optional[Chunk] = None) -> List[SearchHit]:
         bm_hits = self.bm25.search(tokenize(query), self.k_each)
         bmap = dict(bm_hits)
         lists = [bm_hits]
@@ -132,17 +139,18 @@ def build_searcher(chunks: Sequence[Chunk], mode: str = "hybrid",
                    model_name: str = "BAAI/bge-small-zh-v1.5",
                    reranker_model: str = "BAAI/bge-reranker-v2-m3",
                    k_fuse: int = 30, k_final: int = 5,
-                   embedder=None, vector_search=None) -> HybridSearcher:
+                   embedder=None, vector_search=None,
+                   reranker=None, exact_refs: bool = True) -> HybridSearcher:
     if mode not in MODES:
         raise ValueError("未知 mode: %s" % mode)
     if mode in ("hybrid", "hybrid-rerank", "hybrid-ce") and embedder is None:
         embedder = BgeEmbedder(model_name=model_name)
-    reranker = None
-    if mode == "hybrid-rerank":
+    if reranker is None and mode == "hybrid-rerank":
         reranker = LexicalReranker([c.text for c in chunks])
-    elif mode == "hybrid-ce":
+    elif reranker is None and mode == "hybrid-ce":
         reranker = CrossEncoderReranker([c.text for c in chunks],
                                         model_name=reranker_model)
     return HybridSearcher(chunks, embedder=embedder, reranker=reranker,
                           k_fuse=k_fuse, k_final=k_final,
-                          vector_search=vector_search)
+                          vector_search=vector_search,
+                          exact_refs=exact_refs)

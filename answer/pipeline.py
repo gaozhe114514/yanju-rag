@@ -27,11 +27,14 @@ class AnswerResult:
 
 class AnswerPipeline:
     def __init__(self, searcher: HybridSearcher, provider,
-                 gate: Optional[RefusalGate] = None, retry: bool = True):
+                 gate: Optional[RefusalGate] = None, retry: bool = True,
+                 prompt_mode: str = "exam"):
         self.searcher = searcher
         self.provider = provider
         self.gate = gate or RefusalGate()
         self.retry = retry
+        # exam：408 真题 + 考点；doc：用户自建资料库
+        self.prompt_mode = prompt_mode
 
     def answer(self, query: str, style: str = "") -> AnswerResult:
         t0 = time.time()
@@ -52,7 +55,7 @@ class AnswerPipeline:
         if decision.refuse:
             return done(AnswerResult(True, reason=decision.reason, hits=hits))
 
-        messages = build_messages(query, hits, style)
+        messages = build_messages(query, hits, style, self.prompt_mode)
         errors: List[str] = []
         first_errors: List[str] = []
         raw = ""
@@ -89,7 +92,8 @@ class AnswerPipeline:
 
             if attempt == 1 and self.retry:
                 first_errors = list(errors)
-                messages = build_retry_messages(query, hits, raw, errors, style)
+                messages = build_retry_messages(query, hits, raw, errors, style,
+                                                self.prompt_mode)
                 continue
             return done(AnswerResult(True, reason="citation_failed: " + "; ".join(errors),
                                      hits=hits, attempts=attempt,
@@ -129,7 +133,7 @@ class AnswerPipeline:
                    "result": done(AnswerResult(True, reason=decision.reason, hits=hits))}
             return
 
-        messages = build_messages(query, hits, style)
+        messages = build_messages(query, hits, style, self.prompt_mode)
         first_errors: List[str] = []
         for attempt in (1, 2):
             yield {"type": "status", "stage": "generate", "attempt": attempt}
@@ -185,7 +189,8 @@ class AnswerPipeline:
                 first_errors = list(errors)
                 yield {"type": "reset",
                        "note": "引用没有逐字对上原文，正在重新生成"}
-                messages = build_retry_messages(query, hits, raw, errors, style)
+                messages = build_retry_messages(query, hits, raw, errors, style,
+                                                self.prompt_mode)
                 continue
             yield {"type": "done",
                    "result": done(AnswerResult(

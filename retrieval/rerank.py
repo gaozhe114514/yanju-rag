@@ -4,10 +4,14 @@
 生产目标是 bge-reranker-v2-m3（Cross-Encoder）。开发期先用词面重叠加权，
 把链路跑通；它不是 Cross-Encoder，别拿它的分数当线上阈值。
 """
-from typing import List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 from .tokenize import tokenize
 from .vector import load_pretrained
+
+# 精排模型按名字缓存：用户知识库各自建 searcher 时共享同一份权重，
+# 不会因为多建几个库就把 2C4G 的机器撑爆。
+_MODEL_CACHE: Dict[tuple, tuple] = {}
 
 
 class LexicalReranker:
@@ -41,17 +45,10 @@ class CrossEncoderReranker:
 
     def __init__(self, texts: Sequence[str], model_name: str = "BAAI/bge-reranker-v2-m3",
                  max_length: int = 512, device: str = ""):
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-        self.torch = torch
         self.texts = list(texts)
-        self.tokenizer = load_pretrained(AutoTokenizer.from_pretrained, model_name)
-        self.model = load_pretrained(
-            AutoModelForSequenceClassification.from_pretrained, model_name)
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.model.to(self.device).eval()
         self.max_length = max_length
+        self.torch, self.tokenizer, self.model, self.device = _load_model(
+            model_name, device)
 
     def rerank(self, query: str, candidates: List[Tuple[int, float]],
                top_k: int = 5) -> List[Tuple[int, float]]:
@@ -67,3 +64,25 @@ class CrossEncoderReranker:
         scored = [(candidates[i][0], float(s)) for i, s in enumerate(scores)]
         scored.sort(key=lambda x: (-x[1], x[0]))
         return scored[:top_k]
+
+
+def _load_model(model_name: str, device: str = ""):
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    key = (model_name, dev)
+    hit = _MODEL_CACHE.get(key)
+    if hit is None:
+        tokenizer = load_pretrained(AutoTokenizer.from_pretrained, model_name)
+        model = load_pretrained(
+            AutoModelForSequenceClassification.from_pretrained, model_name)
+        model.to(dev).eval()
+        hit = (torch, tokenizer, model, dev)
+        _MODEL_CACHE[key] = hit
+    return hit
+
+
+def clear_model_cache() -> None:
+    """测试用：释放缓存的精排模型。"""
+    _MODEL_CACHE.clear()

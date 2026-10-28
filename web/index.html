@@ -1862,6 +1862,42 @@
       .deck-grid { grid-template-columns: 1fr; }
       .deck-toolbar .grow { display: none; }
     }
+
+    /* ---------- v0.25 知识库：用户自建资料库 ---------- */
+    .lib-add {
+      display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;
+      padding: 16px; border: 1px solid var(--line); border-radius: 16px;
+      background: var(--card); box-shadow: var(--shadow-sm);
+    }
+    .lib-add input {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 13px;
+    }
+    .lib-add input:focus {
+      border-color: rgba(176, 80, 30, .4);
+      box-shadow: 0 0 0 3px rgba(176, 80, 30, .09); outline: 0;
+    }
+    .lib-add .import-box { min-height: 120px; }
+    .lib-add-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .lib-add-hint {
+      flex: 1; min-width: 180px; color: var(--muted);
+      font-size: 11.5px; line-height: 1.6;
+    }
+    .lib-add-hint.err { color: var(--danger); }
+    .doc-view {
+      max-height: 58vh; overflow: auto; padding: 14px 16px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
+      color: #3a352f; font-size: 13.5px; line-height: 1.8;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .doc-view mark {
+      padding: 0 1px; border-radius: 3px;
+      background: var(--wash); color: var(--ink);
+    }
+    @media (max-width: 860px) {
+      .lib-add { padding: 14px; }
+      .doc-view { max-height: 52vh; padding: 12px 13px; }
+    }
   </style>
 </head>
 <body>
@@ -1965,7 +2001,8 @@
     </div>
 
     <div class="subnav" id="space-subnav" hidden>
-      <button data-space="bank" class="active">题库</button>
+      <button data-space="library" class="active">知识库</button>
+      <button data-space="bank">题库</button>
       <button data-space="knowledge">考点</button>
       <button data-space="notebooks">笔记本</button>
       <button data-space="journal">日志</button>
@@ -2023,6 +2060,8 @@
       <div class="messages" id="messages"></div>
       <div class="composer-wrap">
         <div class="composer">
+          <button class="composer-chip" id="collection-chip" type="button"
+                  aria-haspopup="dialog" title="选择回答依据的知识库">全部资料</button>
           <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
           <textarea id="composer" rows="1" maxlength="500"
                     placeholder="有问题，直接问…"></textarea>
@@ -2076,6 +2115,43 @@
         <div class="bank-meta" id="bank-meta"></div>
         <div class="bank-list" id="bank-list"></div>
         <div class="center"><button class="ghost" id="bank-more" hidden>加载更多</button></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-library">
+      <div class="page-inner">
+        <div class="deck-toolbar">
+          <button class="primary" id="lib-new">新建知识库</button>
+          <span class="grow"></span>
+          <span class="bank-meta" id="lib-meta"></span>
+        </div>
+        <div class="deck-grid" id="lib-grid"></div>
+        <div class="practice-note">内置的 408 语料只读；自建知识库保存在服务端，问答只引用这个库里切出来的原文，库外的知识不会补进来。</div>
+      </div>
+    </section>
+
+    <section class="page" id="page-collection">
+      <div class="page-inner">
+        <div class="deck-bar">
+          <div class="grow">
+            <h2 id="lib-title">知识库</h2>
+            <p id="lib-desc"></p>
+          </div>
+          <button class="ghost" id="lib-back">返回知识库</button>
+          <button class="ghost" id="lib-ask">用它提问</button>
+          <button class="ghost" id="lib-del">删除知识库</button>
+        </div>
+        <div class="lib-add">
+          <input id="lib-doc-title" maxlength="80" placeholder="资料标题（可选，默认取正文第一行）">
+          <textarea id="lib-doc-text" class="import-box" maxlength="50000"
+                    placeholder="把资料正文粘贴进来，至少 20 字。切分后每一段都能逐字引用回原文。"></textarea>
+          <div class="lib-add-row">
+            <span class="lib-add-hint" id="lib-add-hint">支持中文段落；单篇最多 50000 字，同一篇不要重复添加。</span>
+            <button class="primary" id="lib-doc-add">添加资料</button>
+          </div>
+        </div>
+        <div class="bank-meta" id="lib-doc-meta"></div>
+        <div class="stack" id="lib-docs"></div>
       </div>
     </section>
 
@@ -2301,6 +2377,8 @@
   const MEMORY_KEY = '408-learning-memory-v1';
   const DECK_KEY = '408-decks-v1';
   const DECK_Q_KEY = '408-deck-questions-v1';
+  // 问答当前依据的知识库：空字符串 = 内置 408 语料
+  const COLLECTION_KEY = '408-chat-collection-v1';
   const PRESET_DECK = {
     id: 'cs408', preset: true, name: '408 真题',
     desc: '2019–2024 五卷真题，按科目和年份筛选；解析与出处来自服务端语料。',
@@ -2313,6 +2391,8 @@
     today: {title: '今日', sub: '每天只做一件小事'},
     chat: {title: '真题问答', sub: '多轮追问 · 每条结论都可核对'},
     mastery: {title: '精通之路', sub: '从考点到自测，一步一步走完'},
+    library: {title: '知识库', sub: '把自己的资料放进来，问答只引用这些原文'},
+    collection: {title: '知识库', sub: '资料详情 · 切分后逐段可被引用'},
     bank: {title: '题库', sub: '408 真题与自建题库，标签和出处都随题保存'},
     deck: {title: '题库', sub: '题库详情 · 按标签筛选、按出处核对'},
     knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
@@ -2445,6 +2525,10 @@
     deckId: '',
     deckView: {q: '', tag: ''},
     deckPractice: null,
+    collections: [],
+    collectionsLoaded: false,
+    collectionId: '',
+    chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
 
@@ -2622,11 +2706,50 @@
     return !!item && item.kind === 'knowledge';
   }
 
-  function openSource(item) {
+  function isDoc(item) {
+    return !!item && item.kind === 'doc';
+  }
+
+  function openSource(item, collection) {
     const id = item.chunk_id || item.id;
     if (!id) return;
     if (isKnowledge(item)) openKnowledge(id);
+    else if (isDoc(item)) openDocSource(item, collection);
     else openQuestion(id);
+  }
+
+  // 用户知识库的引用：打开整篇资料，并高亮被引用的那句话
+  function openDocSource(item, collection) {
+    const ref = item.source_ref || {};
+    const cid = item.collection || collection || state.chatCollection || '';
+    if (!cid || !ref.document_id) {
+      toast('这条引用没有记录出处', 'err');
+      return;
+    }
+    api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+      encodeURIComponent(ref.document_id))
+      .then(doc => {
+        const wrap = el('div', 'form-grid');
+        wrap.appendChild(el('div', 'panel-sub',
+          ref.document_title || doc.title || '资料原文'));
+        const box = el('div', 'doc-view');
+        const text = doc.text || '';
+        const quote = String(item.quote || '');
+        const at = quote ? text.indexOf(quote) : -1;
+        const mark = (s, e) => {
+          box.appendChild(document.createTextNode(text.slice(0, s)));
+          box.appendChild(el('mark', null, text.slice(s, e)));
+          box.appendChild(document.createTextNode(text.slice(e)));
+        };
+        if (at >= 0) mark(at, at + quote.length);
+        else if (ref.start != null && ref.end > ref.start) mark(ref.start, ref.end);
+        else box.appendChild(document.createTextNode(text));
+        wrap.appendChild(box);
+        openModal('资料原文', wrap);
+        const hit = box.querySelector('mark');
+        if (hit && hit.scrollIntoView) hit.scrollIntoView({block: 'center'});
+      })
+      .catch(e => toast('打不开资料原文：' + e.message, 'err'));
   }
 
   /* ---------- sidebar / auth ---------- */
@@ -2859,17 +2982,25 @@
       return '生成服务暂时不可用，请稍后再试。';
     }
     if ((data.reason || '').indexOf('citation_failed') === 0) {
-      return '生成的答案没能逐字对上题库原文，已按规则拒答。可以换个问法再试。';
+      return data.collection
+        ? '生成的答案没能逐字对上资料原文，已按规则拒答。可以换个问法再试。'
+        : '生成的答案没能逐字对上题库原文，已按规则拒答。可以换个问法再试。';
     }
-    return '真题和考点里都没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
+    if (data.reason === 'empty_collection') {
+      return '这个知识库还没有资料。先去「学习空间 → 知识库」里加一篇，再回来问。';
+    }
+    return data.collection
+      ? '这个知识库里没有足够依据回答这个问题。可以换个问法，或往库里再补一些资料。'
+      : '真题和考点里都没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
   }
 
   function badgeFor(data) {
     if (data.intent === 'chitchat') return ['badge neutral', '闲聊'];
     if (data.intent === 'clarify') return ['badge neutral', '需要补充'];
     if (data.refused) {
-      let reason = '资料未覆盖';
-      if ((data.reason || '').indexOf('low_score') === 0) reason = '召回分数不足';
+      let reason = data.collection ? '知识库未覆盖' : '资料未覆盖';
+      if (data.reason === 'empty_collection') reason = '知识库还没有资料';
+      else if ((data.reason || '').indexOf('low_score') === 0) reason = '召回分数不足';
       else if ((data.reason || '').indexOf('low_margin') === 0) reason = '候选区分度不足';
       else if ((data.reason || '').indexOf('citation_failed') === 0) reason = '引用校验未通过';
       else if ((data.reason || '').indexOf('provider_error') === 0) reason = '生成服务异常';
@@ -2909,11 +3040,14 @@
         const cite = el('div', 'cite');
         const head = el('div', 'cite-head');
         head.appendChild(el('span', 'cite-id', '[' + c.chunk_id + ']'));
+        const src = isDoc(c) ? '资料' : (isKnowledge(c) ? '考点' : '真题');
         head.appendChild(el('span', 'q-tag' + (isKnowledge(c) ? ' k-tag' : ''),
-          isKnowledge(c) ? '考点' : '真题'));
-        if (isKnowledge(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
-        const btn = el('button', 'link-btn', isKnowledge(c) ? '查看考点' : '查看原题');
-        btn.addEventListener('click', () => openSource(c));
+          src));
+        if (isDoc(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
+        else if (isKnowledge(c) && c.title) head.appendChild(el('span', 'badge-meta', c.title));
+        const btn = el('button', 'link-btn',
+          isDoc(c) ? '查看原文' : (isKnowledge(c) ? '查看考点' : '查看原题'));
+        btn.addEventListener('click', () => openSource(c, data.collection));
         head.appendChild(btn);
         cite.appendChild(head);
         cite.appendChild(el('div', 'cite-quote', '“' + (c.quote || '') + '”'));
@@ -2929,9 +3063,12 @@
     }
 
     if (data.hits && data.hits.length) {
+      const dn = data.hits.filter(isDoc).length;
       const kn = data.hits.filter(isKnowledge).length;
-      const qn = data.hits.length - kn;
-      const label = kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原题');
+      const qn = data.hits.length - kn - dn;
+      const label = dn
+        ? '召回的资料片段'
+        : (kn && qn ? '召回的真题与考点' : (kn ? '召回的考点' : '召回的原题'));
       const det = el('details');
       det.appendChild(el('summary', null, label + '（' + data.hits.length + '）'));
       const list = el('div', 'hit-list');
@@ -2942,7 +3079,10 @@
         const btn = el('button');
         btn.appendChild(el('div', 'hit-stem', h.stem));
         const bits = [h.chunk_id];
-        if (isKnowledge(h)) {
+        if (isDoc(h)) {
+          bits.push('资料');
+          if (h.title) bits.push(h.title);
+        } else if (isKnowledge(h)) {
           bits.push('考点');
           if (h.chapter) bits.push(h.chapter);
         } else {
@@ -2950,7 +3090,7 @@
           if (h.answer) bits.push('参考答案 ' + h.answer);
         }
         btn.appendChild(el('div', 'hit-meta', bits.join(' · ')));
-        btn.addEventListener('click', () => openSource(h));
+        btn.addEventListener('click', () => openSource(h, data.collection));
         main.appendChild(btn);
         item.appendChild(main);
         list.appendChild(item);
@@ -3110,7 +3250,9 @@
     try {
       await streamChat({
         query: text, history: history,
-        style: styleFor(currentPersonaId())
+        style: styleFor(currentPersonaId()),
+        // 空字符串 = 内置 408 语料；否则只在这个知识库里检索
+        collection: state.chatCollection || ''
       }, evt => {
         if (evt.type === 'status') {
           bubble.setStage(streamStageText(evt.stage, evt));
@@ -6310,14 +6452,339 @@
     title.focus();
   }
 
+  /* ---------- 知识库：用户自建资料库 ---------- */
+  // 每个知识库在服务端是一组带出处的片段；问答只在这些片段里召回。
+  // 内置 408 语料由 /collections 以第一项返回，只读，不出现在本地列表里。
+
+  function collectionById(id) {
+    return state.collections.find(c => c.id === id) || null;
+  }
+
+  function activeCollection() {
+    return state.chatCollection ? collectionById(state.chatCollection) : null;
+  }
+
+  async function fetchCollections(force) {
+    if (state.collectionsLoaded && !force) return state.collections;
+    try {
+      const data = await api('/collections');
+      state.collections = (data && data.items) || [];
+      state.collectionsLoaded = true;
+    } catch (e) {
+      if (e.status === 401) showAuthNeeded('请先输入访问口令。');
+      state.collections = [];
+    }
+    // 选中的库被删掉了就回到内置语料
+    if (state.chatCollection && !collectionById(state.chatCollection)) {
+      setChatCollection('');
+    }
+    return state.collections;
+  }
+
+  function setChatCollection(id) {
+    state.chatCollection = id || '';
+    try { localStorage.setItem(COLLECTION_KEY, state.chatCollection); } catch (e) {}
+    renderCollectionChip();
+  }
+
+  function renderCollectionChip() {
+    const chip = $('#collection-chip');
+    if (!chip) return;
+    const c = activeCollection();
+    chip.textContent = c ? c.name : '全部资料';
+    chip.classList.toggle('on', !!c);
+    chip.title = c ? '当前只用「' + c.name + '」里的资料回答'
+      : '选择回答依据的知识库';
+  }
+
+  function renderLibrary() {
+    const grid = clearNode('#lib-grid');
+    if (!grid) return;
+    fetchCollections(true).then(items => {
+      if (state.page !== 'library') return;
+      grid.replaceChildren();
+      items.forEach(c => grid.appendChild(collectionCardNode(c)));
+      if (!items.length) {
+        grid.appendChild(el('div', 'empty-panel', '还没有知识库，先建一个。'));
+      }
+      const meta = $('#lib-meta');
+      if (meta) meta.textContent = (items.length - 1) + ' 个自建知识库';
+    });
+  }
+
+  function collectionCardNode(c) {
+    const card = el('div', 'deck-card');
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    const open = () => {
+      if (c.builtin) { useCollection(c); return; }
+      go('collection', c.id);
+    };
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+
+    const top = el('div', 'deck-top');
+    top.appendChild(el('span', 'deck-title', c.name));
+    top.appendChild(el('span', 'deck-kind' + (c.builtin ? ' preset' : ''),
+      c.builtin ? '内置' : '自建'));
+    card.appendChild(top);
+    card.appendChild(el('div', 'deck-desc',
+      c.description || '还没有说明。'));
+    const foot = el('div', 'deck-foot');
+    foot.appendChild(el('span', null, c.builtin
+      ? (c.questions || 0) + ' 题 · ' + (c.knowledge || 0) + ' 考点'
+      : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段'));
+    foot.appendChild(el('span', null, '服务端'));
+    card.appendChild(foot);
+
+    const acts = el('div', 'deck-actions');
+    const ask = el('button', 'mini-btn', '用它提问');
+    ask.addEventListener('click', e => { e.stopPropagation(); useCollection(c); });
+    acts.appendChild(ask);
+    if (!c.builtin) {
+      const del = el('button', 'mini-btn danger', '删除');
+      del.addEventListener('click', e => { e.stopPropagation(); deleteCollection(c); });
+      acts.appendChild(del);
+    }
+    card.appendChild(acts);
+    return card;
+  }
+
+  function useCollection(c) {
+    const id = c && !c.builtin ? c.id : '';
+    setChatCollection(id);
+    // 换库等于换事实来源，旧对话不再继续追问，避免上下文串味
+    const cur = activeConv();
+    if (cur && cur.messages.length) newConversation();
+    else if (state.page !== 'chat') go('chat');
+    toast(id ? '之后的提问只用「' + c.name + '」里的资料'
+      : '之后的提问使用 408 内置语料');
+  }
+
+  function deleteCollection(c) {
+    if (!window.confirm('删除知识库「' + c.name + '」？里面的 ' +
+      (c.documents || 0) + ' 篇资料会一起删掉，不能恢复。')) return;
+    api('/collections/' + encodeURIComponent(c.id), {method: 'DELETE'})
+      .then(() => {
+        if (state.chatCollection === c.id) setChatCollection('');
+        if (state.collectionId === c.id) state.collectionId = '';
+        toast('知识库已删除');
+        renderLibrary();
+      })
+      .catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
+  function openCollectionEditor() {
+    const wrap = el('div', 'form-grid');
+    const name = el('input');
+    name.placeholder = '例如：机器学习讲义';
+    name.maxLength = 40;
+    const desc = el('input');
+    desc.placeholder = '一句话说明这个库装什么（可选）';
+    desc.maxLength = 200;
+    wrap.appendChild(field('名称', name));
+    wrap.appendChild(field('说明', desc, '只给你自己看，不进入问答提示词。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '创建');
+    save.addEventListener('click', () => {
+      const n = name.value.trim();
+      if (!n) { name.focus(); return; }
+      save.disabled = true;
+      api('/collections', {method: 'POST',
+        body: {name: n, description: desc.value.trim()}})
+        .then(c => {
+          closeModal();
+          state.collectionsLoaded = false;
+          toast('知识库已创建，接着添加资料');
+          go('collection', c.id);
+        })
+        .catch(e => {
+          save.disabled = false;
+          toast(e.message || '创建失败', 'err');
+        });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('新建知识库', wrap);
+    name.focus();
+  }
+
+  function renderCollectionPage(id) {
+    if (!id || id === PRESET_DECK.id) { go('library'); return; }
+    state.collectionId = id;
+    const docs = clearNode('#lib-docs');
+    if (docs) docs.replaceChildren();
+    const title = $('#lib-title');
+    if (title) title.textContent = '知识库';
+    const desc = $('#lib-desc');
+    if (desc) desc.textContent = '';
+    const askBtn = $('#lib-ask');
+    if (askBtn) askBtn.hidden = true;
+
+    fetchCollections(true).then(() => {
+      if (state.page !== 'collection' || state.collectionId !== id) return;
+      return api('/collections/' + encodeURIComponent(id));
+    }).then(c => {
+      if (!c) return;
+      if (state.page !== 'collection' || state.collectionId !== id) return;
+      const i = state.collections.findIndex(x => x.id === id);
+      if (i >= 0) {
+        state.collections[i] = Object.assign({}, state.collections[i], {
+          name: c.name, description: c.description, chunks: c.chunks,
+          documents: (c.documents || []).length
+        });
+      }
+      if (title) title.textContent = c.name;
+      if (desc) desc.textContent = c.description || '还没有说明。';
+      if (askBtn) askBtn.hidden = false;
+      const sub = $('#page-sub');
+      if (sub) {
+        sub.textContent = (c.documents || []).length + ' 篇资料 · ' +
+          (c.chunks || 0) + ' 段可引用片段';
+      }
+      renderCollectionDocs(c);
+    }).catch(e => {
+      if (e && e.status === 404) {
+        toast('资料库不存在', 'err');
+        state.collectionsLoaded = false;
+        go('library');
+      } else if (e && e.status === 401) {
+        showAuthNeeded('请先输入访问口令。');
+      }
+    });
+  }
+
+  function renderCollectionDocs(c) {
+    const box = clearNode('#lib-docs');
+    if (!box) return;
+    const list = c.documents || [];
+    const meta = $('#lib-doc-meta');
+    if (meta) meta.textContent = list.length ? list.length + ' 篇资料' : '';
+    if (!list.length) {
+      box.appendChild(el('div', 'empty-panel',
+        '这个库还没有资料。把一段正文粘贴到上面，切分后就能开始提问。'));
+      return;
+    }
+    list.forEach(d => {
+      const row = el('div', 'list-row');
+      const main = el('div', 'list-main');
+      main.appendChild(el('div', 'list-title', d.title || '未命名资料'));
+      main.appendChild(el('div', 'list-meta',
+        (d.chars || 0) + ' 字 · ' + (d.chunks || 0) + ' 段'));
+      row.appendChild(main);
+      const acts = el('div', 'list-actions');
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => deleteLibraryDoc(c, d));
+      acts.appendChild(del);
+      row.appendChild(acts);
+      box.appendChild(row);
+    });
+  }
+
+  function addLibraryDoc() {
+    const titleEl = $('#lib-doc-title');
+    const textEl = $('#lib-doc-text');
+    const hint = $('#lib-add-hint');
+    const btn = $('#lib-doc-add');
+    const setHint = (msg, bad) => {
+      if (!hint) return;
+      hint.textContent = msg;
+      hint.classList.toggle('err', !!bad);
+    };
+    const text = textEl ? textEl.value.trim() : '';
+    if (text.length < 20) {
+      setHint('正文至少要 20 字，先把一段完整的内容贴进来。', true);
+      if (textEl) textEl.focus();
+      return;
+    }
+    if (!state.collectionId) return;
+    if (btn) btn.disabled = true;
+    setHint('正在切分并建立索引…', false);
+    api('/collections/' + encodeURIComponent(state.collectionId) + '/documents', {
+      method: 'POST',
+      body: {title: titleEl ? titleEl.value.trim() : '', text}
+    }).then(doc => {
+      if (btn) btn.disabled = false;
+      if (titleEl) titleEl.value = '';
+      if (textEl) textEl.value = '';
+      setHint('已加入「' + doc.title + '」，切出 ' + doc.chunks + ' 段。', false);
+      toast('资料已加入知识库');
+      state.collectionsLoaded = false;
+      renderCollectionPage(state.collectionId);
+    }).catch(e => {
+      if (btn) btn.disabled = false;
+      setHint(e.message || '添加失败', true);
+    });
+  }
+
+  function deleteLibraryDoc(c, d) {
+    if (!window.confirm('从「' + c.name + '」里删除「' + d.title +
+      '」？它的 ' + (d.chunks || 0) + ' 段引用会一起消失。')) return;
+    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id), {method: 'DELETE'})
+      .then(() => {
+        toast('资料已删除');
+        state.collectionsLoaded = false;
+        renderCollectionPage(c.id);
+      })
+      .catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
+  function openCollectionPicker() {
+    const wrap = el('div', 'form-grid');
+    const list = el('div', 'stack');
+    const mk = (c) => {
+      const row = el('button', 'list-row');
+      row.type = 'button';
+      row.style.textAlign = 'left';
+      row.style.cursor = 'pointer';
+      const main = el('div', 'list-main');
+      main.appendChild(el('div', 'list-title', c.name));
+      main.appendChild(el('div', 'list-meta', c.builtin
+        ? '内置 · ' + (c.questions || 0) + ' 题 · ' + (c.knowledge || 0) + ' 考点'
+        : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段'));
+      row.appendChild(main);
+      if ((state.chatCollection || '') === (c.builtin ? '' : c.id)) {
+        row.appendChild(el('span', 'badge', '使用中'));
+      }
+      row.addEventListener('click', () => { closeModal(); useCollection(c); });
+      list.appendChild(row);
+    };
+    fetchCollections(true).then(items => {
+      items.forEach(mk);
+      wrap.appendChild(list);
+      const acts = el('div', 'form-actions');
+      const manage = el('button', 'ghost', '管理知识库');
+      manage.addEventListener('click', () => { closeModal(); go('library'); });
+      acts.appendChild(manage);
+      wrap.appendChild(acts);
+      openModal('选择知识库', wrap);
+    });
+  }
+
   /* ---------- 学习空间 ---------- */
   function renderSpace() {
     const root = clearNode('#space-groups');
     if (!root) return;
+    if (!state.collectionsLoaded) {
+      fetchCollections(true).then(() => {
+        if (state.page === 'space') renderSpace();
+      });
+    }
     const meta = state.meta || {};
     const enabled = state.skills.filter(s => s.on).length;
     const groups = [
       {label: '对话与资料', items: [
+        {page: 'library', icon: 'i-grid', title: '知识库',
+         desc: '把自己的资料放进来，问答只引用这些原文。',
+         count: state.collections.length > 1
+           ? (state.collections.length - 1) + ' 个自建库 + 内置语料'
+           : '内置 408 语料'},
         {page: 'history', icon: 'i-chat', title: '聊天历史',
          desc: '回顾并继续之前的对话。',
          count: state.conversations.length + ' 段对话'},
@@ -8168,14 +8635,14 @@
     history.pushState(null, '', target);
   }
 
-  const SPACE_PAGES = ['bank', 'knowledge', 'notebooks', 'journal', 'history',
-    'personas', 'skills', 'memory'];
-  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner', 'deck'];
+  const SPACE_PAGES = ['library', 'bank', 'knowledge', 'notebooks', 'journal',
+    'history', 'personas', 'skills', 'memory'];
+  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner', 'deck', 'collection'];
 
   function navPageFor(page) {
     if (page === 'practice' || page === 'mastery') return 'learning';
     if (page === 'partner') return 'partners';
-    if (page === 'deck') return 'space';
+    if (page === 'deck' || page === 'collection') return 'space';
     if (SPACE_PAGES.indexOf(page) >= 0) return 'space';
     return page;
   }
@@ -8189,7 +8656,6 @@
     if (head === 'q') return {page: state.page, qid: parts[1] || ''};
     if (head === 'k') return {page: 'knowledge', kid: parts[1] || ''};
     if (head === 'learning') return {page: 'mastery'};
-    if (head === 'library') return {page: 'bank'};
     if (Object.prototype.hasOwnProperty.call(PAGE_META, head)) {
       if (DETAIL_PAGES.indexOf(head) >= 0) {
         return {page: head, id: parts[1] || ''};
@@ -8204,6 +8670,7 @@
     if (page === 'notebooks') return state.notebookId;
     if (page === 'partner') return state.partnerId;
     if (page === 'deck') return state.deckId;
+    if (page === 'collection') return state.collectionId;
     return '';
   }
 
@@ -8233,6 +8700,7 @@
     if (page === 'mastery') state.masteryId = id || '';
     else if (page === 'notebooks') state.notebookId = id || '';
     else if (page === 'partner') state.partnerId = id || state.partnerId || '';
+    else if (page === 'collection') state.collectionId = id || state.collectionId || '';
     const navPage = navPageFor(page);
     const mainEl = $('.main');
     if (mainEl) {
@@ -8252,8 +8720,10 @@
     }
     const spaceSub = $('#space-subnav');
     if (spaceSub) {
-      const onSpace = SPACE_PAGES.indexOf(page) >= 0 || page === 'deck';
-      const spaceActive = page === 'deck' ? 'bank' : page;
+      const onSpace = SPACE_PAGES.indexOf(page) >= 0 || page === 'deck' ||
+        page === 'collection';
+      const spaceActive = page === 'deck' ? 'bank'
+        : (page === 'collection' ? 'library' : page);
       spaceSub.hidden = !onSpace;
       $$('button', spaceSub).forEach(b =>
         b.classList.toggle('active', b.dataset.space === spaceActive));
@@ -8275,9 +8745,15 @@
     } else if (page === 'chat') {
       renderMessages();
       renderPersonaChip();
+      renderCollectionChip();
       if (window.innerWidth > 860) {
         setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
       }
+    } else if (page === 'library') {
+      renderLibrary();
+      ensureMeta().then(m => { if (m && state.page === 'library') renderLibrary(); });
+    } else if (page === 'collection') {
+      renderCollectionPage(id || state.collectionId);
     } else if (page === 'bank') {
       renderDecks();
       ensureMeta().then(m => {
@@ -8570,6 +9046,20 @@
       }, 320);
     });
     $('#bank-more').addEventListener('click', () => fetchBank(false));
+
+    const collectionChip = $('#collection-chip');
+    if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
+    $('#lib-new').addEventListener('click', openCollectionEditor);
+    $('#lib-doc-add').addEventListener('click', addLibraryDoc);
+    $('#lib-back').addEventListener('click', () => go('library'));
+    $('#lib-ask').addEventListener('click', () => {
+      const c = collectionById(state.collectionId);
+      if (c) useCollection(c);
+    });
+    $('#lib-del').addEventListener('click', () => {
+      const c = collectionById(state.collectionId);
+      if (c) deleteCollection(c);
+    });
 
     $('#deck-new').addEventListener('click', openNewDeckModal);
     $('#deck-import').addEventListener('click', () => openImportModal(''));

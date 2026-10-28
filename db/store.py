@@ -221,6 +221,120 @@ class Store:
                 " ORDER BY subject, chapter, title").fetchall()
         return [r["payload"] for r in rows]
 
+    # ---------- 用户知识库 ----------
+
+    def create_collection(self, cid: str, name: str, description: str = "") -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO collections (id, name, description)"
+                " VALUES (%s, %s, %s)", (cid, name, description))
+            conn.commit()
+
+    def list_collections(self) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT c.id, c.name, c.description, c.created_at, c.updated_at,"
+                " (SELECT count(*)::int FROM documents d"
+                "   WHERE d.collection_id = c.id) AS doc_count,"
+                " (SELECT count(*)::int FROM doc_chunks k"
+                "   WHERE k.collection_id = c.id) AS chunk_count"
+                " FROM collections c ORDER BY c.created_at").fetchall()
+        return [dict(r) for r in rows]
+
+    def get_collection(self, cid: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, description, created_at, updated_at"
+                " FROM collections WHERE id = %s", (cid,)).fetchone()
+        return dict(row) if row else None
+
+    def delete_collection(self, cid: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute("DELETE FROM collections WHERE id = %s", (cid,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def touch_collection(self, cid: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE collections SET updated_at = now() WHERE id = %s", (cid,))
+            conn.commit()
+
+    def add_document(self, doc_id: str, cid: str, title: str, text: str,
+                     sha: str, chunks: Sequence[Dict],
+                     vectors: Optional[Dict[str, str]] = None) -> None:
+        """写入一篇文档及其片段；vectors 是 {chunk_id: pgvector 文本}。"""
+        vectors = vectors or {}
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO documents (id, collection_id, title, text, sha256)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                (doc_id, cid, title, text, sha))
+            for c in chunks:
+                conn.execute(
+                    "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
+                    " text, start_off, end_off, embedding)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)",
+                    (c["id"], cid, doc_id, c["seq"], c["text"],
+                     c["start"], c["end"], vectors.get(c["id"])))
+            conn.execute(
+                "UPDATE collections SET updated_at = now() WHERE id = %s", (cid,))
+            conn.commit()
+
+    def list_documents(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT d.id, d.title, d.sha256, d.created_at,"
+                " length(d.text) AS chars,"
+                " (SELECT count(*)::int FROM doc_chunks k"
+                "   WHERE k.document_id = d.id) AS chunk_count"
+                " FROM documents d WHERE d.collection_id = %s"
+                " ORDER BY d.created_at", (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_document(self, cid: str, doc_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, collection_id, title, text, sha256, created_at"
+                " FROM documents WHERE collection_id = %s AND id = %s",
+                (cid, doc_id)).fetchone()
+        return dict(row) if row else None
+
+    def delete_document(self, cid: str, doc_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM documents WHERE collection_id = %s AND id = %s",
+                (cid, doc_id))
+            conn.commit()
+            if cur.rowcount:
+                conn.execute(
+                    "UPDATE collections SET updated_at = now()"
+                    " WHERE id = %s", (cid,))
+                conn.commit()
+            return cur.rowcount > 0
+
+    def doc_chunks(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT k.id, k.document_id, k.seq, k.text, k.start_off, k.end_off,"
+                " d.title"
+                " FROM doc_chunks k JOIN documents d ON d.id = k.document_id"
+                " WHERE k.collection_id = %s ORDER BY k.document_id, k.seq",
+                (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def vector_search_docs(self, query_vec: Sequence[float], top_k: int,
+                           cid: str) -> List[Tuple[str, float]]:
+        lit = vector_literal(query_vec)
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, 1 - (embedding <=> %s::vector) AS score"
+                " FROM doc_chunks WHERE collection_id = %s"
+                " AND embedding IS NOT NULL"
+                " ORDER BY embedding <=> %s::vector LIMIT %s",
+                (lit, cid, lit, int(top_k))).fetchall()
+        return [(r["id"], float(r["score"])) for r in rows]
+
     # ---------- 检索 ----------
 
     def vector_search(self, query_vec: Sequence[float],

@@ -34,6 +34,48 @@ CREATE INDEX IF NOT EXISTS chunks_related_idx
 CREATE INDEX IF NOT EXISTS chunks_embedding_idx
     ON chunks USING hnsw (embedding vector_cosine_ops);
 
+-- 用户自建知识库（v0.25）：一份资料库 = 若干文档 = 若干可引用片段。
+-- 与 408 预置语料（chunks 表）物理隔离：内置语料只读，用户资料可增删。
+CREATE TABLE IF NOT EXISTS collections (
+    id          text PRIMARY KEY,
+    name        text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id            text PRIMARY KEY,
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    title         text NOT NULL DEFAULT '',
+    text          text NOT NULL,
+    sha256        text NOT NULL DEFAULT '',
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS documents_collection_idx
+    ON documents (collection_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS documents_sha_idx
+    ON documents (collection_id, sha256);
+
+-- 片段保留原文起止位置，引用块据此跳回文档里的原句
+CREATE TABLE IF NOT EXISTS doc_chunks (
+    id            text PRIMARY KEY,
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    document_id   text NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    seq           int NOT NULL,
+    text          text NOT NULL,
+    start_off     int NOT NULL DEFAULT 0,
+    end_off       int NOT NULL DEFAULT 0,
+    embedding     vector({dim}),
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS doc_chunks_collection_idx
+    ON doc_chunks (collection_id, document_id, seq);
+CREATE INDEX IF NOT EXISTS doc_chunks_embedding_idx
+    ON doc_chunks USING hnsw (embedding vector_cosine_ops);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   text PRIMARY KEY,
     value text NOT NULL
