@@ -2000,7 +2000,8 @@
     .mp-card-del:hover { background: var(--danger-surface); color: var(--danger); }
     @media (hover: none) { .mp-card-del { opacity: 1; } }
 
-    .mp-toolbar { align-items: center; }
+    /* 工具条和详情标题都收进 760px 正文列，按钮才和卡片右边缘对齐 */
+    .mp-toolbar, .mp-head { align-items: center; max-width: 760px; }
     .mp-toolbar .primary { background: var(--info); }
     .mp-toolbar .primary:hover { background: var(--info-dark); }
     .mp-back {
@@ -7990,7 +7991,7 @@
     });
     root.appendChild(back);
 
-    const head = el('div', 'page-head-row');
+    const head = el('div', 'page-head-row mp-head');
     const left = el('div');
     left.appendChild(el('div', 'panel-title', path.name));
     left.appendChild(el('div', 'panel-sub',
