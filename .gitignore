@@ -22,3 +22,6 @@ playwright-report/
 
 # 可重跑的中间产物（draft / 校验报告 / 校对页）
 data/work/
+
+# Archify 生成用的工作目录（成品放 docs/）
+.archify/
