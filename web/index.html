@@ -6571,7 +6571,9 @@
         if (state.chatCollection === c.id) setChatCollection('');
         if (state.collectionId === c.id) state.collectionId = '';
         toast('知识库已删除');
-        renderLibrary();
+        // 从详情页删的，停在原地会看到已经不存在的库，退回知识库墙
+        if (state.page === 'collection') go('library');
+        else renderLibrary();
       })
       .catch(e => toast('删除失败：' + e.message, 'err'));
   }
