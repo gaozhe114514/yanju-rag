@@ -39,7 +39,7 @@
       --ok: #237a4b; --ok-surface: #ecf8f0;
       --warn: #a15c00; --warn-surface: #fff7df;
       --danger: #c53a2c; --danger-surface: #fbeae7;
-      /* DeepTutor 借用色：学习区用 snow 主题的蓝，伙伴用 glass 主题的紫 */
+      /* DeepTutor 借用色：学习区用 snow 主题的蓝 */
       --info: #2563eb; --info-dark: #1d4ed8;
       --info-surface: #eff6ff; --info-line: #c7d8fb;
       --violet: #7c3aed; --violet-surface: #f5f3ff; --violet-line: #ddd6fe;
@@ -1468,10 +1468,8 @@
       .tabbar .nav-ico svg { width: 20px; height: 20px; }
     }
 
-    /* ---------- v0.22 学习 · 空间 · 伙伴 · 看板 ---------- */
+    /* ---------- v0.22 学习 · 空间 · 看板 ---------- */
     .main[data-page="learning"] { --content-max: 900px; }
-    .main[data-page="partner"] { --content-max: 820px; overflow: hidden; }
-    .main[data-page="partner"] .topbar { display: none; }
     .main[data-subpage="notebooks"], .main[data-subpage="journal"],
     .main[data-subpage="personas"], .main[data-subpage="skills"],
     .main[data-subpage="memory"], .main[data-subpage="history"] {
@@ -1481,7 +1479,6 @@
     #page-notebooks.active, #page-journal.active, #page-personas.active,
     #page-skills.active, #page-memory.active,
     #page-kanban.active { display: block; overflow-y: auto; }
-    #page-partner.active { display: flex; }
     .subnav { display: flex; flex-wrap: wrap; }
 
     .page-head-row {
@@ -1661,43 +1658,8 @@
     }
     .level-banner b { font-size: 13.5px; }
 
-    /* 伙伴 */
-    .partner-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .partner-card {
-      display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px;
-      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
-      box-shadow: var(--shadow-sm);
-    }
-    .partner-avatar {
-      display: grid; place-items: center; flex: none; width: 40px; height: 40px;
-      border-radius: 11px; background: var(--wash); color: var(--brand-dark);
-      font-family: var(--display); font-size: 15px; font-weight: 600;
-    }
-    .partner-main { flex: 1; min-width: 0; }
-    .partner-name { color: var(--ink); font-size: 14px; font-weight: 600; }
-    .partner-role { margin-top: 2px; color: var(--muted); font-size: 11px; }
-    .partner-desc { margin-top: 6px; color: var(--ink-3); font-size: 12px; line-height: 1.65; }
-    .partner-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
-    .partner-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; }
-    .partner-head {
-      display: flex; align-items: center; gap: 10px; flex: none;
-      width: 100%; max-width: var(--content-max); margin: 0 auto;
-      padding: 14px 40px 12px; border-bottom: 1px solid var(--line);
-    }
-    .partner-head .partner-avatar { width: 34px; height: 34px; border-radius: 9px; font-size: 13px; }
-    .partner-head-main { flex: 1; min-width: 0; }
-    .partner-head-name { font-size: 14px; font-weight: 600; color: var(--ink); }
-    .partner-head-sub {
-      margin-top: 1px; color: var(--muted); font-size: 11px; line-height: 1.5;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .partner-head-actions { display: flex; gap: 4px; flex: none; }
-    .partner-messages { max-width: var(--content-max); width: 100%; margin: 0 auto; }
-    .partner-shell .composer-wrap { max-width: var(--content-max); margin: 0 auto; padding: 10px 40px 18px; }
-    .partner-shell .composer { max-width: 100%; }
-    .partner-history { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
-    .partner-empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
-
+    /* 卡片的操作行（笔记本、人格、技能共用） */
+    .card-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 10px; }
     /* 看板 */
     .kanban-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 12px; }
     .kanban-add {
@@ -1802,7 +1764,7 @@
     .composer-chip.on { background: var(--wash); border-color: transparent; color: var(--brand-dark); }
 
     @media (max-width: 860px) {
-      .space-grid, .partner-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .space-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
       .kanban-board { grid-template-columns: 1fr; }
       .kanban-col { min-height: 120px; }
       .page-head-row { gap: 10px; }
@@ -1811,9 +1773,6 @@
       .tabbar .nav-ico svg { width: 17px; height: 17px; }
       .subnav { flex-wrap: nowrap; overflow-x: auto; }
       .subnav button { flex: none; }
-      .partner-head { padding: 10px 16px; }
-      .partner-messages { padding: 16px 16px 8px; }
-      .partner-shell .composer-wrap { padding: 8px 16px 14px; }
       .composer-chip { max-width: 62px; padding: 4px 7px; }
       .list-row { flex-direction: column; gap: 8px; }
       .list-actions { width: 100%; justify-content: flex-start; }
@@ -2011,7 +1970,7 @@
     .msg-tools .tool-btn:hover { background: var(--muted-surface); color: var(--brand); }
     .msg-tools .tool-btn.copy-ok { color: var(--ok); }
 
-    /* 输入条：问题在上，库与伙伴在下，像 DeepTutor 那样只有一张卡 */
+    /* 输入条：问题在上，模式 / 库 / 人物在下，像 DeepTutor 那样只有一张卡 */
     #page-chat .composer-wrap { padding: 10px 40px 22px; }
     #page-chat .composer {
       flex-direction: column; align-items: stretch; gap: 0;
@@ -2193,8 +2152,6 @@
     .mp-detail-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .mp-detail .quiz-inline { background: var(--card); }
 
-    /* 伙伴用 DeepTutor glass 主题的紫，和问答页的陶土、学习页的蓝区分开 */
-    .partner-avatar { background: var(--violet-surface); color: var(--violet); }
     .tl-dot.mastery { background: var(--info); }
 
     @media (max-width: 860px) {
@@ -2988,6 +2945,7 @@
   const EXAM_DATE_KEY = '408-exam-date-v1';
   const TODAY_KEY = '408-today-question-v1';
   const LIB_TAB_KEY = '408-library-tab-v1';
+  // 伙伴已下线；键留着，只用于「设置 → 本机数据」把旧数据一起清掉
   const PARTNER_KEY = '408-partners-v1';
   const PARTNER_CHAT_KEY = '408-partner-chats-v1';
   const NOTEBOOK_KEY = '408-notebooks-v1';
@@ -3088,16 +3046,6 @@
     return out;
   }
 
-  function loadPartnerChats() {
-    return loadList(PARTNER_CHAT_KEY)
-      .filter(c => c.id && c.partnerId && Array.isArray(c.messages))
-      .map(c => ({
-        id: c.id, partnerId: c.partnerId, messages: c.messages,
-        createdAt: c.createdAt || Date.now(),
-        updatedAt: c.updatedAt || c.createdAt || Date.now()
-      }));
-  }
-
   /* 偏好只影响这台设备的界面，不参与检索；口令不进这里 */
   const DEFAULT_PREFS = {
     startPage: 'chat', reducedMotion: false, masteryCount: '5', theme: 'snow'
@@ -3162,13 +3110,6 @@
     personas: loadList(PERSONA_KEY),
     skills: loadSkills(),
     memory: loadJSON(MEMORY_KEY, {}),
-    partners: loadList(PARTNER_KEY),
-    partnerChats: loadPartnerChats(),
-    partnerId: '',
-    partnerChatId: '',
-    partnerSending: false,
-    partnerStreaming: false,
-    partnerAbort: null,
     notebooks: loadList(NOTEBOOK_KEY),
     notebookId: '',
     journal: loadJournal(),
@@ -3708,7 +3649,7 @@
 
   function renderBotMessage(msg, avatarText) {
     const row = el('div', 'msg bot');
-    // 问答页不带头像（DeepTutor 也没有）；伙伴页仍用伙伴首字
+    // 问答页不带头像（DeepTutor 也没有）；avatarText 留给以后带人物的场景
     if (avatarText) row.appendChild(el('div', 'avatar', avatarText));
     const body = el('div', 'bot-body');
     const data = msg.data || {};
@@ -6876,7 +6817,7 @@
 
   /* ---------- routing / events ---------- */
   // 页面和详情都进地址栏：刷新、分享链接、浏览器后退都能回到原处。
-  /* ---------- v0.22 学习空间 / 伙伴 / 精通之路 / 任务看板 ---------- */
+  /* ---------- v0.22 学习空间 / 精通之路 / 任务看板 ---------- */
   function uid(prefix) {
     return prefix + '-' + Date.now().toString(36) + '-' +
       Math.random().toString(36).slice(2, 7);
@@ -6996,17 +6937,6 @@
     const extras = styleExtras();
     if (extras) bits.push(extras);
     return bits.join('；').slice(0, 400);
-  }
-
-  function partnerStyle(partner) {
-    if (!partner) return styleExtras().slice(0, 400);
-    const bits = ['你正在扮演学习伙伴「' + partner.name + '」。'];
-    if (partner.role) bits.push('角色：' + partner.role + '。');
-    if (partner.subject) bits.push('主要辅导科目：' + subjectName(partner.subject) + '。');
-    if (partner.soul) bits.push('性格与说话方式：' + partner.soul + '。');
-    const extras = styleExtras();
-    if (extras) bits.push(extras);
-    return bits.join(' ').slice(0, 400);
   }
 
   /* ---------- 学习日志 ---------- */
@@ -7701,7 +7631,7 @@
         formatWhen(n.updatedAt || n.createdAt || 0)));
       const last = (n.entries || [])[0];
       if (last) card.appendChild(el('div', 'persona-preview', last.title || last.content || ''));
-      const row = el('div', 'partner-actions');
+      const row = el('div', 'card-actions');
       const open = el('button', 'row-btn', '打开');
       open.addEventListener('click', () => {
         state.notebookId = n.id;
@@ -7940,7 +7870,7 @@
       card.appendChild(el('div', 'skill-name', p.name));
       if (p.desc) card.appendChild(el('div', 'skill-desc', p.desc));
       card.appendChild(el('div', 'persona-preview', p.style || ''));
-      const row = el('div', 'partner-actions');
+      const row = el('div', 'card-actions');
       const use = el('button', 'row-btn', '用于问答');
       use.addEventListener('click', () => {
         state.chatPersonaId = p.id;
@@ -9132,437 +9062,6 @@
     }
   }
 
-  /* ---------- 伙伴 ---------- */
-  const PARTNER_TEMPLATES = [
-    {name: '同桌阿哲', role: '同桌', soul: '说话口语化，先问我是怎么想的，再一步步提示；不直接给答案。',
-     greeting: '来了？今天想先弄懂哪一题？'},
-    {name: '严师老周', role: '严师', soul: '直接指出问题，不寒暄；先给结论，再要求我说出依据。',
-     greeting: '坐好。把你要问的题说清楚，别绕。'},
-    {name: '出题人小林', role: '出题人视角', soul: '从命题角度讲这道题想考什么，容易在哪儿设坑。',
-     greeting: '先别急着选。说说你觉得出题人想考什么？'}
-  ];
-
-  function savePartners() { saveKey(PARTNER_KEY, state.partners); }
-
-  function savePartnerChats() {
-    try {
-      localStorage.setItem(PARTNER_CHAT_KEY,
-        JSON.stringify(state.partnerChats.slice(0, 24)));
-    } catch (e) {
-      state.partnerChats = state.partnerChats.slice(0, 8).map(c => ({
-        ...c, messages: c.messages.slice(-10)
-      }));
-      try {
-        localStorage.setItem(PARTNER_CHAT_KEY, JSON.stringify(state.partnerChats));
-      } catch (e2) {
-        toast('本机存储空间不足，伙伴消息没有保存', 'err');
-      }
-    }
-  }
-
-  function partnerById(id) {
-    return state.partners.find(p => p.id === id) || null;
-  }
-
-  function partnerInitial(name) {
-    return String(name || '伙').trim().slice(0, 1) || '伙';
-  }
-
-  function chatsForPartner(partnerId) {
-    return state.partnerChats
-      .filter(c => c.partnerId === partnerId)
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  }
-
-  function partnerChat(partner, create) {
-    let chat = state.partnerChats.find(c => c.id === state.partnerChatId &&
-      c.partnerId === partner.id);
-    if (!chat) {
-      chat = chatsForPartner(partner.id)[0] || null;
-    }
-    if (!chat && create) {
-      chat = {
-        id: uid('pc'), partnerId: partner.id, messages: [],
-        createdAt: Date.now(), updatedAt: Date.now()
-      };
-      state.partnerChats.unshift(chat);
-      savePartnerChats();
-    }
-    state.partnerChatId = chat ? chat.id : '';
-    return chat;
-  }
-
-  function slimData(data) {
-    const d = data || {};
-    return {
-      refused: !!d.refused,
-      answer: d.answer || '',
-      citations: d.citations || [],
-      reason: d.reason || '',
-      intent: d.intent || '',
-      rewritten_query: d.rewritten_query || ''
-    };
-  }
-
-  function renderPartners() {
-    const root = clearNode('#partners-root');
-    if (!root) return;
-    const head = el('div', 'page-head-row');
-    const info = el('div');
-    info.appendChild(el('div', 'panel-title', '伙伴'));
-    info.appendChild(el('div', 'panel-sub',
-      '每个伙伴有自己的性格和讲法，但答案仍然只从真题和考点里找，引用逐字核对。'));
-    head.appendChild(info);
-    const acts = el('div', 'page-actions');
-    const add = el('button', 'primary', '新建伙伴');
-    add.addEventListener('click', () => openPartnerEditor(null));
-    acts.appendChild(add);
-    head.appendChild(acts);
-    root.appendChild(head);
-
-    if (!state.partners.length) {
-      const empty = el('div', 'empty-panel');
-      empty.appendChild(el('strong', null, '还没有伙伴'));
-      empty.appendChild(document.createTextNode(
-        '可以从一个模板开始，之后再改性格和说话方式。'));
-      const row = el('div', 'partner-grid');
-      row.style.marginTop = '14px';
-      row.style.textAlign = 'left';
-      PARTNER_TEMPLATES.forEach(tpl => {
-        const card = el('div', 'partner-card');
-        card.appendChild(el('div', 'partner-avatar', partnerInitial(tpl.name)));
-        const main = el('div', 'partner-main');
-        main.appendChild(el('div', 'partner-name', tpl.name));
-        main.appendChild(el('div', 'partner-role', tpl.role));
-        main.appendChild(el('div', 'partner-desc', tpl.soul));
-        const use = el('button', 'primary', '用这个模板');
-        use.style.marginTop = '10px';
-        use.addEventListener('click', () => createPartnerFrom(tpl));
-        main.appendChild(use);
-        card.appendChild(main);
-        row.appendChild(card);
-      });
-      empty.appendChild(row);
-      root.appendChild(empty);
-      return;
-    }
-
-    const grid = el('div', 'partner-grid');
-    state.partners.forEach(p => {
-      const chats = chatsForPartner(p.id);
-      const card = el('div', 'partner-card');
-      card.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
-      const main = el('div', 'partner-main');
-      main.appendChild(el('div', 'partner-name', p.name));
-      main.appendChild(el('div', 'partner-role',
-        [p.role, p.subject ? subjectName(p.subject) : ''].filter(Boolean).join(' · ') ||
-        '学习伙伴'));
-      main.appendChild(el('div', 'partner-desc', p.soul || ''));
-      if (chats.length) {
-        main.appendChild(el('div', 'list-meta',
-          chats.length + ' 段对话 · 最近 ' +
-          formatWhen(chats[0].updatedAt || chats[0].createdAt || 0)));
-      }
-      const row = el('div', 'partner-actions');
-      const talk = el('button', 'primary', chats.length ? '继续聊' : '开始聊');
-      talk.addEventListener('click', () => openPartner(p.id, chats[0] ? chats[0].id : ''));
-      const edit = el('button', 'row-btn', '编辑');
-      edit.addEventListener('click', () => openPartnerEditor(p));
-      const del = el('button', 'row-btn danger', '删除');
-      del.addEventListener('click', () => {
-        if (!window.confirm('删除伙伴「' + p.name + '」？对话记录会一起删掉。')) return;
-        state.partners = state.partners.filter(x => x.id !== p.id);
-        state.partnerChats = state.partnerChats.filter(c => c.partnerId !== p.id);
-        if (state.partnerId === p.id) state.partnerId = '';
-        savePartners();
-        savePartnerChats();
-        renderPartners();
-      });
-      row.appendChild(talk);
-      row.appendChild(edit);
-      row.appendChild(del);
-      main.appendChild(row);
-      card.appendChild(main);
-      grid.appendChild(card);
-    });
-    root.appendChild(grid);
-  }
-
-  function createPartnerFrom(tpl) {
-    const p = {
-      id: uid('pa'), name: tpl.name, role: tpl.role, soul: tpl.soul,
-      subject: '', greeting: tpl.greeting || '', createdAt: Date.now()
-    };
-    state.partners.unshift(p);
-    savePartners();
-    toast('已添加伙伴：' + p.name);
-    openPartner(p.id, '');
-  }
-
-  function openPartnerEditor(p) {
-    const wrap = el('div', 'form-grid');
-    const name = el('input');
-    name.value = p ? p.name : '';
-    name.placeholder = '例如：同桌阿哲';
-    name.maxLength = 24;
-    const role = el('input');
-    role.value = p ? (p.role || '') : '';
-    role.placeholder = '例如：同桌 / 严师 / 出题人视角';
-    role.maxLength = 30;
-    const subject = selectEl([['', '不限科目']].concat(
-      ((state.meta && state.meta.subjects) || []).map(s => [s.key, s.label])),
-      p ? (p.subject || '') : '');
-    const soul = el('textarea');
-    soul.value = p ? (p.soul || '') : '';
-    soul.placeholder = '例如：说话口语化，先问我是怎么想的，再一步步提示；不直接给答案。';
-    soul.maxLength = 300;
-    const greeting = el('input');
-    greeting.value = p ? (p.greeting || '') : '';
-    greeting.placeholder = '例如：来了？今天想先弄懂哪一题？';
-    greeting.maxLength = 80;
-    wrap.appendChild(field('名字', name));
-    wrap.appendChild(field('身份', role));
-    wrap.appendChild(field('负责科目', subject));
-    wrap.appendChild(field('性格与说话方式', soul,
-      '只影响措辞和提示方式；不能要求编造资料或放宽引用。'));
-    wrap.appendChild(field('开场白', greeting));
-    const acts = el('div', 'form-actions');
-    const cancel = el('button', 'ghost', '取消');
-    cancel.addEventListener('click', closeModal);
-    const save = el('button', 'primary', p ? '保存' : '创建');
-    save.addEventListener('click', () => {
-      const n = name.value.trim();
-      if (!n) { name.focus(); return; }
-      if (p) {
-        p.name = n;
-        p.role = role.value.trim();
-        p.subject = subject.value;
-        p.soul = soul.value.trim();
-        p.greeting = greeting.value.trim();
-        p.updatedAt = Date.now();
-      } else {
-        state.partners.unshift({
-          id: uid('pa'), name: n, role: role.value.trim(), subject: subject.value,
-          soul: soul.value.trim(), greeting: greeting.value.trim(),
-          createdAt: Date.now()
-        });
-      }
-      savePartners();
-      closeModal();
-      if (state.page === 'partner') renderPartner();
-      else renderPartners();
-      toast(p ? '伙伴资料已保存' : '伙伴已创建');
-    });
-    acts.appendChild(cancel);
-    acts.appendChild(save);
-    wrap.appendChild(acts);
-    openModal(p ? '编辑伙伴' : '新建伙伴', wrap);
-    name.focus();
-  }
-
-  function openPartner(id, chatId) {
-    const p = partnerById(id);
-    if (!p) { toast('伙伴不存在', 'err'); go('partners'); return; }
-    state.partnerId = id;
-    state.partnerChatId = chatId || '';
-    partnerChat(p, true);
-    go('partner', id);
-  }
-
-  function renderPartner() {
-    const p = partnerById(state.partnerId);
-    if (!p) { go('partners'); return; }
-    const chat = partnerChat(p, true);
-    const head = clearNode('#partner-head');
-    const back = el('button', 'row-btn', '← 伙伴');
-    back.addEventListener('click', () => go('partners'));
-    head.appendChild(back);
-    head.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
-    const main = el('div', 'partner-head-main');
-    main.appendChild(el('div', 'partner-head-name', p.name));
-    main.appendChild(el('div', 'partner-head-sub',
-      [p.role, p.subject ? subjectName(p.subject) : '', p.soul]
-        .filter(Boolean).join(' · ') || '学习伙伴'));
-    head.appendChild(main);
-    const acts = el('div', 'partner-head-actions');
-    const fresh = el('button', 'row-btn', '新对话');
-    fresh.addEventListener('click', () => {
-      const c = {
-        id: uid('pc'), partnerId: p.id, messages: [],
-        createdAt: Date.now(), updatedAt: Date.now()
-      };
-      state.partnerChats.unshift(c);
-      state.partnerChatId = c.id;
-      savePartnerChats();
-      renderPartner();
-    });
-    const edit = el('button', 'row-btn', '编辑');
-    edit.addEventListener('click', () => openPartnerEditor(p));
-    acts.appendChild(fresh);
-    acts.appendChild(edit);
-    head.appendChild(acts);
-
-    const box = clearNode('#partner-messages');
-    if (!chat.messages.length) {
-      const empty = el('div', 'partner-empty');
-      empty.appendChild(el('div', 'partner-avatar', partnerInitial(p.name)));
-      empty.lastChild.style.margin = '0 auto 12px';
-      empty.appendChild(el('div', null,
-        p.greeting || '说说你现在卡在哪一道题，或者哪个概念没想明白。'));
-      const chips = el('div', 'partner-history');
-      chips.style.justifyContent = 'center';
-      chips.style.marginTop = '14px';
-      const prompts = [
-        '帮我把最近错的题讲一遍',
-        '这个概念用最简单的话讲',
-        '从出题人的角度说说这题考什么'
-      ];
-      prompts.forEach(text => {
-        const chip = el('button', 'ghost', text);
-        chip.addEventListener('click', () => {
-          const c = $('#partner-composer');
-          c.value = text;
-          autoGrowPartner();
-          c.focus();
-        });
-        chips.appendChild(chip);
-      });
-      empty.appendChild(chips);
-      box.appendChild(empty);
-    } else {
-      if (chatsForPartner(p.id).length > 1) {
-        const bar = el('div', 'partner-history');
-        chatsForPartner(p.id).slice(0, 5).forEach(c => {
-          const chip = el('button',
-            'row-btn' + (c.id === chat.id ? ' active' : ''),
-            formatWhen(c.updatedAt || c.createdAt || 0));
-          chip.addEventListener('click', () => {
-            state.partnerChatId = c.id;
-            renderPartner();
-          });
-          bar.appendChild(chip);
-        });
-        box.appendChild(bar);
-      }
-      chat.messages.forEach(m => {
-        if (m.role === 'user') box.appendChild(userMessage(m));
-        else box.appendChild(renderBotMessage(m, partnerInitial(p.name)));
-      });
-      if (state.partnerSending && !state.partnerStreaming) {
-        const row = el('div', 'msg bot');
-        row.appendChild(el('div', 'avatar', partnerInitial(p.name)));
-        const body = el('div', 'bot-body');
-        const typing = el('div', 'typing');
-        typing.appendChild(el('span', 'spinner'));
-        typing.appendChild(el('span', null, '伙伴正在翻资料…'));
-        body.appendChild(typing);
-        row.appendChild(body);
-        box.appendChild(row);
-      }
-      requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
-    }
-    const sendBtn = $('#partner-send');
-    if (sendBtn) sendBtn.disabled = state.partnerSending;
-    const hint = $('#partner-hint');
-    if (hint) hint.textContent = '伙伴只改变讲法，结论仍逐字引用真题或考点原文';
-  }
-
-  function partnerHistory(chat) {
-    return chat.messages.slice(-6).map(m => {
-      if (m.role === 'user') return {role: 'user', content: m.content};
-      const d = m.data || {};
-      return {
-        role: 'assistant',
-        content: d.answer || (d.refused ? '（未作答：' + (d.reason || '资料不足') + '）' : '')
-      };
-    }).filter(m => m.content);
-  }
-
-  function autoGrowPartner() {
-    const t = $('#partner-composer');
-    if (!t) return;
-    t.style.height = 'auto';
-    t.style.height = Math.min(t.scrollHeight, 130) + 'px';
-  }
-
-  async function sendPartner() {
-    const input = $('#partner-composer');
-    if (!input) return;
-    const text = input.value.trim();
-    const p = partnerById(state.partnerId);
-    if (!text || state.partnerSending || !p) return;
-    if (state.health && state.health.auth_required && !state.token) {
-      showAuthNeeded('请先输入访问口令。');
-      return;
-    }
-    const chat = partnerChat(p, true);
-    const history = partnerHistory(chat);
-    input.value = '';
-    autoGrowPartner();
-    chat.messages.push({role: 'user', content: text, ts: Date.now()});
-    chat.updatedAt = Date.now();
-    state.partnerSending = true;
-    state.partnerStreaming = true;
-    state.partnerAbort = new AbortController();
-    renderPartner();
-    savePartnerChats();
-    setStopState('partner-stop', 'partner-send', true);
-
-    const box = $('#partner-messages');
-    const bubble = streamingBubble(partnerInitial(p.name));
-    bubble.setStage('伙伴正在翻资料…');
-    box.appendChild(bubble.row);
-    box.scrollTop = box.scrollHeight;
-
-    let streamed = '';
-    let finalData = null;
-    try {
-      await streamChat({
-        query: text, history, style: partnerStyle(p)
-      }, evt => {
-        if (evt.type === 'status') {
-          bubble.setStage(streamStageText(evt.stage, evt));
-        } else if (evt.type === 'delta') {
-          streamed += evt.text || '';
-          bubble.setText(streamed);
-          stickToBottom(box);
-        } else if (evt.type === 'reset') {
-          streamed = '';
-          bubble.setText('');
-          bubble.setStage(evt.note || '正在重新生成…');
-        } else if (evt.type === 'error') {
-          bubble.setStage('生成服务暂时不可用');
-        } else if (evt.type === 'done') {
-          finalData = evt.data;
-        }
-      }, state.partnerAbort.signal);
-      if (!finalData) throw new Error('连接中断，回答没有收完');
-      bubble.done();
-      chat.messages.push({role: 'assistant', data: slimData(finalData),
-        query: text, ts: Date.now()});
-      chat.updatedAt = Date.now();
-    } catch (e) {
-      if (bubble.row.parentNode) bubble.row.remove();
-      if (!finalData) {
-        chat.messages.pop();
-        input.value = text;
-        autoGrowPartner();
-      }
-      if (e.name === 'AbortError') toast('已停止生成');
-      else if (e.status === 401) showAuthNeeded('访问口令无效或已过期，请重新输入。');
-      else if (e.status === 429) toast('请求太频繁，' + (e.message || '请稍后再试'), 'err');
-      else toast('伙伴回答失败：' + e.message, 'err');
-    } finally {
-      state.partnerSending = false;
-      state.partnerStreaming = false;
-      state.partnerAbort = null;
-      setStopState('partner-stop', 'partner-send', false);
-      savePartnerChats();
-      renderPartner();
-      input.focus();
-    }
-  }
-
   /* ---------- 任务看板 ---------- */
   const TASK_LANES = [
     {key: 'todo', label: '待办', hint: '还没开始的事'},
@@ -9872,7 +9371,7 @@
 
   const SPACE_PAGES = ['library', 'bank', 'knowledge', 'notebooks', 'journal',
     'history', 'personas', 'skills', 'memory'];
-  const DETAIL_PAGES = ['mastery', 'notebooks', 'partner', 'deck', 'collection'];
+  const DETAIL_PAGES = ['mastery', 'notebooks', 'deck', 'collection'];
 
   function navPageFor(page) {
     if (page === 'practice' || page === 'mastery') return 'learning';
@@ -9902,7 +9401,6 @@
   function detailIdFor(page) {
     if (page === 'mastery') return state.masteryId;
     if (page === 'notebooks') return state.notebookId;
-    if (page === 'partner') return state.partnerId;
     if (page === 'deck') return state.deckId;
     if (page === 'collection') return state.collectionId;
     return '';
@@ -9931,17 +9429,15 @@
   function renderPage(page, id) {
     if (page === 'learning') page = 'mastery';
     // 伙伴已下线（先删掉入口，还没决定要不要做），旧地址一律回问答
-    if (page === 'partners' || page === 'partner' || !PAGE_META[page]) page = 'chat';
+    if (!PAGE_META[page]) page = 'chat';
     state.page = page;
     if (page === 'mastery') state.masteryId = id || '';
     else if (page === 'notebooks') state.notebookId = id || '';
-    else if (page === 'partner') state.partnerId = id || state.partnerId || '';
     else if (page === 'collection') state.collectionId = id || state.collectionId || '';
     const navPage = navPageFor(page);
     const mainEl = $('.main');
     if (mainEl) {
-      // 伙伴对话页要独占高度并隐藏顶栏，用 partner 自己的标记
-      mainEl.dataset.page = page === 'partner' ? 'partner' : navPage;
+      mainEl.dataset.page = navPage;
       mainEl.dataset.subpage = (navPage === 'space' && page !== 'space') ? page : '';
     }
     $$('#nav button, #tabbar button').forEach(b =>
@@ -10033,10 +9529,6 @@
     } else if (page === 'memory') {
       renderMemory();
       ensureMeta(true).then(m => { if (m && state.page === 'memory') renderMemory(); });
-    } else if (page === 'partners') {
-      renderPartners();
-    } else if (page === 'partner') {
-      renderPartner();
     } else if (page === 'kanban') {
       renderKanban();
     } else if (page === 'settings') {
@@ -10395,7 +9887,7 @@
   }
 
   const LOCAL_CLEAR_GROUPS = {
-    chats: {keys: [CONV_KEY, ACTIVE_KEY, PARTNER_CHAT_KEY]},
+    chats: {keys: [CONV_KEY, ACTIVE_KEY, PARTNER_CHAT_KEY, PARTNER_KEY]},
     study: {keys: [MASTERY_KEY, STATS_KEY, HISTORY_KEY, TODAY_KEY]},
     notes: {keys: [NOTEBOOK_KEY, JOURNAL_KEY, PERSONA_KEY, SKILL_KEY,
                    MEMORY_KEY, TASK_KEY, DECK_KEY, DECK_Q_KEY]},
@@ -10428,7 +9920,6 @@
       '问答记录、学习进度和自定内容都在浏览器的 localStorage 里，不上传服务器。');
     const facts = el('div', 'set-facts');
     setFact(facts, '对话', state.conversations.length + ' 段');
-    setFact(facts, '伙伴对话', state.partnerChats.length + ' 段');
     setFact(facts, '精通之路', state.mastery.length + ' 条 · 已掌握 ' + done + ' / ' + steps);
     setFact(facts, '笔记本', state.notebooks.length + ' 个');
     setFact(facts, '学习日志', state.journal.records.length + ' 条');
@@ -10440,7 +9931,7 @@
 
     const rows = [
       {group: 'chats', label: '清除对话记录',
-       desc: '问答记录和伙伴聊天记录一起清掉，资料和题库不受影响。',
+       desc: '问答记录（含旧伙伴对话）一起清掉，资料和题库不受影响。',
        confirm: '清除所有本机对话记录？'},
       {group: 'study', label: '清除学习进度',
        desc: '精通之路、自测记录和今日一题的进度会清零。',
@@ -10724,18 +10215,6 @@
     }
     const personaChip = $('#persona-chip');
     if (personaChip) personaChip.addEventListener('click', openPersonaPicker);
-    const partnerComposer = $('#partner-composer');
-    if (partnerComposer) {
-      partnerComposer.addEventListener('input', autoGrowPartner);
-      partnerComposer.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-          e.preventDefault();
-          sendPartner();
-        }
-      });
-    }
-    const partnerSend = $('#partner-send');
-    if (partnerSend) partnerSend.addEventListener('click', sendPartner);
     const todayAsk = $('#today-ask');
     if (todayAsk) {
       todayAsk.addEventListener('submit', e => {
@@ -10753,12 +10232,6 @@
     if (stopSend) {
       stopSend.addEventListener('click', () => {
         if (state.streamAbort) state.streamAbort.abort();
-      });
-    }
-    const stopPartner = $('#partner-stop');
-    if (stopPartner) {
-      stopPartner.addEventListener('click', () => {
-        if (state.partnerAbort) state.partnerAbort.abort();
       });
     }
     const examEdit = $('#today-exam-edit');
