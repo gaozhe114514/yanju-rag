@@ -3247,10 +3247,21 @@
   function loadMastery() {
     return loadList(MASTERY_KEY)
       .filter(p => p.id && Array.isArray(p.steps))
-      .map(p => Object.assign({}, p, {
-        done: p.done && typeof p.done === 'object' ? p.done : {},
-        picks: p.picks && typeof p.picks === 'object' ? p.picks : {}
-      }));
+      .map(p => {
+        const path = Object.assign({}, p, {
+          done: p.done && typeof p.done === 'object' ? p.done : {},
+          picks: p.picks && typeof p.picks === 'object' ? p.picks : {}
+        });
+        // v0.34 之前新建时会把 meta 里的第一科（数据结构）写进 subject，那是编的。
+        // 没资料、没大纲、也没步骤的老路线，把科目清掉，交给导师按资料重新定。
+        if (path.subjectSource === undefined) {
+          const noBasis = !(path.sources || []).length &&
+            !(path.steps || []).length && !(path.modules || []).length;
+          path.subjectSource = noBasis ? '' : 'legacy';
+          if (noBasis) path.subject = '';
+        }
+        return path;
+      });
   }
 
   function loadDecks() {
@@ -8531,23 +8542,6 @@
     };
   }
 
-  // 大纲里的考点：勾了具体考点就用这些，否则按科目挑关联真题最多的
-  function masteryDraftSteps(path, cards, limit) {
-    const ids = [];
-    ((path && path.sources) || []).forEach(s => {
-      if (String(s.key || '').indexOf('knowledge:') === 0) ids.push(s.key.slice(10));
-    });
-    const byId = {};
-    cards.forEach(c => { byId[c.id] = c; });
-    let pool = ids.length
-      ? ids.map(id => byId[id]).filter(Boolean)
-      : cards.filter(c => !path.subject || c.subject === path.subject);
-    pool = pool.slice().sort((a, b) =>
-      (b.related_count || 0) - (a.related_count || 0) ||
-      String(a.title).localeCompare(String(b.title), 'zh'));
-    return pool.slice(0, limit).map(masteryStepFromCard);
-  }
-
   function masteryStepsBar(active) {
     // 大纲不在弹层里排了：建完目标直接进导师会话，由导师问完再起草
     const bar = el('div', 'wiz-steps');
@@ -8663,7 +8657,7 @@
         countLine.appendChild(document.createTextNode(
           ' 个资料已选 · 导师会一份份读过去，再把大纲排出来'));
       } else {
-        countLine.textContent = '还没选资料。不选也行，导师会按科目里关联真题最多的考点排。';
+        countLine.textContent = '还没选资料。不选也行，导师会先问你想补什么——没资料时，大纲只能凭目标和你的回答排。';
       }
     }
 
@@ -8847,13 +8841,19 @@
       const keys = Object.keys(draft.picked);
       const srcCards = keys.filter(k => k.indexOf('knowledge:') === 0)
         .map(k => cards.find(c => 'knowledge:' + c.id === k)).filter(Boolean);
-      const firstSub = (state.meta && state.meta.subjects && state.meta.subjects[0]) || {};
+      // 科目只从勾过的考点推：全都落在同一科才写，混科或没勾就留空。
+      // 以前这里会退回 meta 里的第一科（数据结构），等于给「AI 应用开发」
+      // 这种目标硬安一个科目，导师也会照着这个假科目说话。
+      const cardSubjects = [];
+      srcCards.forEach(c => { if (c.subject && cardSubjects.indexOf(c.subject) < 0) cardSubjects.push(c.subject); });
+      const subject = draft.subject || (cardSubjects.length === 1 ? cardSubjects[0] : '');
       const path = {
         id: uid('mp'),
         name: pathNameFromGoal(goal),
         goal: goal,
         emoji: draft.emoji,
-        subject: draft.subject || (srcCards[0] && srcCards[0].subject) || firstSub.key || '',
+        subject: subject,
+        subjectSource: draft.subject ? 'picked' : (subject ? 'cards' : ''),
         sources: keys.map(k => ({
           key: k,
           label: draft.picked[k].label,
@@ -9005,7 +9005,7 @@
     return {
       goal: path.goal || path.name || '',
       emoji: path.emoji || '',
-      subject: subjectName(path.subject),
+      subject: path.subject ? subjectName(path.subject) : '',
       materials: (path.sources || []).map(s => ({
         key: s.key || '', label: s.label || '',
         kind: s.kind || '', detail: String(s.detail || '').slice(0, 2000)
@@ -9474,6 +9474,7 @@
         .slice(0, n).map(masteryStepFromCard);
       if (!steps.length) { toast('这一科还没有考点卡片', 'err'); return; }
       path.subject = sub;
+      path.subjectSource = 'picked';
       path.steps = steps;
       path.updatedAt = Date.now();
       saveMastery();
