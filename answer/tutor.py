@@ -1,0 +1,437 @@
+# -*- coding: utf-8 -*-
+"""精通之路的导师会话：第一阶段「把大纲定下来」。
+
+它和问答链路是两件事：问答必须逐字引用、资料没覆盖就拒答；大纲是设计，
+不产生引用，所以这里不做引用校验。但有一条同样硬的要求——材料里没有的
+东西不能写成大纲里的知识点，所以模型只拿得到我们给的资料摘要，返回后
+还要按结构再清洗一遍（模块数、知识点数、类型、重复项）。
+
+协议是一轮一段 JSON：
+  {"say": "...", "ask": {...}|null, "profile": {...}|null,
+   "outline": {...}|null, "stage": "intake|draft|approved"}
+前端据此决定显示导师的话、一张结构化问答卡，还是把大纲写进路线。
+"""
+import json
+import re
+from typing import Dict, List, Optional, Sequence
+
+from .providers import ProviderError, parse_payload
+
+MAX_MODULES = 10
+MAX_POINTS = 48
+MAX_POINTS_PER_MODULE = 8
+MAX_QUESTIONS = 4
+MAX_OPTIONS = 6
+
+KP_TYPES = ("memory", "procedure", "concept", "design")
+TYPE_LABELS = {
+    "memory": "记忆",
+    "procedure": "步骤",
+    "concept": "概念",
+    "design": "判断",
+}
+PROFILE_KEYS = ("prior", "target", "time", "style")
+PROFILE_LABELS = {
+    "prior": "现在已经会什么",
+    "target": "学完算什么样",
+    "time": "能投入多少时间",
+    "style": "希望怎么讲",
+}
+STAGES = ("intake", "draft", "approved")
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
+
+
+TUTOR_SYSTEM = """你是「引证 · 精通之路」里的一对一导师。这一轮你在和一个学习者一起定他的精通大纲，不是上课，也不出题。
+
+你要输出的每一句话都会原样显示给学习者。不要复述工具结果，不要写内部推理，不要自言自语「让我先」「等等」。说不清楚的宁可少说。
+
+规则：
+1. 先看「学习档案」。四件事——现在已经会什么、学完算什么样、能投入多少时间、希望怎么讲——知道两项以上就可以起草大纲；一项都不知道时，用 ask 问，问法要针对这份资料和这个目标，不要每次背同样四条。一次问 1 到 4 个，选项要有区分度，允许自由作答。学习者可以只答一部分，也可以跳过；答多少就按多少设计，不要为了凑齐而追问。
+2. 已经有「当前大纲」时不要整张换掉。学习者说改哪里就只改那一块，其余模块原样保留（连同 done 状态）。他要求改标题、顺序、增删模块都可以，但不要顺手重写没提到的模块。
+3. 大纲围绕学习者写的目标组织，不是照搬资料目录。不要出现「本书第 X 章」「材料一」「本章」这类按资料分模块的写法；多份资料要按主题重新组织到一起；每一份已选资料都要在某个模块里有交代，不能因为看起来次要就丢掉。
+4. 每个模块给一句 objective：学完这个模块，学习者能做什么。写成能力，不是话题（「能独立用高斯消元解线性方程组并判断解的结构」，不是「线性方程组」）。
+5. 模块 4 到 8 个，每个模块 2 到 6 个知识点，总数不超过 40。408 的内容要具体到能练的粒度，并且符合 408 考试大纲；拿不准的考点不要编。
+6. 每个知识点标 type：memory（要记住的事实）/ procedure（步骤技能）/ concept（要理解的概念）/ design（开放判断）。
+7. 不要编出处、页码、题号，也不要说「资料第几页」。材料里没有的内容不要假装它有；资料确实不够时，在 say 里直说缺什么。
+8. say 是给学习者看的话：这次做了什么、为什么这样排、请他改哪里。定稿后明说「大纲已定稿」，并告诉他可以点「开始学习」，也可以继续说改哪里；他认可后 stage 用 approved。第一次起草出来时 stage 用 draft；还在问问题时 stage 用 intake。
+9. 如果学习者这一轮只是在问概念、闲聊或补充信息，没有要求改动，就把 outline 置为 null，正常回答，不要每轮都重写大纲。
+10. 中文，简洁，可以用短列表；语气像真人导师，不谄媚。
+
+只输出一个 JSON 对象，不要代码围栏，不要前后多余文字。结构：
+{
+  "say": "给学习者看的话",
+  "ask": null 或 {"intro": "一句引导", "questions": [
+    {"id": "prior", "header": "基础", "prompt": "问题原文",
+     "multi_select": false, "allow_free_text": true, "placeholder": "也可以自己写",
+     "options": [{"label": "短选项", "description": "选它意味着什么"}]}]},
+  "profile": null 或 {"prior": "...", "target": "...", "time": "...", "style": "..."},
+  "outline": null 或 {"name": "路线名（不超过 30 字）", "modules": [
+    {"name": "模块名", "objective": "学完能做什么",
+     "knowledge_points": [{"name": "知识点", "type": "concept"}]}]},
+  "stage": "intake" 或 "draft" 或 "approved"
+}
+profile 只写学习者这一轮明确说过的内容，没提到就省略或置 null，不要替他编。"""
+
+
+def _clip(value, limit: int) -> str:
+    return str(value or "").strip()[:limit]
+
+
+def _clean_say(raw, limit: int = 4000) -> str:
+    text = _THINK_RE.sub("", str(raw or "")).strip()
+    return text[:limit]
+
+
+def _clean_options(raw) -> List[Dict]:
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for item in raw[:MAX_OPTIONS]:
+        if isinstance(item, str):
+            label, desc = item.strip()[:60], ""
+        elif isinstance(item, dict):
+            label = _clip(item.get("label"), 60)
+            desc = _clip(item.get("description"), 160)
+        else:
+            continue
+        if not label:
+            continue
+        if label.lower() in ("other", "其他", "其它"):
+            continue  # 卡片自己会给「其他」入口
+        out.append({"label": label, "description": desc})
+    return out
+
+
+def clean_ask(raw) -> Optional[Dict]:
+    """把模型给的问答卡清洗成前端能画的结构；不合法就当作没问。"""
+    if not isinstance(raw, dict):
+        return None
+    questions = raw.get("questions")
+    if not isinstance(questions, list):
+        return None
+    out = []
+    seen = set()
+    for i, q in enumerate(questions[:MAX_QUESTIONS]):
+        if not isinstance(q, dict):
+            continue
+        prompt = _clip(q.get("prompt") or q.get("question"), 400)
+        if not prompt or prompt in seen:
+            continue
+        seen.add(prompt)
+        options = _clean_options(q.get("options"))
+        if len(options) < 2 and not q.get("allow_free_text", True):
+            continue
+        out.append({
+            "id": _clip(q.get("id"), 20) or ("q%d" % (i + 1)),
+            "header": _clip(q.get("header"), 12),
+            "prompt": prompt,
+            "multi_select": bool(q.get("multi_select")),
+            "allow_free_text": bool(q.get("allow_free_text", True)),
+            "placeholder": _clip(q.get("placeholder"), 80),
+            "options": options,
+        })
+    if not out:
+        return None
+    return {"intro": _clip(raw.get("intro"), 300), "questions": out}
+
+
+def clean_profile(raw) -> Dict[str, str]:
+    """只收四个已知字段，各截 200 字；没说的留空，不替学习者编。"""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key in PROFILE_KEYS:
+        value = _clip(raw.get(key), 200)
+        if value:
+            out[key] = value
+    return out
+
+
+def _previous_points(previous) -> Dict:
+    """按「模块名 → 知识点名 → 旧节点」建索引，改大纲时保住进度。"""
+    index = {}
+    for module in (previous or {}).get("modules", []) or []:
+        mname = _clip(module.get("name"), 60)
+        points = {}
+        for point in module.get("points", []) or []:
+            pname = _clip(point.get("name"), 80)
+            if pname:
+                points[pname] = point
+        if mname:
+            index[mname] = {"id": _clip(module.get("id"), 40), "points": points}
+    return index
+
+
+def clean_outline(raw, previous=None) -> Optional[Dict]:
+    """清洗大纲；模块或知识点太少说明模型没设计出来，当作失败。"""
+    if not isinstance(raw, dict):
+        return None
+    modules_raw = raw.get("modules")
+    if not isinstance(modules_raw, list):
+        return None
+    prev = _previous_points(previous)
+    modules = []
+    seen_modules = set()
+    total = 0
+
+    for mi, module in enumerate(modules_raw):
+        if not isinstance(module, dict):
+            continue
+        name = _clip(module.get("name"), 60)
+        if not name or name in seen_modules:
+            continue
+        seen_modules.add(name)
+        old = prev.get(name) or {}
+        module_id = old.get("id") or ("m%d" % (mi + 1))
+        points_raw = module.get("knowledge_points")
+        if not isinstance(points_raw, list):
+            points_raw = module.get("points") or []
+        points = []
+        seen_points = set()
+        for pi, point in enumerate(points_raw[:MAX_POINTS_PER_MODULE]):
+            if not isinstance(point, dict):
+                continue
+            pname = _clip(point.get("name") or point.get("title"), 80)
+            if not pname or pname in seen_points:
+                continue
+            seen_points.add(pname)
+            if total >= MAX_POINTS:
+                break
+            old_point = (old.get("points") or {}).get(pname) or {}
+            ptype = point.get("type")
+            if ptype not in KP_TYPES:
+                ptype = "concept"
+            points.append({
+                "id": _clip(old_point.get("id"), 40) or ("%s-p%d" % (module_id, pi + 1)),
+                "name": pname,
+                "type": ptype,
+                "done": bool(old_point.get("done")),
+            })
+            total += 1
+        if not points:
+            continue
+        modules.append({
+            "id": module_id,
+            "name": name,
+            "objective": _clip(module.get("objective"), 200),
+            "points": points,
+        })
+        if len(modules) >= MAX_MODULES:
+            break
+
+    if len(modules) < 2 or total < 4:
+        return None
+    return {"name": _clip(raw.get("name"), 30), "modules": modules}
+
+
+def _learner_lines(learner) -> str:
+    lines = []
+    for key in PROFILE_KEYS:
+        value = _clip((learner or {}).get(key), 200)
+        if value:
+            lines.append("- %s：%s" % (PROFILE_LABELS[key], value))
+    return "\n".join(lines) if lines else "（还没有回答过，先问再设计）"
+
+
+def _outline_block(outline) -> str:
+    if not outline or not (outline.get("modules") or []):
+        return ""
+    slim = {
+        "name": outline.get("name") or "",
+        "modules": [
+            {
+                "name": m.get("name"),
+                "objective": m.get("objective") or "",
+                "points": [
+                    {"name": p.get("name"), "type": p.get("type"),
+                     "done": bool(p.get("done"))}
+                    for p in (m.get("points") or [])
+                ],
+            }
+            for m in outline.get("modules") or []
+        ],
+    }
+    return json.dumps(slim, ensure_ascii=False)
+
+
+def _history_block(messages, limit: int = 8, each: int = 900) -> str:
+    rows = []
+    for turn in (messages or [])[-limit:]:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        content = _clip(turn.get("content"), each)
+        if role not in ("user", "assistant") or not content:
+            continue
+        rows.append(("学习者" if role == "user" else "导师") + "：" + content)
+    return "\n\n".join(rows)
+
+
+def build_turn_messages(payload: dict, digest: Sequence[dict]) -> List[dict]:
+    """拼这一轮发给模型的消息：系统提示 + 一段结构化上下文。"""
+    parts = []
+    parts.append("【精通目标】\n" + (_clip(payload.get("goal"), 2000) or "（还没写）"))
+    subject = _clip(payload.get("subject"), 20)
+    if subject:
+        parts.append("【科目】" + subject)
+
+    lines = []
+    for item in digest or []:
+        label = _clip(item.get("label"), 100)
+        text = _clip(item.get("text"), 1200)
+        if label and text:
+            lines.append("● %s\n%s" % (label, text))
+        elif label:
+            lines.append("● %s（没有可读内容）" % label)
+    parts.append("【已选资料】\n" + ("\n\n".join(lines) if lines
+                                 else "（学习者没有勾选资料，按目标和 408 考试大纲设计）"))
+
+    parts.append("【学习档案】\n" + _learner_lines(payload.get("learner")))
+
+    outline = _outline_block(payload.get("outline"))
+    if outline:
+        parts.append("【当前大纲】\n" + outline)
+
+    history = _history_block(payload.get("messages"))
+    if history:
+        parts.append("【最近对话】\n" + history)
+
+    parts.append("【学习者这一轮说】\n" + (_clip(payload.get("message"), 2000) or "（刚建好这个目标，还没说话）"))
+    return [
+        {"role": "system", "content": TUTOR_SYSTEM},
+        {"role": "user", "content": "\n\n".join(parts)},
+    ]
+
+
+def _parse_result(text: str, previous) -> dict:
+    obj = parse_payload(text)
+    say = _clean_say(obj.get("say"))
+    ask = clean_ask(obj.get("ask"))
+    profile = clean_profile(obj.get("profile"))
+    outline = clean_outline(obj.get("outline"), previous)
+    if not say and not ask and not outline:
+        raise ProviderError("模型既没有给话，也没有给问题或大纲")
+    stage = obj.get("stage") if obj.get("stage") in STAGES else ""
+    if outline:
+        stage = "approved" if stage == "approved" else "draft"
+    elif ask:
+        stage = "intake"
+    elif not stage:
+        stage = "draft"
+    return {"reply": say, "ask": ask, "profile": profile,
+            "outline": outline, "stage": stage, "offline": False}
+
+
+def run_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:
+    """跑一轮导师会话。模型不可用时退回离线脚本，并在回复里说清楚。"""
+    if provider is None or not hasattr(provider, "complete"):
+        return offline_turn(payload, digest)
+
+    messages = build_turn_messages(payload, digest)
+    last_error = None
+    last_text = ""
+    for attempt in range(2):
+        try:
+            last_text = provider.complete(messages, temperature=0.3,
+                                          max_tokens=2600, json_mode=True)
+            return _parse_result(last_text, payload.get("outline"))
+        except ProviderError as exc:
+            last_error = exc
+            if attempt == 0:
+                # 第二次把要求再说一遍，模型多半能自己纠正
+                messages = messages + [
+                    {"role": "assistant", "content": _clip(last_text, 400)},
+                    {"role": "user", "content": "上一次的输出不能直接使用（%s）。请只输出一个 JSON 对象，"
+                                                "包含 say / ask / profile / outline / stage 五个键，"
+                                                "不要代码围栏和多余文字。" % exc},
+                ]
+    raise ProviderError(str(last_error) if last_error else "导师没有给出可用结果")
+
+
+def offline_turn(payload: dict, digest: Sequence[dict]) -> dict:
+    """没有生成模型时：先把四件事问完，再按勾的资料拼一份大纲，并说明是拼的。"""
+    learner = payload.get("learner") or {}
+    known = [k for k in PROFILE_KEYS if _clip(learner.get(k), 200)]
+    offline_note = ("现在是离线演示模式，没有接生成模型，所以这份大纲是按你勾的资料按章节拼出来的，"
+                    "不是导师设计的。接上模型后同一段对话会让导师重新排一版。")
+
+    if len(known) < 2:
+        return {
+            "reply": offline_note + " 先问四件事，答完我再拼一版：",
+            "ask": {
+                "intro": "这些答案会用来决定大纲的起点、篇幅和讲法。",
+                "questions": [
+                    {"id": "prior", "header": "基础", "prompt": "这些内容你现在会到什么程度？",
+                     "multi_select": False, "allow_free_text": True,
+                     "placeholder": "也可以自己写，例如：学过一遍，图论最弱",
+                     "options": [
+                         {"label": "零基础", "description": "概念都没系统接触过"},
+                         {"label": "学过一遍", "description": "上课听过，做题不稳"},
+                         {"label": "只差个别章节", "description": "大部分会，个别点补一下"},
+                     ]},
+                    {"id": "target", "header": "目标", "prompt": "学完什么程度算过关？",
+                     "multi_select": False, "allow_free_text": True,
+                     "placeholder": "例如：真题里这科的题能稳拿分",
+                     "options": [
+                         {"label": "会做基础题", "description": "覆盖常考选择填空"},
+                         {"label": "能独立做综合题", "description": "大题能自己推"},
+                         {"label": "熟练掌握", "description": "能给别人讲清楚"},
+                     ]},
+                    {"id": "time", "header": "时间", "prompt": "能投入多少时间？",
+                     "multi_select": False, "allow_free_text": True,
+                     "placeholder": "例如：每天 2 小时，四周",
+                     "options": [
+                         {"label": "两周以内", "description": "时间紧，只挑重点"},
+                         {"label": "一个月左右", "description": "常规节奏"},
+                         {"label": "时间充裕", "description": "能铺开细讲"},
+                     ]},
+                    {"id": "style", "header": "讲法", "prompt": "希望我怎么讲？",
+                     "multi_select": False, "allow_free_text": True,
+                     "placeholder": "例如：先讲例子再讲定义",
+                     "options": [
+                         {"label": "先讲概念再练", "description": "先听懂，再做题"},
+                         {"label": "直接做题带讲", "description": "边做边补概念"},
+                     ]},
+                ],
+            },
+            "profile": {}, "outline": None, "stage": "intake", "offline": True,
+        }
+
+    outline = offline_outline(payload, digest)
+    if outline is None:
+        return {
+            "reply": offline_note + " 但资料里没有能拼成知识点的内容，先勾几张考点卡片或补一段资料。",
+            "ask": None, "profile": {}, "outline": None, "stage": "intake",
+            "offline": True,
+        }
+    return {
+        "reply": offline_note + " 下面是按资料拼的草稿，你可以在这里继续提要求。",
+        "ask": None, "profile": {}, "outline": outline, "stage": "draft",
+        "offline": True,
+    }
+
+
+def offline_outline(payload: dict, digest: Sequence[dict]) -> Optional[Dict]:
+    """按资料里的条目拼大纲：每份资料一个模块，条目就是知识点。"""
+    modules = []
+    for item in digest or []:
+        titles = [str(t).strip() for t in (item.get("titles") or []) if str(t).strip()]
+        if not titles:
+            continue
+        label = _clip(item.get("label"), 60) or "资料"
+        points = []
+        for i, title in enumerate(titles[:MAX_POINTS_PER_MODULE]):
+            points.append({"name": title[:80], "type": "concept"})
+        if len(points) < 2:
+            continue
+        modules.append({
+            "name": label,
+            "objective": "能把这些内容讲清楚，并在题目里用得上。",
+            "knowledge_points": points,
+        })
+        if len(modules) >= MAX_MODULES:
+            break
+    if len(modules) < 2:
+        return None
+    return clean_outline({"name": _clip(payload.get("goal"), 30), "modules": modules})

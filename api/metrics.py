@@ -15,6 +15,8 @@ KEYS = (
     "ask_total", "ask_answered", "ask_refused",
     "chat_total", "chat_answered", "chat_refused", "chat_nonkb", "chat_daily",
     "cache_hit",
+    # 精通之路的导师会话（定大纲）：轮次、给了大纲、问了问题、模型没用
+    "mastery_total", "mastery_outline", "mastery_ask", "mastery_failed",
 )
 
 

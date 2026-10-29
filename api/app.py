@@ -25,7 +25,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
 from answer.daily import daily_reply, daily_stream
+from answer.tutor import run_turn as tutor_turn
 from answer.cache import (cache_key, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
@@ -85,6 +86,45 @@ class ChatRequest(BaseModel):
     collection: str = Field("", max_length=64)
     # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
     mode: str = Field("kb", max_length=8)
+
+
+class MasteryMaterial(BaseModel):
+    """学习者勾的素材：key 决定服务端能不能自己去读，detail 是前端手里的摘要。"""
+    key: str = Field("", max_length=200)
+    label: str = Field("", max_length=100)
+    kind: str = Field("", max_length=20)
+    detail: str = Field("", max_length=2000)
+
+
+class MasteryPoint(BaseModel):
+    id: str = Field("", max_length=40)
+    name: str = Field("", max_length=100)
+    type: str = Field("concept", max_length=20)
+    done: bool = False
+
+
+class MasteryModule(BaseModel):
+    id: str = Field("", max_length=40)
+    name: str = Field("", max_length=80)
+    objective: str = Field("", max_length=300)
+    points: List[MasteryPoint] = Field(default_factory=list)
+
+
+class MasteryOutline(BaseModel):
+    name: str = Field("", max_length=60)
+    modules: List[MasteryModule] = Field(default_factory=list)
+
+
+class MasteryTurnRequest(BaseModel):
+    """精通之路的一轮导师会话。状态放在浏览器，这里只收一份快照。"""
+    goal: str = Field("", max_length=2000)
+    emoji: str = Field("", max_length=12)
+    subject: str = Field("", max_length=20)
+    materials: List[MasteryMaterial] = Field(default_factory=list)
+    learner: Dict[str, str] = Field(default_factory=dict)
+    outline: MasteryOutline = Field(default_factory=MasteryOutline)
+    messages: List[ChatTurn] = Field(default_factory=list)
+    message: str = Field("", max_length=2000)
 
 
 class CollectionRequest(BaseModel):
@@ -753,6 +793,109 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
         "X-Accel-Buffering": "no",
         "Connection": "keep-alive",
     })
+
+
+def _knowledge_digest(card_id: str) -> Optional[dict]:
+    card = (_state.get("knowledge_by_id") or {}).get(card_id)
+    if not card:
+        return None
+    title = str(card.get("title") or "")
+    chapter = str(card.get("chapter") or "")
+    summary = str(card.get("summary") or "")
+    text = "考点卡片：%s%s\n%s" % (
+        title, ("（%s）" % chapter) if chapter else "", summary)
+    stems = []
+    q_by_id = _state.get("questions_by_id") or {}
+    for qid in (card.get("related_question_ids") or [])[:2]:
+        q = q_by_id.get(qid)
+        if q:
+            stems.append(str(q.get("stem") or "")[:120])
+    if stems:
+        text += "\n相关真题：" + "；".join(stems)
+    return {"text": text[:1200], "titles": [title] if title else []}
+
+
+def _collection_digest(cid: str) -> Optional[dict]:
+    lib = _state.get("library")
+    if lib is None:
+        return None
+    try:
+        coll = lib.get_collection(cid)
+    except LibraryError:
+        return None
+    if coll is None:
+        return None
+    docs = lib.list_documents(cid)[:3]
+    pieces, titles = [], []
+    for doc in docs:
+        body = lib.document_text(cid, doc.get("id", "")) or ""
+        if not body.strip():
+            continue
+        title = str(doc.get("title") or "未命名资料")
+        titles.append(title)
+        pieces.append("《%s》%s" % (title, body.strip()[:400]))
+    if not pieces:
+        return None
+    return {"text": "\n".join(pieces)[:1500], "titles": titles}
+
+
+def _mastery_digest(materials) -> List[dict]:
+    """把前端勾的素材变成模型能读的摘要。
+
+    考点卡片和知识库由服务端自己读（它们是语料的事实来源）；题库和对话
+    只存在浏览器，所以只能收前端带来的那一段，并标明来源。
+    """
+    out = []
+    budget = 9000
+    for item in (materials or [])[:8]:
+        key = str(item.key or "")
+        kind = str(item.kind or "")
+        label = str(item.label or "").strip() or "资料"
+        entry = None
+        if key.startswith("knowledge:"):
+            entry = _knowledge_digest(key[len("knowledge:"):])
+            kind = kind or "knowledge"
+        elif key.startswith("collection:"):
+            entry = _collection_digest(key[len("collection:"):])
+            kind = kind or "collection"
+        detail = str(item.detail or "").strip()
+        if entry is None:
+            lines = [x.strip() for x in detail.splitlines() if x.strip()]
+            if not detail:
+                out.append({"label": label, "kind": kind, "text": "", "titles": []})
+                continue
+            entry = {"text": detail[:1200], "titles": lines[:8]}
+        entry["label"] = label
+        entry["kind"] = kind
+        if budget - len(entry["text"]) < 0:
+            entry["text"] = entry["text"][:max(budget, 0)]
+        budget -= len(entry["text"])
+        out.append(entry)
+        if budget <= 0:
+            break
+    return out
+
+
+@app.post("/mastery/turn")
+def mastery_turn(req: MasteryTurnRequest,
+                 _: None = Depends(enforce_guard)) -> dict:
+    """精通之路的导师会话：一轮拿回一段话、一张问答卡，或一份大纲。"""
+    t0 = time.time()
+    payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    digest = _mastery_digest(req.materials)
+    metrics.bump("mastery_total")
+    try:
+        result = tutor_turn(_state.get("provider_impl"), payload, digest)
+    except ProviderError as e:
+        metrics.bump("mastery_failed")
+        raise HTTPException(status_code=502, detail="导师这次没给出可用的结果：%s" % e)
+    if result.get("outline"):
+        metrics.bump("mastery_outline")
+    if result.get("ask"):
+        metrics.bump("mastery_ask")
+    result["latency_ms"] = int((time.time() - t0) * 1000)
+    result["provider"] = _state.get("provider", "mock")
+    return result
 
 
 def _gap_stats_data(days: int, limit: int) -> dict:
