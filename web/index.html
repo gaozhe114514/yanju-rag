@@ -2681,6 +2681,8 @@
           <textarea id="composer" rows="1" maxlength="500"
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
+            <button class="composer-chip" id="mode-chip" type="button"
+                    aria-pressed="false" title="资料问答：只按资料原文回答并附引用">资料</button>
             <button class="composer-chip" id="collection-chip" type="button"
                     aria-haspopup="dialog" title="选择回答依据的知识库">全部资料</button>
             <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
@@ -2999,6 +3001,8 @@
   const DECK_Q_KEY = '408-deck-questions-v1';
   // 问答当前依据的知识库：空字符串 = 内置 408 语料
   const COLLECTION_KEY = '408-chat-collection-v1';
+  // 问答模式：'kb' 只按资料原文回答并附引用；'chat' 是日常对话，不检索
+  const CHAT_MODE_KEY = '408-chat-mode-v1';
   const PREFS_KEY = '408-prefs-v1';
   const PRESET_DECK = {
     id: 'cs408', preset: true, name: '408 真题',
@@ -3184,6 +3188,7 @@
     collectionsLoaded: false,
     collectionId: '',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
+    chatMode: loadJSON(CHAT_MODE_KEY, 'kb') === 'chat' ? 'chat' : 'kb',
     chatPersonaId: ''
   };
 
@@ -3284,6 +3289,7 @@
   }
 
   function streamStageText(stage, evt) {
+    if (stage === 'daily') return '正在回答…';
     if (stage === 'plan') return '正在理解问题…';
     if (stage === 'cache') return '命中缓存，正在取出答案…';
     if (stage === 'retrieve') return '正在检索资料…';
@@ -3591,10 +3597,12 @@
   }
 
   function emptyState() {
+    const daily = state.chatMode === 'chat';
     const wrap = el('div', 'empty home');
-    wrap.appendChild(el('h2', null, salutation() + '，想问点什么？'));
-    wrap.appendChild(el('p', 'home-sub',
-      '答案只从资料里找依据，每条结论都附原话；资料里没有的，会直说没有。'));
+    wrap.appendChild(el('h2', null, salutation() + (daily ? '，聊点什么？' : '，想问点什么？')));
+    wrap.appendChild(el('p', 'home-sub', daily
+      ? '日常对话不查资料、也不带引用，适合排计划、改文字、问点常识。要 408 的答案和出处，切回「资料」。'
+      : '答案只从资料里找依据，每条结论都附原话；资料里没有的，会直说没有。'));
 
     const ed = examDate();
     const left = daysUntil(ed);
@@ -3611,12 +3619,17 @@
     wrap.appendChild(stats);
 
     const prompts = el('div', 'home-prompts');
-    [
+    (daily ? [
+      ['计划', '帮我排一份一周的复习计划，每天两小时'],
+      ['写作', '写一段 100 字以内的自我介绍'],
+      ['润色', '把「这个方案我觉得可能不太行」改得委婉一点'],
+      ['常识', '用通俗的话讲讲缓存是干什么的']
+    ] : [
       ['数据结构', '快速排序的时间复杂度'],
       ['计算机网络', 'CSMA/CD 最小帧长怎么算'],
       ['操作系统', '二级页式存储的虚拟地址怎么拆成页目录号和页号'],
       ['操作系统', 'LRU 页置换 缺页次数']
-    ].forEach(([tag, q]) => {
+    ]).forEach(([tag, q]) => {
       const b = el('button', 'prompt');
       b.appendChild(el('span', 'prompt-tag', tag));
       b.appendChild(el('span', 'prompt-q', q));
@@ -3624,11 +3637,13 @@
       prompts.appendChild(b);
     });
     wrap.appendChild(prompts);
-    // 不考 408 的人从这里进去：先把讲义贴进知识库，再回来提问
-    const own = el('button', 'link-btn home-own',
-      '想用自己的资料？把讲义贴进知识库 →');
-    own.addEventListener('click', () => go('library'));
-    wrap.appendChild(own);
+    if (!daily) {
+      // 不考 408 的人从这里进去：先把讲义贴进知识库，再回来提问
+      const own = el('button', 'link-btn home-own',
+        '想用自己的资料？把讲义贴进知识库 →');
+      own.addEventListener('click', () => go('library'));
+      wrap.appendChild(own);
+    }
     return wrap;
   }
 
@@ -3719,6 +3734,9 @@
       // badgeFor 的文案是「未作答 · 原因」，这里只留原因
       const reason = (badgeFor(data)[1] || '').replace(/^未作答\s*·\s*/, '');
       meta.appendChild(el('span', 'meta-note warn', reason || '未作答'));
+    } else if (data.mode === 'chat') {
+      // 日常对话没有任何引用可核对，别跟着资料模式一起写「引用已核对」
+      meta.appendChild(el('span', 'meta-note', '日常对话 · 未查资料'));
     } else if (data.intent !== 'chitchat') {
       meta.appendChild(el('span', 'meta-note ok',
         cites.length ? '引用已核对 · ' + cites.length + ' 条' : '引用已核对'));
@@ -3911,8 +3929,10 @@
       await streamChat({
         query: text, history: history,
         style: styleFor(currentPersonaId()),
+        // kb = 只按资料原文回答并附引用；chat = 日常对话，不检索
+        mode: state.chatMode,
         // 空字符串 = 内置 408 语料；否则只在这个知识库里检索
-        collection: state.chatCollection || ''
+        collection: state.chatMode === 'chat' ? '' : (state.chatCollection || '')
       }, evt => {
         if (evt.type === 'status') {
           bubble.setStage(streamStageText(evt.stage, evt));
@@ -4478,6 +4498,8 @@
   function askFromToday(text) {
     const q = String(text || '').trim();
     if (!q) return;
+    // 今日一问是 408 的内容，必须带引用，所以切回资料模式再问
+    if (state.chatMode !== 'kb') setChatMode('kb');
     go('chat');
     const composer = $('#composer');
     composer.value = q;
@@ -7149,6 +7171,32 @@
     state.chatCollection = id || '';
     try { localStorage.setItem(COLLECTION_KEY, state.chatCollection); } catch (e) {}
     renderCollectionChip();
+  }
+
+  function setChatMode(mode) {
+    state.chatMode = mode === 'chat' ? 'chat' : 'kb';
+    try { localStorage.setItem(CHAT_MODE_KEY, JSON.stringify(state.chatMode)); } catch (e) {}
+    renderModeChip();
+  }
+
+  // 资料 / 日常：同一只输入框，两条链路；日常不查资料，所以连知识库胶囊一起收起来
+  function renderModeChip() {
+    const chip = $('#mode-chip');
+    const daily = state.chatMode === 'chat';
+    if (chip) {
+      chip.textContent = daily ? '日常' : '资料';
+      chip.classList.toggle('on', daily);
+      chip.setAttribute('aria-pressed', daily ? 'true' : 'false');
+      chip.title = daily
+        ? '日常对话：不查资料、不带引用。点一下切回带引用的资料问答'
+        : '资料问答：只按资料原文回答并附引用。点一下切到日常对话';
+    }
+    const col = $('#collection-chip');
+    if (col) col.hidden = daily;
+    const input = $('#composer');
+    if (input) {
+      input.placeholder = daily ? '随便聊聊，或让助手帮点小忙…' : '有问题，直接问…';
+    }
   }
 
   function renderCollectionChip() {
@@ -9933,6 +9981,7 @@
     } else if (page === 'chat') {
       renderMessages();
       renderPersonaChip();
+      renderModeChip();
       renderCollectionChip();
       if (window.innerWidth > 860) {
         setTimeout(() => { const c = $('#composer'); if (c) c.focus(); }, 60);
@@ -10662,6 +10711,17 @@
     $$('#space-subnav button').forEach(b => {
       b.addEventListener('click', () => go(b.dataset.space));
     });
+    const modeChip = $('#mode-chip');
+    if (modeChip) {
+      modeChip.addEventListener('click', () => {
+        const next = state.chatMode === 'chat' ? 'kb' : 'chat';
+        setChatMode(next);
+        const conv = activeConv();
+        if (!conv || !conv.messages.length) renderMessages();
+        toast(next === 'chat' ? '日常对话：不查资料，也不带引用'
+          : '资料问答：只按资料原文回答并附引用');
+      });
+    }
     const personaChip = $('#persona-chip');
     if (personaChip) personaChip.addEventListener('click', openPersonaPicker);
     const partnerComposer = $('#partner-composer');

@@ -13,7 +13,7 @@ _counters: Dict[str, int] = {}
 # 允许的键，写错名字时能早点发现
 KEYS = (
     "ask_total", "ask_answered", "ask_refused",
-    "chat_total", "chat_answered", "chat_refused", "chat_nonkb",
+    "chat_total", "chat_answered", "chat_refused", "chat_nonkb", "chat_daily",
     "cache_hit",
 )
 

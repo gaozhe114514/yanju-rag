@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
+from answer.daily import daily_reply, daily_stream
 from answer.cache import (cache_key, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
@@ -82,6 +83,8 @@ class ChatRequest(BaseModel):
     history: List[ChatTurn] = Field(default_factory=list)
     style: str = Field("", max_length=400)
     collection: str = Field("", max_length=64)
+    # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
+    mode: str = Field("kb", max_length=8)
 
 
 class CollectionRequest(BaseModel):
@@ -416,6 +419,7 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
     rewritten = plan.rewritten if plan and plan.rewritten != plan.query else ""
     return {
         "intent": plan.intent if plan else "kb",
+        "mode": "kb",
         # 前端据此把引用跳回知识库原文；空字符串表示内置 408 语料
         "collection": "" if _is_preset(collection) else collection,
         "refused": res.refused,
@@ -442,6 +446,7 @@ def _non_kb_payload(plan, t0: float) -> dict:
                   "例如「2019 年第 31 题」或「快速排序的时间复杂度」。")
     return {
         "intent": plan.intent,
+        "mode": "kb",
         "refused": False,
         "answer": answer,
         "citations": [],
@@ -459,6 +464,28 @@ def _non_kb_payload(plan, t0: float) -> dict:
                                   else (plan.note or "指代不明，需要补充信息"))}],
         },
     }
+
+
+def _daily_payload(answer: str, t0: float, reason: str = "") -> dict:
+    """日常对话的返回：没有引用、没有命中，也不进缓存和缺口日志。"""
+    ms = int((time.time() - t0) * 1000)
+    return {
+        "intent": "chat", "mode": "chat", "refused": bool(reason),
+        "answer": "" if reason else answer,
+        "citations": [], "reason": reason, "hits": [], "attempts": 0,
+        "latency_ms": ms, "rewritten_query": "",
+        "trace": {
+            "intent": "chat", "rewritten_query": "",
+            "steps": [{"name": "日常对话", "ms": ms,
+                       "detail": ("不检索资料，回答里没有引用" if not reason
+                                  else "生成服务不可用，没有作答")}],
+        },
+    }
+
+
+def _history(req: ChatRequest) -> List[dict]:
+    return [turn.model_dump() if hasattr(turn, "model_dump") else turn.dict()
+            for turn in req.history]
 
 
 def _log_gap(query: str, res, collection: str = "") -> None:
@@ -566,8 +593,51 @@ def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
     return payload
 
 
+def _daily_chat(req: ChatRequest) -> dict:
+    """日常对话：不检索、不校验引用，也不写缺口日志和缓存。"""
+    t0 = time.time()
+    metrics.bump("chat_total")
+    metrics.bump("chat_daily")
+    try:
+        text = daily_reply(_state.get("provider_impl"), req.query,
+                           _history(req), _clean_style(req.style))
+    except ProviderError as e:
+        metrics.bump("chat_refused")
+        return with_cache_meta(_daily_payload("", t0, "provider_error: %s" % e))
+    metrics.bump("chat_answered")
+    return with_cache_meta(_daily_payload(text, t0))
+
+
+def _daily_events(req: ChatRequest):
+    """日常对话的 SSE：status(daily) → delta* → done。不走检索与引用校验。"""
+    t0 = time.time()
+    metrics.bump("chat_total")
+    metrics.bump("chat_daily")
+    yield sse({"type": "status", "stage": "daily"})
+    parts = []
+    try:
+        for piece in daily_stream(_state.get("provider_impl"), req.query,
+                                  _history(req), _clean_style(req.style)):
+            if not piece:
+                continue
+            parts.append(piece)
+            yield sse({"type": "delta", "text": piece})
+    except ProviderError as e:
+        metrics.bump("chat_refused")
+        reason = "provider_error: %s" % e
+        yield sse({"type": "error", "message": "生成服务暂时不可用"})
+        yield sse({"type": "done",
+                   "data": with_cache_meta(_daily_payload("", t0, reason))})
+        return
+    metrics.bump("chat_answered")
+    yield sse({"type": "done",
+               "data": with_cache_meta(_daily_payload("".join(parts), t0))})
+
+
 @app.post("/chat")
 def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
+    if req.mode == "chat":
+        return _daily_chat(req)
     agent = _state.get("agent")
     pipeline = _pipeline_for(req.collection)
     if agent is None or pipeline is None:
@@ -579,9 +649,7 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
                 "trace": {"steps": [], "rewritten_query": "", "intent": "kb"}}
 
     t0 = time.time()
-    history = []
-    for turn in req.history:
-        history.append(turn.model_dump() if hasattr(turn, "model_dump") else turn.dict())
+    history = _history(req)
 
     # 改写只调一次轻量模型，放在锁外；真正的检索/生成仍在锁内串行。
     plan = agent.plan(req.query, history)
@@ -622,9 +690,13 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
     最终结果只认 done 里的 payload——引用校验和拒答规则与非流式完全一致。
     """
     agent = _state.get("agent")
-    pipeline = _pipeline_for(req.collection)
+    # 日常对话不碰检索库，连管线都不取，免得一个过期的库 id 把闲聊挡在 404
+    pipeline = None if req.mode == "chat" else _pipeline_for(req.collection)
 
     def events():
+        if req.mode == "chat":
+            yield from _daily_events(req)
+            return
         if agent is None or pipeline is None:
             data = (_empty_collection_payload(time.time())
                     if not _is_preset(req.collection) else {
@@ -638,9 +710,7 @@ def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
             return
 
         t0 = time.time()
-        history = []
-        for turn in req.history:
-            history.append(turn.model_dump() if hasattr(turn, "model_dump") else turn.dict())
+        history = _history(req)
 
         yield sse({"type": "status", "stage": "plan"})
         plan = agent.plan(req.query, history)

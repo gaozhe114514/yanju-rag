@@ -129,6 +129,17 @@ class DeepSeekProvider:
         return self.complete(messages, temperature=self.temperature,
                              max_tokens=self.max_tokens, json_mode=True)
 
+    def chat_stream(self, messages: List[Dict], temperature: float = 0.6,
+                    max_tokens: int = 800) -> Iterator[str]:
+        """日常对话的流式补全：纯文本，不开 JSON 模式。"""
+        yield from self._post_stream({
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        })
+
     def _post_stream(self, body: Dict) -> Iterator[str]:
         """按 SSE 读取 chat/completions，逐段吐出 delta.content。"""
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
