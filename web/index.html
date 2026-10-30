@@ -2286,6 +2286,136 @@
     }
     .ms-intro strong { color: var(--ink-2); font-weight: 600; }
 
+    /* v0.35：模式开关 / 题目卡 / 起步卡 */
+    .ms-chat-titles { flex: 1; min-width: 0; }
+    .ms-modes {
+      display: flex; flex: none; gap: 2px; padding: 2px; border-radius: 9px;
+      background: var(--cream);
+    }
+    .ms-mode {
+      display: inline-flex; align-items: center; gap: 6px; height: 26px;
+      padding: 0 9px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--muted); font-size: 11.5px; font-weight: 500;
+      transition: color .15s, background .15s;
+    }
+    .ms-mode:hover:not(:disabled) { color: var(--ink); }
+    .ms-mode.on {
+      background: var(--card); color: var(--ink); font-weight: 600;
+      box-shadow: var(--shadow-sm);
+    }
+    .ms-mode:disabled { color: var(--muted-soft); cursor: default; }
+    .ms-mode:disabled .ms-mode-dot { border-color: var(--line); background: transparent; }
+    .ms-mode-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      border: 1px solid var(--muted-soft); background: transparent;
+    }
+    .ms-mode.on .ms-mode-dot { border-color: var(--info); background: var(--info); }
+    .ms-mode:focus-visible { outline: 2px solid rgba(37, 99, 235, .45); outline-offset: 1px; }
+    .ms-mode-tag {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--muted-soft); font-size: 10.5px; letter-spacing: .08em;
+    }
+    .ms-mode-tag::before, .ms-mode-tag::after {
+      content: ''; flex: 1; height: 1px; background: var(--line);
+    }
+    .ms-starters {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0;
+    }
+    .ms-starter {
+      padding: 5px 10px; border: 1px dashed var(--line); border-radius: 999px;
+      background: transparent; color: var(--ink-2); font-size: 11.5px;
+      transition: border-color .15s, background .15s;
+    }
+    .ms-starter:hover { border-color: var(--info-line); background: var(--info-surface); }
+    .ms-starter:focus-visible { outline: 2px solid rgba(37, 99, 235, .45); outline-offset: 1px; }
+    .ms-starter-note {
+      padding: 8px 10px; border: 1px dashed var(--line); border-radius: 10px;
+      color: var(--muted); font-size: 11.5px; line-height: 1.7;
+    }
+
+    .ms-quiz {
+      margin-top: 10px; border: 1px solid var(--info-line); border-radius: 12px;
+      background: var(--card); overflow: hidden;
+    }
+    .ms-quiz.ok { border-color: color-mix(in srgb, var(--ok) 36%, var(--line)); }
+    .ms-quiz.bad { border-color: color-mix(in srgb, var(--danger) 30%, var(--line)); }
+    .ms-quiz-head {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-bottom: 1px solid var(--line); background: var(--info-surface);
+    }
+    .ms-quiz-kp { color: var(--ink-2); font-size: 11.5px; font-weight: 600; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ms-quiz-tag { margin-left: auto; color: var(--info); font-size: 10.5px; flex: none; }
+    .ms-quiz-diff { display: flex; gap: 2px; margin-left: auto; flex: none; }
+    .ms-quiz-diff i {
+      width: 4px; height: 4px; border-radius: 50%; background: var(--line);
+    }
+    .ms-quiz-diff i.on { background: var(--info); }
+    .ms-quiz-prompt {
+      padding: 11px 12px 9px; color: var(--ink); font-size: 13px; font-weight: 600;
+      line-height: 1.7; white-space: pre-wrap;
+    }
+    .ms-quiz-opts { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+    .ms-quiz-opt {
+      display: flex; align-items: flex-start; gap: 8px; width: 100%;
+      padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px;
+      background: var(--card); text-align: left; transition: border-color .15s, background .15s;
+    }
+    .ms-quiz-opt:hover:not(:disabled) { border-color: var(--info-line); background: var(--info-surface); }
+    .ms-quiz-opt:disabled { cursor: default; }
+    .ms-quiz-opt.right { border-color: var(--ok); background: var(--ok-surface); }
+    .ms-quiz-opt.wrong { border-color: var(--danger); background: var(--danger-surface); }
+    .ms-quiz-mark {
+      display: grid; place-items: center; flex: none; width: 17px; height: 17px;
+      margin-top: 1px; border: 1px solid var(--line); border-radius: 50%;
+      color: var(--muted); font-size: 9.5px; font-weight: 600;
+    }
+    .ms-quiz-opt.right .ms-quiz-mark { border-color: var(--ok); color: var(--ok); }
+    .ms-quiz-opt.wrong .ms-quiz-mark { border-color: var(--danger); color: var(--danger); }
+    .ms-quiz-body { min-width: 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.65; }
+    .ms-quiz-text {
+      display: block; width: calc(100% - 24px); margin: 0 12px; padding: 9px 10px;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--bg);
+      color: var(--ink-2); font: inherit; font-size: 12.5px; line-height: 1.65;
+      resize: vertical;
+    }
+    .ms-quiz-text:focus { outline: none; border-color: var(--info-line); }
+    .ms-quiz-text:disabled { opacity: .7; }
+    .ms-quiz-acts {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    }
+    .ms-quiz-hint { color: var(--muted-soft); font-size: 11px; }
+    .ms-quiz-send {
+      margin-left: auto; height: 30px; padding: 0 12px; border: 0; border-radius: 8px;
+      background: var(--info); color: var(--bg); font-size: 12px; font-weight: 600;
+    }
+    .ms-quiz-send:disabled { opacity: .55; }
+    .ms-verdict {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;
+      padding: 9px 12px; border-top: 1px solid var(--line);
+      font-size: 12px; line-height: 1.6; color: var(--ink-2);
+    }
+    .ms-verdict.ok { color: var(--ok); }
+    .ms-verdict.bad { color: var(--danger); }
+    .ms-verdict b { font-weight: 600; }
+    .ms-quiz-expl {
+      padding: 0 12px 10px; color: var(--muted); font-size: 11.5px; line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .ms-quiz-mastered {
+      padding: 8px 12px; border-top: 1px solid var(--line); background: var(--ok-surface);
+      color: var(--ok); font-size: 11.5px; font-weight: 600;
+    }
+    .ms-quiz-note { padding: 0 12px 10px; color: var(--muted-soft); font-size: 11px; }
+    .ms-rail-bar {
+      height: 3px; margin: 0 14px 10px; border-radius: 2px; background: var(--line);
+      overflow: hidden;
+    }
+    .ms-rail-bar i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+    .ms-pt.current { background: var(--info-surface); }
+    .ms-pt.current .ms-pt-name { font-weight: 600; }
+    .ms-pt.current .ms-pt-dot { border-color: var(--info); }
+
     .ms-ask {
       margin-top: 10px; border: 1px solid var(--info-line); border-radius: 12px;
       background: var(--card); overflow: hidden;
@@ -3250,8 +3380,16 @@
       .map(p => {
         const path = Object.assign({}, p, {
           done: p.done && typeof p.done === 'object' ? p.done : {},
-          picks: p.picks && typeof p.picks === 'object' ? p.picks : {}
+          picks: p.picks && typeof p.picks === 'object' ? p.picks : {},
+          // v0.35：模式是会话状态；老数据没有就按有没有大纲推。
+          mode: p.mode === 'study' || p.mode === 'review' || p.mode === 'outline'
+            ? p.mode
+            : ((p.modules || []).length ? 'study' : 'outline'),
+          pending: p.pending && typeof p.pending === 'object' ? p.pending : null
         });
+        (path.modules || []).forEach(m => (m.points || []).forEach(pt => {
+          if (pt && !Array.isArray(pt.attempts)) pt.attempts = [];
+        }));
         // v0.34 之前新建时会把 meta 里的第一科（数据结构）写进 subject，那是编的。
         // 没资料、没大纲、也没步骤的老路线，把科目清掉，交给导师按资料重新定。
         if (path.subjectSource === undefined) {
@@ -9001,7 +9139,89 @@
     });
   }
 
-  function masteryTurnBody(path, message, history) {
+  /* ---------- v0.35：三条模式（定大纲 / 学习 / 复习） ---------- */
+
+  const MASTERY_MODES = [
+    ['outline', '定大纲', '和导师一起把大纲定下来、改大纲'],
+    ['study', '学习', '按大纲一个个知识点学，讲完出题'],
+    ['review', '复习', '只练到期的知识点']
+  ];
+  const REVIEW_DAYS = [1, 3, 7, 21];
+
+  function masteryMode(path) {
+    return path.mode === 'study' || path.mode === 'review' ? path.mode : 'outline';
+  }
+
+  function masterySetMode(path, mode) {
+    if (masteryMode(path) === mode) return;
+    if (mode !== 'outline' && !(path.steps || []).length) {
+      toast('先把大纲定下来，才有得学');
+      return;
+    }
+    path.mode = mode;
+    path.updatedAt = Date.now();
+    saveMastery();
+    renderMastery();
+  }
+
+  // 服务端判完分会把整份大纲带回来；这里只把每点的证据合并回去，不动结构
+  function mergeMasteryState(path, outline) {
+    if (!outline || !Array.isArray(outline.modules)) return;
+    const index = {};
+    outline.modules.forEach(m => (m.points || []).forEach(p => { index[p.id] = p; }));
+    masteryModules(path).forEach(m => (m.points || []).forEach(p => {
+      const s = index[p.id];
+      if (!s) return;
+      if (Array.isArray(s.attempts)) p.attempts = s.attempts;
+      p.masteredAt = Number(s.masteredAt) || 0;
+      p.manual = !!s.manual;
+      if (s.done || p.manual) path.done[p.id] = true;
+      else delete path.done[p.id];
+    }));
+  }
+
+  function masteryPointById(path, id) {
+    let found = null;
+    masteryModules(path).forEach(m => (m.points || []).forEach(p => {
+      if (p.id === id) found = {point: p, module: m};
+    }));
+    return found;
+  }
+
+  // 掌握后按答对的次数往后顺延复习：1 / 3 / 7 / 21 天
+  function masteryNextReview(point) {
+    const at = Number(point.masteredAt) || 0;
+    if (!at) return 0;
+    const okAfter = (point.attempts || []).filter(a => Number(a.at) >= at && a.ok).length;
+    const days = REVIEW_DAYS[Math.min(okAfter, REVIEW_DAYS.length - 1)];
+    return at + days * 86400000;
+  }
+
+  function masteryDue(path, now) {
+    const t = now || Date.now();
+    const list = [];
+    masteryModules(path).forEach(m => (m.points || []).forEach(p => {
+      if (!masteryPointDone(path, p.id)) return;
+      const due = masteryNextReview(p);
+      if (due && due <= t) list.push({id: p.id, name: p.name, due});
+    }));
+    return list;
+  }
+
+  function masteryCurrentPoint(path) {
+    const modules = masteryModules(path);
+    for (let i = 0; i < modules.length; i++) {
+      const points = modules[i].points || [];
+      for (let j = 0; j < points.length; j++) {
+        if (!masteryPointDone(path, points[j].id)) {
+          return {point: points[j], module: modules[i]};
+        }
+      }
+    }
+    return null;
+  }
+
+  function masteryTurnBody(path, message, history, answer) {
     return {
       goal: path.goal || path.name || '',
       emoji: path.emoji || '',
@@ -9019,10 +9239,18 @@
           objective: m.objective || '',
           points: (m.points || []).map(p => ({
             id: p.id, name: p.name, type: p.type,
-            done: masteryPointDone(path, p.id)
+            done: masteryPointDone(path, p.id),
+            attempts: (p.attempts || []).slice(-40),
+            masteredAt: Number(p.masteredAt) || 0,
+            manual: !!p.manual
           }))
         }))
       },
+      mode: masteryMode(path),
+      pending: path.pending || null,
+      answer: answer || null,
+      review: masteryDue(path).map(x => x.name),
+      now: Date.now(),
       messages: (history || []).slice(-10).map(m => ({
         role: m.role, content: String(m.content || '').slice(0, 1500)
       })),
@@ -9030,13 +9258,13 @@
     };
   }
 
-  async function masterySend(path, text) {
+  async function masterySend(path, text, answer) {
     if (!path || path.busy) return;
     text = String(text || '').trim();
     if (!text) return;
     const history = (path.chat || []).slice();
     path.chat = path.chat || [];
-    path.chat.push({role: 'user', content: text, at: Date.now()});
+    path.chat.push({role: 'user', content: text, at: Date.now(), mode: masteryMode(path)});
     path.busy = true;
     state.masteryStageText = '导师正在读资料…';
     saveMastery();
@@ -9048,24 +9276,51 @@
     }, 7000);
     try {
       const res = await api('/mastery/turn', {
-        method: 'POST', body: masteryTurnBody(path, text, history)
+        method: 'POST', body: masteryTurnBody(path, text, history, answer)
       });
-      path.chat.push({
+      const mode = res.mode || masteryMode(path);
+      path.mode = mode;
+      const msg = {
         role: 'assistant',
         content: res.reply || '',
         ask: res.ask || null,
         offline: !!res.offline,
         stage: res.stage || '',
+        mode: mode,
         at: Date.now()
-      });
+      };
+      const question = res.quiz || res.assess || null;
+      if (question) msg.quiz = question;
+      path.chat.push(msg);
       if (res.profile) path.learner = Object.assign({}, path.learner || {}, res.profile);
-      if (res.stage) path.stage = res.stage;
-      if (res.outline) {
+      if (res.stage && mode === 'outline') path.stage = res.stage;
+      if (answer) {
+        // 作答已经判完：把结果挂到出题那条消息上，挂着的题收起来
+        path.pending = null;
+        if (res.grade) {
+          for (let i = path.chat.length - 2; i >= 0; i--) {
+            const m = path.chat[i];
+            if (m.quiz && res.grade.questionId && m.quiz.questionId === res.grade.questionId) {
+              m.grade = res.grade;
+              break;
+            }
+          }
+        }
+      }
+      if (res.outline && mode === 'outline') {
         applyMasteryOutline(path, res.outline);
         await linkMasteryCards(path);
         toast('大纲已更新：' + masteryModules(path).length + ' 个模块 · ' +
           (path.steps || []).length + ' 个知识点');
+      } else if (res.outline) {
+        // 学习 / 复习模式：服务端把证据带回来了，只合并进度，不重排结构
+        mergeMasteryState(path, res.outline);
+        checkMasteryComplete(path);
+        if (res.mastered && res.mastered.name) {
+          toast('「' + res.mastered.name + '」掌握了');
+        }
       }
+      if (question) path.pending = Object.assign({}, question, {at: Date.now()});
       path.updatedAt = Date.now();
     } catch (e) {
       if (e.status === 401) showAuthNeeded('访问口令无效，请重新输入。');
@@ -9084,8 +9339,9 @@
   function scheduleMasteryOpening(path) {
     if (state.masteryAutoFor === path.id) return;
     state.masteryAutoFor = path.id;
-    // 只有刚建好、还没大纲的路才自动开口；已有大纲的路点进导师页不打扰
+    // 只有刚建好、还没大纲的路、在定大纲模式下才自动开口
     if ((path.steps || []).length) return;
+    if (masteryMode(path) !== 'outline') return;
     setTimeout(() => {
       const live = masteryById(path.id);
       if (!live || live.busy) return;
@@ -9268,6 +9524,105 @@
     return row;
   }
 
+  // 一道挂在会话里的题：选择卡或自述卡。答完就地显示判定和解释。
+  function masteryQuestionCard(path, msg) {
+    const q = msg.quiz;
+    if (!q) return null;
+    const grade = msg.grade || null;
+    const live = !grade && path.pending &&
+      path.pending.questionId === q.questionId;
+    const card = el('div', 'ms-quiz' + (grade ? (grade.ok ? ' ok' : ' bad') : ''));
+    const head = el('div', 'ms-quiz-head');
+    const kp = masteryPointById(path, q.kpId);
+    head.appendChild(el('span', 'ms-quiz-kp', kp ? kp.point.name : '这一个知识点'));
+    if (q.kind === 'assess') {
+      head.appendChild(el('span', 'ms-quiz-tag', '用自己的话说'));
+    } else {
+      const dots = el('span', 'ms-quiz-diff');
+      const n = Math.max(1, Math.min(5, Number(q.difficulty) || 1));
+      for (let i = 0; i < 5; i++) {
+        dots.appendChild(el('i', i < n ? 'on' : null));
+      }
+      dots.title = '难度 ' + n + ' / 5';
+      head.appendChild(dots);
+    }
+    card.appendChild(head);
+    card.appendChild(el('div', 'ms-quiz-prompt', q.prompt || ''));
+
+    if (q.kind === 'assess') {
+      const ta = el('textarea', 'ms-quiz-text');
+      ta.rows = 4;
+      ta.placeholder = '不用照书，按你的理解写清楚就行';
+      ta.disabled = !live;
+      card.appendChild(ta);
+      if (live) {
+        const row = el('div', 'ms-quiz-acts');
+        const send = el('button', 'ms-quiz-send', path.busy ? '等待中' : '交给你看 →');
+        send.type = 'button';
+        send.disabled = !!path.busy;
+        send.addEventListener('click', () => {
+          const text = ta.value.trim();
+          if (!text) { toast('先写两句再交', 'err'); return; }
+          masteryAnswer(path, '', text);
+        });
+        row.appendChild(el('span', 'ms-quiz-hint', '写得越具体，导师越知道差在哪'));
+        row.appendChild(send);
+        card.appendChild(row);
+      }
+    } else {
+      const opts = el('div', 'ms-quiz-opts');
+      (q.options || []).forEach(opt => {
+        const row = el('button', 'ms-quiz-opt');
+        row.type = 'button';
+        if (!live) row.disabled = true;
+        if (grade) {
+          if (opt.label === q.key) row.classList.add('right');
+          else if (opt.label === grade.choice) row.classList.add('wrong');
+        }
+        row.appendChild(el('span', 'ms-quiz-mark', opt.label));
+        row.appendChild(el('span', 'ms-quiz-body', opt.body));
+        row.addEventListener('click', () => {
+          if (!live) return;
+          masteryAnswer(path, opt.label, '');
+        });
+        opts.appendChild(row);
+      });
+      card.appendChild(opts);
+    }
+
+    if (grade) {
+      const verdict = el('div', 'ms-verdict' + (grade.ok ? ' ok' : ' bad'));
+      verdict.appendChild(el('b', null, grade.ok ? '✓ 答对了' : '✗ 这道没答对'));
+      if (!grade.ok && grade.correctLabel) {
+        verdict.appendChild(document.createTextNode(' · 正确答案 ' + grade.correctLabel));
+      }
+      card.appendChild(verdict);
+      if (grade.explanation) card.appendChild(el('div', 'ms-quiz-expl', grade.explanation));
+      if (grade.mastered) {
+        card.appendChild(el('div', 'ms-quiz-mastered', '这个知识点的门槛过了'));
+      }
+    } else if (live) {
+      card.appendChild(el('div', 'ms-quiz-note',
+        '选一个就好——这一轮到此为止，答完导师再接着讲。'));
+    }
+    return card;
+  }
+
+  function masteryAnswer(path, choice, text) {
+    if (path.busy || !path.pending) return;
+    const q = path.pending;
+    let say = text || '';
+    if (choice) {
+      const opt = (q.options || []).find(o => o.label === choice);
+      say = choice + '. ' + (opt ? opt.body : '');
+    }
+    masterySend(path, say, {
+      questionId: q.questionId,
+      choice: choice || '',
+      text: text || ''
+    });
+  }
+
   function masteryTutorMsg(path, msg) {
     const row = el('div', 'ms-msg tutor' + (msg.error ? ' error' : ''));
     const body = el('div', 'ms-tutor-body');
@@ -9277,27 +9632,51 @@
       if (msg.content) body.appendChild(mdLite(msg.content));
       const card = masteryAskCard(path, msg);
       if (card) body.appendChild(card);
+      const quiz = masteryQuestionCard(path, msg);
+      if (quiz) body.appendChild(quiz);
       if (msg.offline) body.appendChild(el('div', 'ms-note', '离线演示：这一轮没有接生成模型'));
     }
     row.appendChild(body);
     return row;
   }
 
+  const MASTERY_MODE_COPY = {
+    outline: {
+      title: '导师 · 定大纲',
+      sub: '导师读过资料，会先问你几件资料里看不出来的事，再起草大纲。',
+      placeholder: '说改哪里，或者继续和导师聊…',
+      starters: []
+    },
+    study: {
+      title: '导师 · 学习',
+      sub: '讲完一小段就出题；出题这一轮就结束，你答完导师再接着讲。',
+      placeholder: '有问题就问，或者说说想先学哪一块…',
+      starters: ['从当前这个知识点开始', '先讲讲这个模块整体在解决什么', '我哪里最弱？']
+    },
+    review: {
+      title: '导师 · 复习',
+      sub: '只练到期的知识点：答对就顺延下次复习，答错就回去补。',
+      placeholder: '开始复习，或者问一个上次没弄懂的点…',
+      starters: ['开始复习到期的知识点']
+    }
+  };
+
   function masteryComposer(path) {
+    const mode = masteryMode(path);
+    const copy = MASTERY_MODE_COPY[mode];
     const box = el('div', 'ms-composer');
-    if (path.stage === 'approved' && (path.steps || []).length) {
+    if (mode === 'outline' && path.stage === 'approved' && (path.steps || []).length) {
       const start = el('button', 'ms-start', '大纲可以了，开始学习 →');
       start.type = 'button';
-      start.addEventListener('click', () => {
-        state.masteryPane = 'study';
-        renderMastery();
-      });
+      start.addEventListener('click', () => masterySetMode(path, 'study'));
       box.appendChild(start);
     }
     const row = el('div', 'ms-composer-row');
     const ta = el('textarea', 'ms-input');
     ta.rows = 1;
-    ta.placeholder = '说改哪里，或者继续和导师聊…';
+    ta.placeholder = path.pending
+      ? '先答上面的题，或者直接打字说出你的答案…'
+      : copy.placeholder;
     ta.setAttribute('aria-label', '给导师的话');
     const send = el('button', 'ms-send', path.busy ? '等待中' : '发送');
     send.type = 'button';
@@ -9323,11 +9702,27 @@
 
   function masteryOutlineRail(path) {
     const stats = masteryStats(path);
+    const cur = masteryCurrentPoint(path);
     const aside = el('aside', 'ms-rail');
     const head = el('div', 'ms-rail-head');
     head.appendChild(el('div', 'ms-rail-title', '大纲'));
-    head.appendChild(el('div', 'ms-rail-count', stats.done + ' / ' + stats.total));
+    const count = el('div', 'ms-rail-count');
+    count.appendChild(el('b', null, String(stats.done)));
+    count.appendChild(document.createTextNode(' / ' + stats.total));
+    head.appendChild(count);
     aside.appendChild(head);
+    if (stats.total) {
+      const bar = el('div', 'ms-rail-bar');
+      bar.setAttribute('role', 'progressbar');
+      bar.setAttribute('aria-valuemin', '0');
+      bar.setAttribute('aria-valuemax', String(stats.total));
+      bar.setAttribute('aria-valuenow', String(stats.done));
+      bar.setAttribute('aria-label', '已掌握 ' + stats.done + ' / ' + stats.total);
+      const fill = el('i');
+      fill.style.width = stats.pct + '%';
+      bar.appendChild(fill);
+      aside.appendChild(bar);
+    }
     const body = el('div', 'ms-rail-body');
     if (!masteryModules(path).length) {
       body.appendChild(el('p', 'ms-rail-empty',
@@ -9345,10 +9740,12 @@
       if (m.objective) sec.appendChild(el('div', 'ms-mod-obj', m.objective));
       points.forEach(p => {
         const done = masteryPointDone(path, p.id);
-        const row = el('button', 'ms-pt' + (done ? ' done' : ''));
+        const current = !!(cur && cur.point && cur.point.id === p.id);
+        const row = el('button', 'ms-pt' + (done ? ' done' : '') + (current ? ' current' : ''));
         row.type = 'button';
         row.setAttribute('aria-label',
-          p.name + '，' + (KP_TYPE_LABELS[p.type] || '概念') + (done ? '，已掌握' : ''));
+          p.name + '，' + (KP_TYPE_LABELS[p.type] || '概念') +
+          (done ? '，已掌握' : current ? '，当前' : ''));
         const dot = el('span', 'ms-pt-dot');
         if (done) dot.textContent = '✓';
         row.appendChild(dot);
@@ -9357,9 +9754,9 @@
         kind.title = KP_TYPE_HINTS[p.type] || '';
         row.appendChild(kind);
         row.addEventListener('click', () => {
-          state.masteryPane = 'study';
-          state.masteryOpen = p.id;
-          renderMastery();
+          if (done) { toast('这个知识点已经掌握了'); return; }
+          masterySetMode(path, 'study');
+          masterySend(path, '先讲「' + p.name + '」这个知识点。');
         });
         sec.appendChild(row);
       });
@@ -9369,23 +9766,77 @@
     return aside;
   }
 
+  function masteryModeSwitch(path) {
+    const mode = masteryMode(path);
+    const hasOutline = !!(path.steps || []).length;
+    const bar = el('div', 'ms-modes');
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', '会话模式');
+    MASTERY_MODES.forEach(([key, label, hint]) => {
+      const on = key === mode;
+      const b = el('button', 'ms-mode' + (on ? ' on' : ''));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.title = hint;
+      if (key !== 'outline' && !hasOutline) {
+        b.disabled = true;
+        b.title = '先把大纲定下来';
+      } else if (path.busy) {
+        b.disabled = true;
+        b.title = '等导师这一轮说完再切';
+      }
+      b.appendChild(el('span', 'ms-mode-dot'));
+      b.appendChild(document.createTextNode(label));
+      b.addEventListener('click', () => masterySetMode(path, key));
+      bar.appendChild(b);
+    });
+    return bar;
+  }
+
+  function masteryStarters(path, mode) {
+    if (mode === 'outline' || path.busy || path.pending) return null;
+    const chat = path.chat || [];
+    if (chat.some(m => m.role === 'user' && (m.mode || 'outline') === mode)) return null;
+    const copy = MASTERY_MODE_COPY[mode];
+    const box = el('div', 'ms-starters');
+    if (mode === 'review') {
+      const due = masteryDue(path);
+      if (!due.length) {
+        box.appendChild(el('div', 'ms-starter-note',
+          '现在没有到期的知识点。复习计划按 1 / 3 / 7 / 21 天往后排，到时候这里会出现入口。'));
+        return box;
+      }
+      const label = '复习到期的 ' + due.length + ' 个知识点';
+      const b = el('button', 'ms-starter', label);
+      b.type = 'button';
+      b.addEventListener('click', () => masterySend(path, '开始复习：' + due.slice(0, 6).map(d => d.name).join('、')));
+      box.appendChild(b);
+      return box;
+    }
+    const current = masteryCurrentPoint(path);
+    const items = copy.starters.slice();
+    if (current) {
+      items[0] = '从「' + current.point.name + '」开始';
+    }
+    items.forEach(text => {
+      const b = el('button', 'ms-starter', text);
+      b.type = 'button';
+      b.addEventListener('click', () => masterySend(path, text));
+      box.appendChild(b);
+    });
+    return box;
+  }
+
   function masteryChatPanel(path) {
+    const mode = masteryMode(path);
+    const copy = MASTERY_MODE_COPY[mode];
     const panel = el('section', 'ms-chat');
     const head = el('div', 'ms-chat-head');
-    const titleBox = el('div');
-    titleBox.appendChild(el('div', 'ms-chat-title', '导师 · 定大纲'));
-    titleBox.appendChild(el('div', 'ms-chat-sub',
-      '导师读过资料，会先问你几件资料里看不出来的事，再起草大纲。'));
+    const titleBox = el('div', 'ms-chat-titles');
+    titleBox.appendChild(el('div', 'ms-chat-title', copy.title));
+    titleBox.appendChild(el('div', 'ms-chat-sub', copy.sub));
     head.appendChild(titleBox);
-    if ((path.steps || []).length) {
-      const study = el('button', 'ms-chat-link', '看已排好的大纲 →');
-      study.type = 'button';
-      study.addEventListener('click', () => {
-        state.masteryPane = 'study';
-        renderMastery();
-      });
-      head.appendChild(study);
-    }
+    head.appendChild(masteryModeSwitch(path));
     panel.appendChild(head);
 
     const log = el('div', 'ms-log');
@@ -9394,14 +9845,25 @@
       const hint = el('div', 'ms-intro');
       hint.appendChild(el('strong', null, '大纲已经有一版了。'));
       hint.appendChild(document.createTextNode(
-        ' 想让导师重排、加模块或删模块，直接说；也可以回「学习」按现在的大纲走。'));
+        ' 想让导师重排、加模块或删模块，切回「定大纲」直接说；点「学习」就开始按大纲走。'));
       log.appendChild(hint);
     }
+    let lastMode = 'outline';
     (path.chat || []).forEach(m => {
+      const mMode = m.mode || 'outline';
+      if (m.role === 'assistant' && mMode !== lastMode) {
+        lastMode = mMode;
+        const tag = el('div', 'ms-mode-tag');
+        tag.appendChild(el('span', null,
+          mMode === 'study' ? '学习' : mMode === 'review' ? '复习' : '定大纲'));
+        log.appendChild(tag);
+      }
       log.appendChild(m.role === 'user' ? masteryUserMsg(m) : masteryTutorMsg(path, m));
     });
     if (path.busy) log.appendChild(masteryThinkingRow());
     panel.appendChild(log);
+    const starters = masteryStarters(path, mode);
+    if (starters) panel.appendChild(starters);
     panel.appendChild(masteryComposer(path));
     requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
     return panel;
@@ -9425,7 +9887,7 @@
     row.style.marginTop = '12px';
     const a = el('button', 'primary', '和导师定大纲');
     a.addEventListener('click', () => {
-      state.masteryPane = 'tutor';
+      path.mode = 'outline';
       renderMastery();
     });
     const b = el('button', 'ghost', '自己写模块');
@@ -9528,32 +9990,30 @@
     return box;
   }
 
-  function masteryPaneSwitch(path, stats, pane) {
+  function masteryPaneSwitch(path, stats, mode) {
     const bar = el('div', 'mp-panes');
     bar.setAttribute('role', 'tablist');
-    bar.setAttribute('aria-label', '导师与学习');
-    [
-      ['tutor', '导师', '和导师定大纲、改大纲'],
-      ['study', '学习', '按大纲一步步走']
-    ].forEach(([key, label, hint]) => {
-      const b = el('button', 'mp-pane' + (pane === key ? ' on' : ''));
+    bar.setAttribute('aria-label', '精通之路的三种模式');
+    const due = masteryDue(path).length;
+    MASTERY_MODES.forEach(([key, label, hint]) => {
+      const b = el('button', 'mp-pane' + (mode === key ? ' on' : ''));
       b.type = 'button';
       b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', pane === key ? 'true' : 'false');
+      b.setAttribute('aria-selected', mode === key ? 'true' : 'false');
       b.title = hint;
       b.appendChild(el('span', 'mp-pane-label', label));
       if (key === 'study' && stats.total) {
         b.appendChild(el('span', 'mp-pane-count', stats.done + '/' + stats.total));
       }
-      if (key === 'study' && !stats.total) {
+      if (key === 'review' && due) {
+        b.appendChild(el('span', 'mp-pane-count', String(due)));
+      }
+      if (key !== 'outline' && !stats.total) {
         b.disabled = true;
         b.setAttribute('aria-disabled', 'true');
         b.appendChild(el('span', 'mp-pane-hint', '待大纲'));
       }
-      b.addEventListener('click', () => {
-        state.masteryPane = key;
-        renderMastery();
-      });
+      b.addEventListener('click', () => masterySetMode(path, key));
       bar.appendChild(b);
     });
     return bar;
@@ -9567,12 +10027,9 @@
       state.masteryOpen = next ? next.id : '';
       state.masteryPane = '';
     }
-    // 没大纲时只能待在导师这边；有大纲默认看学习
-    if (state.masteryPane !== 'tutor' && state.masteryPane !== 'study') {
-      state.masteryPane = stats.total ? 'study' : 'tutor';
-    }
-    if (!stats.total) state.masteryPane = 'tutor';
-    const pane = state.masteryPane;
+    // 没大纲只能待在定大纲；有大纲默认落到学习
+    if (!stats.total) path.mode = 'outline';
+    const pane = masteryMode(path);
 
     const back = el('button', 'mp-back', '← 全部路线');
     back.addEventListener('click', () => {
@@ -9616,8 +10073,8 @@
     root.appendChild(head);
     root.appendChild(masteryPaneSwitch(path, stats, pane));
 
-    // 导师工作台：左边大纲，右边会话；大纲没排出来之前也在这里
-    if (pane === 'tutor') {
+    // 三种模式共用同一个工作台：左边大纲，右边会话
+    if (pane === 'outline' || masteryModules(path).length) {
       renderMasteryStudio(root, path);
       return;
     }

@@ -96,11 +96,22 @@ class MasteryMaterial(BaseModel):
     detail: str = Field("", max_length=2000)
 
 
+class MasteryAttempt(BaseModel):
+    """一次作答的证据：对错、难度、时间。掌握由这些算，不由模型说。"""
+    ok: bool = False
+    diff: int = Field(1, ge=1, le=5)
+    at: int = 0
+    kind: str = Field("quiz", max_length=12)
+
+
 class MasteryPoint(BaseModel):
-    id: str = Field("", max_length=40)
+    id: str = Field("", max_length=60)
     name: str = Field("", max_length=100)
     type: str = Field("concept", max_length=20)
     done: bool = False
+    attempts: List[MasteryAttempt] = Field(default_factory=list)
+    masteredAt: int = 0
+    manual: bool = False
 
 
 class MasteryModule(BaseModel):
@@ -115,6 +126,25 @@ class MasteryOutline(BaseModel):
     modules: List[MasteryModule] = Field(default_factory=list)
 
 
+class MasteryQuiz(BaseModel):
+    """挂在学习者那里的一道题；key 只在服务端判分时用，不画到界面上。"""
+    questionId: str = Field("", max_length=60)
+    kpId: str = Field("", max_length=60)
+    prompt: str = Field("", max_length=1200)
+    options: List[Dict[str, str]] = Field(default_factory=list)
+    key: str = Field("", max_length=40)
+    explanation: str = Field("", max_length=1200)
+    difficulty: int = Field(2, ge=1, le=5)
+    kind: str = Field("quiz", max_length=12)
+    key_points: List[str] = Field(default_factory=list)
+
+
+class MasteryAnswer(BaseModel):
+    questionId: str = Field("", max_length=60)
+    choice: str = Field("", max_length=20)
+    text: str = Field("", max_length=2000)
+
+
 class MasteryTurnRequest(BaseModel):
     """精通之路的一轮导师会话。状态放在浏览器，这里只收一份快照。"""
     goal: str = Field("", max_length=2000)
@@ -125,6 +155,12 @@ class MasteryTurnRequest(BaseModel):
     outline: MasteryOutline = Field(default_factory=MasteryOutline)
     messages: List[ChatTurn] = Field(default_factory=list)
     message: str = Field("", max_length=2000)
+    # v0.35：三条模式。没传时按有没有大纲推。
+    mode: str = Field("", max_length=12)
+    pending: Optional[MasteryQuiz] = None
+    answer: Optional[MasteryAnswer] = None
+    review: List[str] = Field(default_factory=list)
+    now: int = 0
 
 
 class CollectionRequest(BaseModel):

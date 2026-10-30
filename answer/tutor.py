@@ -11,9 +11,10 @@
    "outline": {...}|null, "stage": "intake|draft|approved"}
 前端据此决定显示导师的话、一张结构化问答卡，还是把大纲写进路线。
 """
+import hashlib
 import json
 import re
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from .providers import ProviderError, parse_payload
 
@@ -203,10 +204,12 @@ def clean_outline(raw, previous=None) -> Optional[Dict]:
             if ptype not in KP_TYPES:
                 ptype = "concept"
             points.append({
-                "id": _clip(old_point.get("id"), 40) or ("%s-p%d" % (module_id, pi + 1)),
+                "id": _clip(old_point.get("id"), 60) or ("%s-p%d" % (module_id, pi + 1)),
                 "name": pname,
                 "type": ptype,
                 "done": bool(old_point.get("done")),
+                "attempts": list(old_point.get("attempts") or []),
+                "masteredAt": int(old_point.get("masteredAt") or 0),
             })
             total += 1
         if not points:
@@ -323,8 +326,8 @@ def _parse_result(text: str, previous) -> dict:
             "outline": outline, "stage": stage, "offline": False}
 
 
-def run_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:
-    """跑一轮导师会话。模型不可用时退回离线脚本，并在回复里说清楚。"""
+def _run_outline_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:
+    """定大纲模式下的一轮（v0.34 的行为原样保留）。"""
     if provider is None or not hasattr(provider, "complete"):
         return offline_turn(payload, digest)
 
@@ -435,3 +438,473 @@ def offline_outline(payload: dict, digest: Sequence[dict]) -> Optional[Dict]:
     if len(modules) < 2:
         return None
     return clean_outline({"name": _clip(payload.get("goal"), 30), "modules": modules})
+
+
+# ---------------------------------------------------------------------------
+# v0.35：三条模式（outline / study / review）
+#
+# 照 DeepTutor 的分工：模型负责讲什么、出什么题；「有没有掌握」由这里的
+# 纯函数按作答证据算，模型说了不算。一轮最多挂一道题，出题就结束这一轮，
+# 学习者作答是下一条消息——所以 /mastery/turn 收到的 answer 是上一轮那道题
+# 的答案，判分在这里做完，再把既成事实交给模型解释。
+# ---------------------------------------------------------------------------
+
+MODES = ("outline", "study", "review")
+QUAL_TYPES = ("concept", "design")
+GATE_WINDOW = 4
+GATE_SCORE = 0.75
+GATE_DIFF = 2
+
+
+def normalize_mode(raw, outline=None) -> str:
+    """没传模式时：有大纲就是学习，没大纲就是定大纲（和 DeepTutor 一致）。"""
+    mode = str(raw or "").strip().lower()
+    if mode in MODES:
+        return mode
+    return "study" if _all_points(outline) else "outline"
+
+
+def _all_points(outline) -> List[Dict]:
+    rows = []
+    for module in (outline or {}).get("modules") or []:
+        for point in module.get("points") or []:
+            rows.append({"module": module, "point": point})
+    return rows
+
+
+def _find_point(outline, kp_id) -> Optional[Dict]:
+    target = str(kp_id or "")
+    for row in _all_points(outline):
+        if str(row["point"].get("id") or "") == target:
+            return row["point"]
+    return None
+
+
+def _quiz_attempts(point) -> List[Dict]:
+    return [a for a in (point.get("attempts") or [])
+            if isinstance(a, dict) and a.get("kind") != "assess"]
+
+
+def engine_mastered(point) -> bool:
+    """掌握只由证据算：概念/判断要有一次通过的自述，其余看最近几次作答。"""
+    attempts = [a for a in (point.get("attempts") or []) if isinstance(a, dict)]
+    if point.get("type") in QUAL_TYPES:
+        return any(a.get("kind") == "assess" and a.get("ok") for a in attempts)
+    quiz = _quiz_attempts(point)[-GATE_WINDOW:]
+    if len(quiz) < 2 or not quiz[-1].get("ok"):
+        return False
+    score = sum(1 for a in quiz if a.get("ok")) / float(len(quiz))
+    # 门槛要见过一道有难度的题：只对回忆题不算掌握
+    diff = max([int(a.get("diff") or 1) for a in quiz if a.get("ok")] or [0])
+    return score >= GATE_SCORE and diff >= GATE_DIFF
+
+
+def _point_done(point) -> bool:
+    return bool(point.get("done")) or engine_mastered(point)
+
+
+def current_point(outline) -> Optional[Dict]:
+    """下一步该学的知识点：按模块顺序，第一个没掌握的。"""
+    for row in _all_points(outline):
+        if not _point_done(row["point"]):
+            return row
+    return None
+
+
+def _norm_label(raw) -> str:
+    text = str(raw or "").strip().upper()
+    match = re.match(r"^([A-Z0-9])", text)
+    return match.group(1) if match else text
+
+
+def grade_choice(pending, answer) -> bool:
+    key = _norm_label((pending or {}).get("key"))
+    choice = _norm_label((answer or {}).get("choice"))
+    return bool(key) and key == choice
+
+
+def _status_lines(outline) -> str:
+    lines = []
+    for module in (outline or {}).get("modules") or []:
+        rows = []
+        for point in module.get("points") or []:
+            quiz = _quiz_attempts(point)
+            right = sum(1 for a in quiz if a.get("ok"))
+            state = "已掌握" if _point_done(point) else (
+                "作答 %d 次，对 %d 次" % (len(quiz), right) if quiz else "未开始")
+            rows.append("%s（%s，%s）" % (point.get("name"), point.get("type") or "concept", state))
+        lines.append("- %s：%s" % (module.get("name"), "；".join(rows)))
+    return "\n".join(lines)
+
+
+STUDY_SYSTEM = """你是「引证 · 精通之路」里的一对一导师。现在在「学习」模式：陪着学习者按一份已经排好的大纲走，一次讲一个知识点，讲完出题检查。
+
+你输出的 say 会原样显示给学习者。不要复述内部状态，不要写内部推理，不要自言自语。
+
+这一轮只做一件事：
+- 学习者刚答完上一道题（下面有「引擎判分」）→ 先讲这次作答说明了什么，补差距，再出一道新题；引擎已经判为掌握时，讲一句这次为什么过关，然后切到下一个知识点。
+- 没有判分 → 从「这一轮该讲」那个知识点开始讲一小段，然后出题。
+- 出题（quiz 或 assess 不是 null）就代表这一轮结束：say 只写引出这道题的话，题本身只放在 quiz / assess 里，不要再用散文写一遍。
+- 学习者只是在问问题或闲聊 → 正常回答，quiz 和 assess 都置 null。
+
+出题规则（硬性）：
+1. 不要用散文写选择题。题干只放情境和问法，选项只能出现在 options 里，题干里不许复述选项内容。
+2. 每个选项都要有完整正文（body），不能只给「A」「对」这种空壳。
+3. 三个或四个选项；干扰项必须对应学习者真实可能犯的误解，长度和风格与正确项相当；乱序后学习者只看得到正文，所以不要提「上面/下面」「选项字母」。
+4. 每题都要 explanation：为什么对，干扰项各错在哪。
+5. difficulty 用 1–5：1 是回忆事实，3 是要理解或推一步，5 是综合应用。
+6. memory / procedure 类知识点用 quiz；concept / design 类知识点用 assess——让学习者用自己的话说清楚，quiz 打不开这两类的门槛。
+7. 资料里没有的内容不要编题；确实缺资料就直说，把 quiz 置 null。
+8. 「掌握」由引擎判定，不要说「你已经掌握了」除非下面的引擎结果说 mastered 为真。
+
+如果这一轮的话要以冒号结尾，这一轮就必须出一题。
+
+只输出一个 JSON 对象，不要代码围栏：
+{
+  "say": "给学习者看的话",
+  "quiz": null 或 {"kpId": "知识点 id", "prompt": "题干", "options": [
+      {"label": "A", "body": "选项正文"}, {"label": "B", "body": "选项正文"},
+      {"label": "C", "body": "选项正文"}], "key": "B",
+    "explanation": "为什么 B 对、A/C 各错在哪", "difficulty": 2},
+  "assess": null 或 {"kpId": "知识点 id", "prompt": "请用自己的话解释……",
+    "key_points": ["必须讲到的第一点", "必须讲到的第二点"]}
+}
+同一轮最多出 quiz 或 assess 其中一个，另一个必须是 null。"""
+
+REVIEW_SYSTEM = """你是「引证 · 精通之路」里的一对一导师。现在在「复习」模式：只在到期要回忆的知识点上出题，不重新讲整章。
+
+规则和「学习」模式一样，另外：
+1. 只从【到期要复习】里挑一个知识点出题，不要跑题。
+2. 答对就一句话确认，再出下一个到期点的题；答错就讲清楚错在哪，再用一道更小的题确认。
+3. 「掌握」由引擎判定；复习答错不会直接取消掌握，但下一次复习会变早。
+4. 没有到期项时，正常回答学习者的问题，quiz / assess 置 null。
+
+输出格式与「学习」模式相同：{"say": "...", "quiz": {...}|null, "assess": {...}|null}。"""
+
+ASSESS_JUDGE_SYSTEM = """你在判定学习者对某个知识点的自述是否讲清楚了。
+
+标准：学习者用自己的话讲到 key_points 里的要点，没有明显概念错误，就判通过。只是复述题目、空泛表态、或漏掉一半要点，判不通过。
+
+只输出一个 JSON 对象：{"pass": true 或 false, "why": "一句话说明理由"}。"""
+
+
+def clean_quiz(raw, outline) -> Optional[Dict]:
+    """把模型给的题清洗成能画的卡；不合法就不出这道题。"""
+    if not isinstance(raw, dict):
+        return None
+    prompt = _clip(raw.get("prompt") or raw.get("question"), 1200).strip()
+    if not prompt:
+        return None
+    options = []
+    for i, item in enumerate(raw.get("options") or []):
+        if isinstance(item, str):
+            body = item.strip()[:400]
+            label = chr(65 + i)
+        elif isinstance(item, dict):
+            body = _clip(item.get("body") or item.get("description") or item.get("text"), 400).strip()
+            label = _normalize_option_label(item.get("label"), i)
+        else:
+            continue
+        if not body:
+            continue
+        options.append({"label": label, "body": body})
+    if len(options) < 2:
+        return None
+    labels = [o["label"] for o in options]
+    key = _norm_label(raw.get("key") or raw.get("answer"))
+    if key not in labels:
+        # 模型偶尔把正确项的正文当答案给，按正文找回字母
+        body_key = str(raw.get("key") or raw.get("answer") or "").strip()
+        for option in options:
+            if body_key and body_key in option["body"]:
+                key = option["label"]
+                break
+    if key not in labels:
+        return None
+    rows = _all_points(outline)
+    kp_id = str(raw.get("kpId") or "").strip()
+    if not _find_point(outline, kp_id):
+        target = current_point(outline)
+        kp_id = str((target or {}).get("point", {}).get("id") or "")
+    if not kp_id:
+        return None
+    difficulty = raw.get("difficulty")
+    try:
+        difficulty = int(difficulty)
+    except (TypeError, ValueError):
+        difficulty = 2
+    difficulty = max(1, min(5, difficulty))
+    question_id = "q-" + hashlib.sha1(
+        (kp_id + "\n" + prompt).encode("utf-8")).hexdigest()[:10]
+    return {
+        "questionId": question_id,
+        "kpId": kp_id,
+        "prompt": _strip_option_echo(prompt, options),
+        "options": options,
+        "key": key,
+        "explanation": _clip(raw.get("explanation") or raw.get("rationale"), 1200),
+        "difficulty": difficulty,
+        "kind": "quiz",
+    }
+
+
+def _normalize_option_label(raw, index: int) -> str:
+    text = str(raw or "").strip().upper()
+    match = re.match(r"^([A-Z0-9])", text)
+    return match.group(1) if match else chr(65 + index)
+
+
+def _strip_option_echo(prompt: str, options: List[Dict]) -> str:
+    """题干里如果也把选项抄了一遍，从最早出现的那一项开始截断。"""
+    starts = []
+    for option in options:
+        body = str(option.get("body") or "").strip()
+        if len(body) < 2:
+            continue
+        pattern = r"(?:^|[\n\s])%s(?:\s*[.、):：）]\s*|\s+)" % re.escape(
+            str(option.get("label") or "")) + re.escape(body)
+        match = re.search(pattern, prompt, re.I)
+        if match:
+            starts.append(match.start())
+    if len(starts) < 2:
+        return prompt
+    head = prompt[:min(starts)].rstrip(" -—*·")
+    return head or prompt
+
+
+def clean_assess(raw, outline) -> Optional[Dict]:
+    if not isinstance(raw, dict):
+        return None
+    prompt = _clip(raw.get("prompt") or raw.get("question"), 600).strip()
+    if not prompt:
+        return None
+    kp_id = str(raw.get("kpId") or "").strip()
+    if not _find_point(outline, kp_id):
+        target = current_point(outline)
+        kp_id = str((target or {}).get("point", {}).get("id") or "")
+    if not kp_id:
+        return None
+    points = [_clip(p, 200) for p in (raw.get("key_points") or []) if _clip(p, 200)]
+    return {"kpId": kp_id, "prompt": prompt, "key_points": points[:6],
+            "kind": "assess", "options": [], "key": "",
+            "questionId": "a-" + hashlib.sha1(
+                (kp_id + "\n" + prompt).encode("utf-8")).hexdigest()[:10],
+            "difficulty": 3}
+
+
+def _session_context(payload: dict, digest: Sequence[dict], mode: str,
+                     grade: Optional[Dict]) -> str:
+    parts = []
+    parts.append("【精通目标】\n" + (_clip(payload.get("goal"), 2000) or "（还没写）"))
+    subject = _clip(payload.get("subject"), 20)
+    if subject:
+        parts.append("【科目】" + subject)
+
+    lines = []
+    for item in digest or []:
+        label = _clip(item.get("label"), 100)
+        text = _clip(item.get("text"), 700)
+        if label and text:
+            lines.append("● %s\n%s" % (label, text))
+    parts.append("【已选资料】\n" + ("\n\n".join(lines) if lines
+                                 else "（学习者没有勾选资料）"))
+    profile = _learner_lines(payload.get("learner"))
+    if profile != "（还没有回答过，先问再设计）":
+        parts.append("【学习档案】\n" + profile)
+
+    outline = payload.get("outline") or {}
+    parts.append("【当前模式】" + ("学习" if mode == "study" else "复习"))
+    parts.append("【大纲与进度】\n" + (_status_lines(outline) or "（还没有大纲）"))
+
+    if mode == "review":
+        due = [str(x) for x in (payload.get("review") or []) if str(x or "").strip()]
+        parts.append("【到期要复习】\n" + ("、".join(due) if due else "（没有到期项）"))
+    else:
+        target = current_point(outline)
+        if target:
+            point = target["point"]
+            module = target["module"]
+            parts.append("【这一轮该讲】\n%s（%s）\n模块目标：%s" % (
+                point.get("name"), point.get("type") or "concept",
+                module.get("objective") or "（没写）"))
+        else:
+            parts.append("【这一轮该讲】\n（大纲里的知识点都掌握了）")
+
+    pending = payload.get("pending")
+    if isinstance(pending, dict) and pending.get("prompt"):
+        parts.append("【挂着的题】\n%s\n选项：%s" % (
+            _clip(pending.get("prompt"), 600),
+            "／".join("%s. %s" % (o.get("label"), o.get("body"))
+                     for o in pending.get("options") or [])))
+
+    if grade:
+        rows = ["学习者作答：%s" % (grade.get("answerText") or grade.get("choice") or "（空）"),
+                "引擎判：%s" % ("正确" if grade.get("ok") else "错误"),
+                "正确答案：%s" % grade.get("correctLabel", ""),
+                "引擎判定这个知识点：%s" % ("已掌握" if grade.get("mastered") else "还没掌握")]
+        if grade.get("explanation"):
+            rows.append("这一轮约定好的解释：%s" % grade.get("explanation"))
+        parts.append("【引擎判分（已定事实）】\n" + "\n".join(rows)
+                     + "\n不要重新判分，不要重复公布答案键；先讲这次作答说明了什么。")
+
+    history = _history_block(payload.get("messages"), limit=8, each=700)
+    if history:
+        parts.append("【最近对话】\n" + history)
+    parts.append("【学习者这一轮说】\n" + (_clip(payload.get("message"), 2000) or "（继续）"))
+    return "\n\n".join(parts)
+
+
+def _parse_session(raw: str, outline, mode: str) -> Dict:
+    obj = parse_payload(raw)
+    say = _clean_say(obj.get("say"))
+    quiz = clean_quiz(obj.get("quiz"), outline)
+    assess = clean_assess(obj.get("assess"), outline)
+    if quiz and assess:
+        assess = None
+    if not say and not quiz and not assess:
+        raise ProviderError("模型既没有说话也没有出题")
+    stage = "review" if mode == "review" else "study"
+    return {"reply": say, "quiz": quiz, "assess": assess, "stage": stage,
+            "ask": None, "profile": {}, "outline": None, "offline": False}
+
+
+def _judge_assess(provider, pending: Dict, answer_text: str) -> Optional[bool]:
+    if provider is None or not hasattr(provider, "complete"):
+        return None
+    payload = json.dumps({
+        "question": pending.get("prompt"),
+        "key_points": pending.get("key_points") or [],
+        "learner_answer": answer_text,
+    }, ensure_ascii=False)
+    try:
+        raw = provider.complete(
+            [{"role": "system", "content": ASSESS_JUDGE_SYSTEM},
+             {"role": "user", "content": payload}],
+            temperature=0.1, max_tokens=400, json_mode=True)
+        obj = parse_payload(raw)
+    except ProviderError:
+        return None
+    return bool(obj.get("pass"))
+
+
+def _apply_grade(payload: dict, outline: Dict, pending: Dict, answer: Dict,
+                 provider) -> Tuple[Dict, Dict, Optional[Dict]]:
+    """判分 + 记一次作答 + 重算掌握，返回 (outline, grade, 已掌握的 point)。"""
+    kp_id = str(pending.get("kpId") or "")
+    point = _find_point(outline, kp_id)
+    if point is None:
+        return outline, {}, None
+    text = _clip(answer.get("text"), 2000).strip()
+    choice = str(answer.get("choice") or "").strip()
+    kind = str(pending.get("kind") or "").strip()
+    if kind not in ("quiz", "assess"):
+        kind = "assess" if pending.get("key") in (None, "") else "quiz"
+    if kind == "quiz":
+        ok = grade_choice(pending, answer)
+        judged = None
+    else:
+        judged = _judge_assess(provider, pending, text)
+        ok = bool(judged)
+    attempts = list(point.get("attempts") or [])
+    attempts.append({
+        "ok": ok, "diff": int(pending.get("difficulty") or 1),
+        "at": int(payload.get("now") or 0), "kind": kind,
+    })
+    point["attempts"] = attempts[-40:]
+    mastered = engine_mastered(point)
+    if mastered:
+        point["done"] = True
+        if not point.get("masteredAt"):
+            point["masteredAt"] = int(payload.get("now") or 0)
+    elif not point.get("manual"):
+        # 人工标过的保持标着；引擎给的不再成立就撤掉
+        point["done"] = False
+    correct = ""
+    if pending.get("key"):
+        for option in pending.get("options") or []:
+            if option.get("label") == pending.get("key"):
+                correct = "%s. %s" % (option.get("label"), option.get("body"))
+    grade = {
+        "questionId": pending.get("questionId") or "",
+        "kpId": kp_id, "ok": ok, "kind": kind,
+        "choice": choice, "answerText": text,
+        "correctLabel": correct, "explanation": pending.get("explanation") or "",
+        "mastered": bool(mastered), "judged": judged,
+    }
+    if kind == "assess" and judged is None:
+        grade["explanation"] = "这次没能判定（模型没接上），先当作没通过。"
+    return outline, grade, point if mastered else None
+
+
+def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str) -> Dict:
+    """学习 / 复习模式的一轮：先判分（如果有作答），再让模型讲和出下一题。"""
+    outline = payload.get("outline") or {}
+    pending = payload.get("pending") if isinstance(payload.get("pending"), dict) else None
+    answer = payload.get("answer") if isinstance(payload.get("answer"), dict) else None
+
+    grade = None
+    if pending and answer and str(answer.get("questionId") or "") == str(pending.get("questionId") or ""):
+        outline, grade, mastered_point = _apply_grade(payload, outline, pending, answer, provider)
+    else:
+        mastered_point = None
+
+    if provider is None or not hasattr(provider, "complete"):
+        return _offline_session(payload, outline, grade, mastered_point, mode)
+
+    messages = [
+        {"role": "system", "content": STUDY_SYSTEM if mode == "study" else REVIEW_SYSTEM},
+        {"role": "user", "content": _session_context(payload, digest, mode, grade)},
+    ]
+    last_error = None
+    raw = ""
+    for attempt in range(2):
+        try:
+            raw = provider.complete(messages, temperature=0.4, max_tokens=2200,
+                                    json_mode=True)
+            result = _parse_session(raw, outline, mode)
+            result["grade"] = grade
+            result["outline"] = outline
+            result["mode"] = mode
+            if mastered_point is not None:
+                result["mastered"] = {"id": mastered_point.get("id"),
+                                      "name": mastered_point.get("name")}
+            return result
+        except ProviderError as exc:
+            last_error = exc
+            if attempt == 0:
+                messages = messages + [
+                    {"role": "assistant", "content": _clip(raw, 300)},
+                    {"role": "user", "content": "上一次的输出不能直接用（%s）。只输出一个 JSON 对象，"
+                                                "键是 say / quiz / assess。" % exc},
+                ]
+    # 模型没给出可用结果时，判分仍然有效，只是这一轮不再出题
+    return {"reply": "（导师这次没能接着说下去：%s）" % last_error,
+            "quiz": None, "assess": None, "grade": grade, "outline": outline,
+            "mode": mode, "stage": mode, "ask": None, "profile": {},
+            "offline": False, "error": True}
+
+
+def _offline_session(payload, outline, grade, mastered_point, mode) -> Dict:
+    """离线演示：能判分，但不出新题——出题必须有模型。"""
+    if grade:
+        verdict = "答对了。" if grade.get("ok") else "这道答错了。"
+        extra = grade.get("correctLabel") and ("正确答案：" + grade["correctLabel"] + "。") or ""
+        note = "（离线演示：判分是本地算的，但没有模型就不能接着出下一道题。）"
+        say = verdict + extra + (grade.get("explanation") or "") + "\n\n" + note
+    else:
+        say = ("现在是离线演示模式，没有接生成模型。大纲和判分都能用，"
+               "但讲课和出题需要模型——接上模型后这里会接着讲。")
+    return {"reply": say, "quiz": None, "assess": None, "grade": grade,
+            "outline": outline, "mode": mode, "stage": mode, "ask": None,
+            "profile": {}, "offline": True}
+
+
+def run_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:
+    """按模式分发：没大纲先定大纲，有大纲就跟着大纲学或复习。"""
+    mode = normalize_mode(payload.get("mode"), payload.get("outline"))
+    if mode == "outline":
+        result = _run_outline_turn(provider, payload, digest)
+    else:
+        result = run_session_turn(provider, payload, digest, mode)
+    result.setdefault("mode", mode)
+    return result
