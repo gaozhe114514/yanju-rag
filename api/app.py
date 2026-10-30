@@ -20,9 +20,12 @@
   KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
   KB_FEEDBACK_LOG   没有数据库时反馈写到哪里，默认 data/work/feedback.jsonl
 """
+import hashlib
+import json
 import os
 import threading
 import time
+import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -43,6 +46,7 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
 from kb import PRESET_COLLECTION, Library, LibraryError
+from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
 
@@ -88,7 +92,7 @@ class ChatRequest(BaseModel):
     # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
     mode: str = Field("kb", max_length=8)
     # 设置里开着的工具名（服务端只认 answer/tools.py 的注册表）；资料模式一律忽略
-    tools: List[str] = Field(default_factory=list, max_length=6)
+    tools: List[str] = Field(default_factory=list, max_length=8)
     # 学习进度只存在浏览器里，由前端带一份摘要给「学习进度」工具用
     study: Dict[str, Any] = Field(default_factory=dict)
 
@@ -193,11 +197,26 @@ class DocumentRequest(BaseModel):
     title: str = Field("", max_length=80)
 
 
+class ChunkUpdateRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=200000)
+    # WeKnora 的乐观并发版本号；不传就不做版本校验
+    revision: Optional[int] = Field(None, ge=0)
+
+
 class GenerateQuestionsRequest(BaseModel):
     # 用户粘贴的资料；出题结果只存在浏览器，服务端不落盘
     text: str = Field(..., min_length=80, max_length=20000)
     count: int = Field(5, ge=1, le=10)
     title: str = Field("", max_length=80)
+
+
+class EvalResultRequest(BaseModel):
+    """一次评测的摘要；payload 原样存，前端/CLI 自己解释。"""
+    name: str = Field(..., min_length=1, max_length=120)
+    mode: str = Field("", max_length=40)
+    total: int = Field(0, ge=0, le=100000)
+    passed: int = Field(0, ge=0, le=100000)
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class FeedbackRequest(BaseModel):
@@ -325,9 +344,16 @@ def _load() -> None:
     library = Library(store=store, embedder=searcher.embedder, mode=mode,
                       k_fuse=fuse_k, state_path=library_state)
 
+    # 配了 WeKnora 就把「用户知识库」的进料、切片、召回交给它；
+    # 内置 408 语料仍走本项目的检索（引用校验与拒答两边完全一致）。
+    weknora = WeKnora()
+    if weknora.configured:
+        print("知识库后端：WeKnora %s" % weknora.base_url)
+
     _state.update({
         "pipeline": AnswerPipeline(searcher, provider, gate=gate),
         "library": library,
+        "weknora": weknora if weknora.configured else None,
         "gate": gate,
         "doc_pipelines": {},
         "chunks": chunks,
@@ -362,6 +388,53 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="引证 · 可引用知识库", version="0.15", lifespan=lifespan)
 
 
+# ---------- 请求日志 ----------
+# 记所有进到 API 的请求，但只留方法、路径、状态、耗时和问句；
+# 不记 IP、UA、请求头。写库放到后台线程，日志失败绝不影响问答。
+
+_QUERY_PATHS = {"/ask", "/chat", "/chat/stream"}
+_LOG_SKIP = {"/health", "/favicon.ico"}
+
+
+def _client_tag(request: Request) -> str:
+    peer = request.client.host if request.client else ""
+    return hashlib.sha256(peer.encode("utf-8")).hexdigest()[:12] if peer else ""
+
+
+def _write_request_log(method: str, path: str, status: int,
+                       latency_ms: int, query: str, client: str) -> None:
+    store = _state.get("store")
+    if store is None:
+        return
+
+    def run():
+        try:
+            store.log_request(method, path, status, latency_ms, query, client)
+        except Exception:
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+@app.middleware("http")
+async def request_log_middleware(request: Request, call_next):
+    t0 = time.time()
+    query = ""
+    if request.method == "POST" and request.url.path in _QUERY_PATHS:
+        try:
+            payload = json.loads((await request.body()) or b"{}")
+            query = str(payload.get("query") or "")[:200]
+        except (ValueError, UnicodeDecodeError):
+            query = ""
+    response = await call_next(request)
+    if request.url.path not in _LOG_SKIP:
+        _write_request_log(request.method, request.url.path,
+                           response.status_code,
+                           int((time.time() - t0) * 1000),
+                           query, _client_tag(request))
+    return response
+
+
 def _is_preset(collection: str) -> bool:
     return not collection or collection == PRESET_COLLECTION
 
@@ -374,6 +447,23 @@ def _pipeline_for(collection: str):
     """
     if _is_preset(collection):
         return _state.get("pipeline")
+    wk = _weknora()
+    if wk is not None:
+        coll = wk.get_collection(collection)
+        if coll is None:
+            raise HTTPException(status_code=404, detail="资料库不存在")
+        if wk.document_count(collection) == 0:
+            return None
+        pipes = _state["doc_pipelines"]
+        key = ("weknora", collection, wk.document_count(collection))
+        cached = pipes.get(collection)
+        if cached and cached[0] == key:
+            return cached[1]
+        pipe = AnswerPipeline(WeKnoraSearcher(wk, collection, coll["name"]),
+                              _state["provider_impl"],
+                              gate=_state.get("gate"), prompt_mode="doc")
+        pipes[collection] = (key, pipe)
+        return pipe
     lib = _state.get("library")
     if lib is None or lib.get_collection(collection) is None:
         raise HTTPException(status_code=404, detail="资料库不存在")
@@ -408,6 +498,12 @@ def _preset_collection() -> dict:
 
 
 def _collection_count() -> int:
+    wk = _weknora()
+    if wk is not None:
+        try:
+            return len(wk.list_collections())
+        except Exception:  # 统计失败不能让健康检查挂掉
+            return 0
     lib = _state.get("library")
     if lib is None:
         return 0
@@ -419,6 +515,14 @@ def _collection_count() -> int:
 
 def _corpus_label(collection: str) -> str:
     if not _is_preset(collection):
+        wk = _weknora()
+        if wk is not None:
+            try:
+                coll = wk.get_collection(collection)
+            except WeKnoraError:
+                coll = None
+            if coll:
+                return "资料库「%s」" % coll["name"]
         lib = _state.get("library")
         coll = lib.get_collection(collection) if lib is not None else None
         if coll:
@@ -665,6 +769,7 @@ def health() -> dict:
         "auth_required": GUARD.token_required,
         "cache_ttl_s": _state.get("cache_ttl", 0),
         "collections": _collection_count(),
+        "kb_backend": "weknora" if _weknora() is not None else "local",
     }
 
 
@@ -1064,6 +1169,56 @@ def stats_overview(days: int = 30, limit: int = 20,
     }
 
 
+@app.get("/stats/requests")
+def stats_requests(days: int = 30, limit: int = 20,
+                   _: None = Depends(enforce_content)) -> dict:
+    """请求日志：按路径、按天聚合；没有数据库时返回空壳而不是报错。"""
+    days = max(1, min(int(days), 365))
+    limit = max(1, min(int(limit), 100))
+    store = _state.get("store")
+    if store is None:
+        return {"storage": "memory", "window_days": days, "total": 0,
+                "by_path": [], "by_day": [], "recent": [],
+                "note": "没有 DATABASE_URL，请求日志只存在进程计数里"}
+    try:
+        return store.request_stats(days, limit)
+    except Exception as e:
+        return {"storage": "postgres", "window_days": days, "total": 0,
+                "by_path": [], "by_day": [], "recent": [],
+                "error": "读取失败：%s" % e}
+
+
+@app.get("/eval/results")
+def eval_results(name: str = "", limit: int = 20,
+                 _: None = Depends(enforce_content)) -> dict:
+    """最近的评测结果；name 为空时返回所有类型。"""
+    store = _state.get("store")
+    if store is None:
+        return {"items": [], "storage": "memory"}
+    try:
+        items = store.list_eval_results(name, max(1, min(int(limit), 100)))
+    except Exception as e:
+        return {"items": [], "storage": "postgres",
+                "error": "读取失败：%s" % e}
+    return {"items": items, "storage": "postgres"}
+
+
+@app.post("/eval/results")
+def eval_results_add(req: EvalResultRequest,
+                     _: None = Depends(enforce_guard)) -> dict:
+    """把一次评测的摘要存进 eval_results，方便前后对比。"""
+    store = _state.get("store")
+    if store is None:
+        raise HTTPException(status_code=503,
+                            detail="没有 DATABASE_URL，评测结果无法落库")
+    try:
+        rid = store.save_eval_result(req.name, req.payload, req.mode,
+                                     req.total, req.passed)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="写入失败：%s" % e)
+    return {"ok": True, "id": rid}
+
+
 @app.get("/meta")
 def meta(_: None = Depends(enforce_content)) -> dict:
     questions = _state.get("questions", [])
@@ -1087,6 +1242,7 @@ def meta(_: None = Depends(enforce_content)) -> dict:
         "storage": _state.get("storage", "memory"),
         "auth_required": GUARD.token_required,
         "collections": _collection_count(),
+        "kb_backend": "weknora" if _weknora() is not None else "local",
     }
 
 
@@ -1174,6 +1330,15 @@ def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
 
 # ---------- 知识库：用户自建资料库 ----------
 
+def _weknora():
+    return _state.get("weknora")
+
+
+def _wk_error(e: WeKnoraError) -> HTTPException:
+    status = 404 if e.status == 404 else (409 if e.status == 409 else 502)
+    return HTTPException(status_code=status, detail=str(e))
+
+
 def _library() -> Library:
     lib = _state.get("library")
     if lib is None:
@@ -1195,13 +1360,27 @@ def _lib_error(e: LibraryError) -> HTTPException:
 @app.get("/collections")
 def collections_list(_: None = Depends(enforce_content)) -> dict:
     """所有知识库；内置 408 语料排在第一位，只读。"""
+    wk = _weknora()
+    if wk is not None:
+        try:
+            items = wk.list_collections()
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        return {"items": [_preset_collection()] + items,
+                "storage": "weknora", "backend": "weknora"}
     return {"items": [_preset_collection()] + _library().list_collections(),
-            "storage": _state.get("storage", "memory")}
+            "storage": _state.get("storage", "memory"), "backend": "local"}
 
 
 @app.post("/collections")
 def collection_create(req: CollectionRequest,
                       _: None = Depends(enforce_content)) -> dict:
+    wk = _weknora()
+    if wk is not None:
+        try:
+            return wk.create_collection(req.name, req.description)
+        except WeKnoraError as e:
+            raise _wk_error(e)
     try:
         return _library().create_collection(req.name, req.description)
     except LibraryError as e:
@@ -1212,6 +1391,18 @@ def collection_create(req: CollectionRequest,
 def collection_detail(cid: str, _: None = Depends(enforce_content)) -> dict:
     if cid == PRESET_COLLECTION:
         return _preset_collection()
+    wk = _weknora()
+    if wk is not None:
+        try:
+            coll = wk.get_collection(cid)
+            if coll is None:
+                raise HTTPException(status_code=404, detail="资料库不存在")
+            docs = wk.list_documents(cid)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        coll["documents"] = docs
+        coll["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
+        return coll
     coll = _library().get_collection(cid)
     if coll is None:
         raise HTTPException(status_code=404, detail="资料库不存在")
@@ -1224,6 +1415,16 @@ def collection_detail(cid: str, _: None = Depends(enforce_content)) -> dict:
 
 @app.delete("/collections/{cid}")
 def collection_delete(cid: str, _: None = Depends(enforce_content)) -> dict:
+    wk = _weknora()
+    if wk is not None:
+        try:
+            ok = wk.delete_collection(cid)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        if not ok:
+            raise HTTPException(status_code=404, detail="资料库不存在")
+        _state["doc_pipelines"].pop(cid, None)
+        return {"ok": True, "id": cid}
     lib = _library()
     try:
         ok = lib.delete_collection(cid)
@@ -1242,6 +1443,14 @@ def document_add(cid: str, req: DocumentRequest,
 
     出题接口不落盘；这里是反向的——用户明确要把资料存成可检索的库。
     """
+    wk = _weknora()
+    if wk is not None:
+        try:
+            doc = wk.add_text(cid, req.title, req.text)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        _state["doc_pipelines"].pop(cid, None)
+        return doc
     lib = _library()
     try:
         doc = lib.add_document(cid, req.text, req.title)
@@ -1254,6 +1463,14 @@ def document_add(cid: str, req: DocumentRequest,
 @app.get("/collections/{cid}/documents/{doc_id}")
 def document_detail(cid: str, doc_id: str,
                     _: None = Depends(enforce_content)) -> dict:
+    wk = _weknora()
+    if wk is not None:
+        try:
+            text = wk.document_preview(doc_id)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        return {"id": doc_id, "title": "", "text": text, "created_at": "",
+                "backend": "weknora"}
     lib = _library()
     if lib.get_collection(cid) is None:
         raise HTTPException(status_code=404, detail="资料库不存在")
@@ -1267,11 +1484,120 @@ def document_detail(cid: str, doc_id: str,
 @app.delete("/collections/{cid}/documents/{doc_id}")
 def document_delete(cid: str, doc_id: str,
                     _: None = Depends(enforce_content)) -> dict:
+    wk = _weknora()
+    if wk is not None:
+        try:
+            ok = wk.delete_document(doc_id)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        if not ok:
+            raise HTTPException(status_code=404, detail="资料不存在")
+        _state["doc_pipelines"].pop(cid, None)
+        return {"ok": True, "id": doc_id}
     ok = _library().delete_document(cid, doc_id)
     if not ok:
         raise HTTPException(status_code=404, detail="资料不存在")
     _state["doc_pipelines"].pop(cid, None)
     return {"ok": True, "id": doc_id}
+
+
+MAX_UPLOAD = 20 * 1024 * 1024
+
+
+def _upload_name(raw: str) -> str:
+    name = urllib.parse.unquote(raw or "").replace("\\", "/").split("/")[-1]
+    name = "".join(ch for ch in name if ch not in '\r\n\t"').strip()
+    return (name or "upload.bin")[:120]
+
+
+@app.post("/collections/{cid}/files")
+async def document_upload(cid: str, request: Request,
+                          _: None = Depends(enforce_guard)) -> dict:
+    """上传原始文件：PDF / Word / PPT / Markdown / 图片交给 WeKnora 解析。
+
+    前端直接把文件放进请求体，文件名走 X-Filename（URI 编码），
+    不依赖 python-multipart，也不把文件内容读进模型上下文。
+    """
+    wk = _weknora()
+    if wk is None:
+        raise HTTPException(status_code=503,
+                            detail="上传文件需要先配置 WeKnora（WEKNORA_BASE_URL）")
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="空文件")
+    if len(body) > MAX_UPLOAD:
+        raise HTTPException(status_code=413,
+                            detail="文件太大，单篇最多 %d MB" % (MAX_UPLOAD // 1024 // 1024))
+    name = _upload_name(request.headers.get("X-Filename", ""))
+    try:
+        doc = wk.upload_document(cid, name, body)
+    except WeKnoraError as e:
+        raise _wk_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    return doc
+
+
+@app.get("/collections/{cid}/documents/{doc_id}/chunks")
+def document_chunks(cid: str, doc_id: str,
+                    _: None = Depends(enforce_content)) -> dict:
+    """一篇资料切出来的片段；片段是引用校验的最小单位。"""
+    wk = _weknora()
+    if wk is None:
+        raise HTTPException(status_code=503,
+                            detail="片段管理需要先配置 WeKnora")
+    try:
+        items = wk.list_chunks(doc_id)
+    except WeKnoraError as e:
+        raise _wk_error(e)
+    return {"items": items, "total": len(items), "editable": True}
+
+
+@app.put("/collections/{cid}/documents/{doc_id}/chunks/{chunk_id}")
+def chunk_update(cid: str, doc_id: str, chunk_id: str,
+                 req: ChunkUpdateRequest,
+                 _: None = Depends(enforce_guard)) -> dict:
+    wk = _weknora()
+    if wk is None:
+        raise HTTPException(status_code=503,
+                            detail="片段管理需要先配置 WeKnora")
+    try:
+        chunk = wk.update_chunk(doc_id, chunk_id, req.content, req.revision)
+    except WeKnoraError as e:
+        raise _wk_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    return chunk
+
+
+@app.delete("/collections/{cid}/documents/{doc_id}/chunks/{chunk_id}")
+def chunk_delete(cid: str, doc_id: str, chunk_id: str,
+                 _: None = Depends(enforce_content)) -> dict:
+    wk = _weknora()
+    if wk is None:
+        raise HTTPException(status_code=503,
+                            detail="片段管理需要先配置 WeKnora")
+    try:
+        ok = wk.delete_chunk(doc_id, chunk_id)
+    except WeKnoraError as e:
+        raise _wk_error(e)
+    if not ok:
+        raise HTTPException(status_code=404, detail="片段不存在")
+    _state["doc_pipelines"].pop(cid, None)
+    return {"ok": True, "id": chunk_id}
+
+
+@app.post("/collections/{cid}/documents/{doc_id}/reparse")
+def document_reparse(cid: str, doc_id: str,
+                     _: None = Depends(enforce_guard)) -> dict:
+    wk = _weknora()
+    if wk is None:
+        raise HTTPException(status_code=503,
+                            detail="重新解析需要先配置 WeKnora")
+    try:
+        doc = wk.reparse_document(doc_id)
+    except WeKnoraError as e:
+        raise _wk_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    return doc
 
 
 @app.post("/bank/generate")

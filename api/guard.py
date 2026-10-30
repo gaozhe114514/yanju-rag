@@ -28,17 +28,77 @@ class Decision:
     retry_after: int = 0
 
 
+class RedisLimit:
+    """多 worker / 多实例时的共享计数器；Redis 不可用就返回 None，调用方退回内存。
+
+    不引入硬依赖：只有配了 KB_REDIS_URL 才会去 import redis。
+    """
+
+    def __init__(self, url: str, prefix: str = "kb:rate:"):
+        self.url = url or ""
+        self.prefix = prefix
+        self._client = None
+        self._broken = False
+
+    def _conn(self):
+        if self._broken or not self.url:
+            return None
+        if self._client is None:
+            try:
+                import redis  # 可选依赖
+                self._client = redis.Redis.from_url(
+                    self.url, socket_timeout=1.0, socket_connect_timeout=1.0)
+            except Exception as e:
+                log.warning("Redis 限流不可用，退回进程内存：%s", type(e).__name__)
+                self._broken = True
+                return None
+        return self._client
+
+    def hit(self, key: str, window: int) -> Optional[int]:
+        """计数并返回当前窗口内的次数；任何异常都当作「没有 Redis」。"""
+        conn = self._conn()
+        if conn is None:
+            return None
+        full = self.prefix + key
+        try:
+            n = int(conn.incr(full))
+            if n == 1:
+                conn.expire(full, max(1, int(window)))
+            return n
+        except Exception as e:
+            log.warning("Redis 计数失败，退回进程内存：%s", type(e).__name__)
+            self._broken = True
+            return None
+
+    def bump_day(self, day: str, ttl_s: int = 172800) -> Optional[int]:
+        conn = self._conn()
+        if conn is None:
+            return None
+        full = self.prefix + "daily:" + day
+        try:
+            n = int(conn.incr(full))
+            if n == 1:
+                conn.expire(full, ttl_s)
+            return n
+        except Exception as e:
+            log.warning("Redis 日计数失败，退回进程内存：%s", type(e).__name__)
+            self._broken = True
+            return None
+
+
 class AccessGuard:
     def __init__(self, token: str = "", rate_max: int = 20,
                  window: int = 600, daily_max: int = 0,
                  trust_proxy: bool = False,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time,
+                 limiter: Optional[RedisLimit] = None):
         self.token = token or ""
         self.rate_max = max(0, rate_max)
         self.window = max(1, window)
         self.daily_max = max(0, daily_max)
         self.trust_proxy = trust_proxy
         self.clock = clock
+        self.limiter = limiter
         self._lock = threading.Lock()
         self._hits: Dict[str, deque] = {}
         self._day = date.today()
@@ -46,12 +106,14 @@ class AccessGuard:
 
     @classmethod
     def from_env(cls) -> "AccessGuard":
+        redis_url = os.environ.get("KB_REDIS_URL", "").strip()
         guard = cls(
             token=os.environ.get("KB_ACCESS_TOKEN", ""),
             rate_max=int(os.environ.get("KB_RATE_MAX", "20")),
             window=int(os.environ.get("KB_RATE_WINDOW", "600")),
             daily_max=int(os.environ.get("KB_DAILY_MAX", "0")),
             trust_proxy=os.environ.get("KB_TRUST_PROXY", "") in ("1", "true", "yes"),
+            limiter=RedisLimit(redis_url) if redis_url else None,
         )
         if not guard.token:
             log.warning("KB_ACCESS_TOKEN 未设置：/ask 不校验口令，只适合本地调试")
@@ -109,17 +171,32 @@ class AccessGuard:
             self._reset_daily_if_needed()
 
             if self.rate_max:
-                self._prune(now)
-                hits = self._hits.setdefault(ip, deque())
-                while hits and now - hits[0] > self.window:
-                    hits.popleft()
-                if len(hits) >= self.rate_max:
-                    wait = int(self.window - (now - hits[0])) + 1
-                    return Decision(False, 429, "请求过于频繁，请稍后再试", wait)
-                hits.append(now)
+                shared = (self.limiter.hit("ip:" + ip, self.window)
+                          if self.limiter is not None else None)
+                if shared is not None:
+                    if shared > self.rate_max:
+                        return Decision(False, 429, "请求过于频繁，请稍后再试",
+                                        self.window)
+                else:
+                    self._prune(now)
+                    hits = self._hits.setdefault(ip, deque())
+                    while hits and now - hits[0] > self.window:
+                        hits.popleft()
+                    if len(hits) >= self.rate_max:
+                        wait = int(self.window - (now - hits[0])) + 1
+                        return Decision(False, 429, "请求过于频繁，请稍后再试", wait)
+                    hits.append(now)
 
-            if self.daily_max and self._daily_used >= self.daily_max:
-                return Decision(False, 429, "今日额度已用完，请明天再试", 3600)
-            self._daily_used += 1
+            if self.daily_max:
+                used = (self.limiter.bump_day(str(self._day))
+                        if self.limiter is not None else None)
+                if used is None:
+                    used = self._daily_used + 1
+                    if used > self.daily_max:
+                        return Decision(False, 429, "今日额度已用完，请明天再试",
+                                        3600)
+                    self._daily_used = used
+                elif used > self.daily_max:
+                    return Decision(False, 429, "今日额度已用完，请明天再试", 3600)
 
         return Decision(True)

@@ -126,3 +126,36 @@ CREATE TABLE IF NOT EXISTS answer_cache (
 
 CREATE INDEX IF NOT EXISTS answer_cache_created_idx
     ON answer_cache (created_at);
+
+-- 请求日志：每个进到 API 的请求一行，用来回答「谁在什么时候问了什么、
+-- 多快、有没有拒答」。只记路径、状态与耗时，不记 IP / UA / 请求头。
+CREATE TABLE IF NOT EXISTS request_logs (
+    id          bigserial PRIMARY KEY,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    method      text NOT NULL DEFAULT 'GET',
+    path        text NOT NULL DEFAULT '',
+    status      int NOT NULL DEFAULT 0,
+    latency_ms  int NOT NULL DEFAULT 0,
+    query       text NOT NULL DEFAULT '',
+    client      text NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS request_logs_created_idx
+    ON request_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS request_logs_path_idx
+    ON request_logs (path, created_at DESC);
+
+-- 评测结果：每次跑 eval_answer / eval_gate / retrieval.eval 落一行，
+-- payload 存完整摘要，方便前后对比，不用翻终端日志。
+CREATE TABLE IF NOT EXISTS eval_results (
+    id          bigserial PRIMARY KEY,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    name        text NOT NULL,
+    mode        text NOT NULL DEFAULT '',
+    total       int NOT NULL DEFAULT 0,
+    passed      int NOT NULL DEFAULT 0,
+    payload     jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS eval_results_name_idx
+    ON eval_results (name, created_at DESC);

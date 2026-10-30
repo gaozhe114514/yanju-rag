@@ -42,6 +42,8 @@ def main() -> None:
     ap.add_argument("--min-margin", type=float, default=0.05)
     ap.add_argument("--limit", type=int, default=0, help="只跑前 N 条，用于冒烟")
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--save", action="store_true",
+                    help="把摘要写进 eval_results 表（需要 DATABASE_URL）")
     args = ap.parse_args()
 
     paths = []
@@ -120,6 +122,7 @@ def main() -> None:
         for e, c in sorted(errors.items(), key=lambda x: -x[1])[:5]:
             print("  %dx %s" % (c, e))
 
+    negatives = {"total": 0, "refused": 0}
     if args.negatives:
         neg = []
         for p in args.negatives:
@@ -129,8 +132,40 @@ def main() -> None:
             hits = searcher.search(item["query"])
             if gate.check(item["query"], hits).refuse:
                 refused += 1
+        negatives = {"total": len(neg), "refused": refused}
         print("负样本拒答 %d/%d = %.3f" % (
             refused, len(neg), refused / (len(neg) or 1)))
+
+    if args.save:
+        from db.store import Store
+        store = Store.from_env()
+        if store is None:
+            print("没有 DATABASE_URL，--save 跳过")
+        else:
+            summary = {
+                "samples": len(rows),
+                "mode": args.mode,
+                "provider": args.provider,
+                "answered": answered,
+                "first_pass": stats["first"],
+                "retry_pass": stats["retry"],
+                "refused": {
+                    "gate": stats["gate_ref"],
+                    "model": stats["model_ref"],
+                    "citation": stats["cite_fail"],
+                    "provider": stats["provider_err"],
+                },
+                "first_citation_pass_rate": round(
+                    stats["first"] / (gen_n or 1), 4),
+                "answer_rate": round(answered / n, 4),
+                "avg_latency_s": round(sum(latencies) / (len(latencies) or 1), 3),
+                "negatives": negatives,
+                "top_errors": [{"error": e, "count": c} for e, c in
+                               sorted(errors.items(), key=lambda x: -x[1])[:5]],
+            }
+            rid = store.save_eval_result("answer", summary, args.mode,
+                                         len(rows), answered)
+            print("已写入 eval_results #%s" % rid)
 
 
 if __name__ == "__main__":

@@ -571,4 +571,111 @@ class Store:
             } for r in recent],
         }
 
+    # ---------- 请求日志 ----------
+
+    def log_request(self, method: str, path: str, status: int,
+                    latency_ms: int, query: str = "",
+                    client: str = "") -> None:
+        """写一行请求日志；调用方负责吞掉异常，日志失败不影响问答。"""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO request_logs (method, path, status, latency_ms,"
+                " query, client) VALUES (%s, %s, %s, %s, %s, %s)",
+                (str(method or "GET")[:8], str(path or "")[:200],
+                 int(status or 0), max(0, int(latency_ms or 0)),
+                 clean_query(query), str(client or "")[:64]))
+            conn.commit()
+
+    def request_stats(self, days: int = 30, limit: int = 20) -> Dict:
+        """按天、按路径聚合请求，并给出最近若干条。"""
+        days = max(1, min(int(days), 365))
+        limit = max(1, min(int(limit), 100))
+        window = "created_at >= now() - (%s::int * interval '1 day')"
+        with self.connect() as conn:
+            total = conn.execute(
+                "SELECT count(*)::int AS n FROM request_logs WHERE " + window,
+                (days,)).fetchone()["n"]
+            by_path = conn.execute(
+                "SELECT path, count(*)::int AS n,"
+                " round(avg(latency_ms))::int AS avg_ms,"
+                " count(*) FILTER (WHERE status >= 500)::int AS errors"
+                " FROM request_logs WHERE " + window +
+                " GROUP BY path ORDER BY n DESC, path LIMIT %s",
+                (days, limit)).fetchall()
+            by_day = conn.execute(
+                "SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')"
+                " AS day, count(*)::int AS n"
+                " FROM request_logs WHERE " + window +
+                " GROUP BY 1 ORDER BY 1",
+                (days,)).fetchall()
+            recent = conn.execute(
+                "SELECT created_at, method, path, status, latency_ms, query"
+                " FROM request_logs WHERE " + window +
+                " ORDER BY created_at DESC, id DESC LIMIT %s",
+                (days, limit)).fetchall()
+        return {
+            "storage": "postgres",
+            "window_days": days,
+            "total": int(total),
+            "by_path": [{"path": r["path"], "count": r["n"],
+                         "avg_ms": int(r["avg_ms"] or 0),
+                         "errors": int(r["errors"])} for r in by_path],
+            "by_day": [{"date": r["day"], "count": r["n"]} for r in by_day],
+            "recent": [{
+                "ts": r["created_at"].isoformat(timespec="seconds"),
+                "method": r["method"],
+                "path": r["path"],
+                "status": int(r["status"]),
+                "latency_ms": int(r["latency_ms"]),
+                "query": r["query"],
+            } for r in recent],
+        }
+
+    # ---------- 评测结果 ----------
+
+    def save_eval_result(self, name: str, payload: Dict,
+                         mode: str = "", total: int = 0,
+                         passed: int = 0) -> int:
+        body = json.dumps(payload or {}, ensure_ascii=False, default=str)
+        with self.connect() as conn:
+            row = conn.execute(
+                "INSERT INTO eval_results (name, mode, total, passed, payload)"
+                " VALUES (%s, %s, %s, %s, %s::jsonb) RETURNING id",
+                (str(name or "eval")[:120], str(mode or "")[:40],
+                 int(total or 0), int(passed or 0), body)).fetchone()
+            conn.commit()
+        return int(row["id"])
+
+    def list_eval_results(self, name: str = "", limit: int = 20) -> List[Dict]:
+        limit = max(1, min(int(limit), 100))
+        with self.connect() as conn:
+            if name:
+                rows = conn.execute(
+                    "SELECT id, created_at, name, mode, total, passed, payload"
+                    " FROM eval_results WHERE name = %s"
+                    " ORDER BY created_at DESC, id DESC LIMIT %s",
+                    (name, limit)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id, created_at, name, mode, total, passed, payload"
+                    " FROM eval_results ORDER BY created_at DESC, id DESC"
+                    " LIMIT %s", (limit,)).fetchall()
+        return [{
+            "id": int(r["id"]),
+            "ts": r["created_at"].isoformat(timespec="seconds"),
+            "name": r["name"],
+            "mode": r["mode"],
+            "total": int(r["total"]),
+            "passed": int(r["passed"]),
+            "pass_rate": (round(int(r["passed"]) / int(r["total"]), 4)
+                          if int(r["total"]) else 0.0),
+            "payload": r["payload"],
+        } for r in rows]
+
+
+def clean_query(query: str, limit: int = 200) -> str:
+    """请求日志里的 query：去掉换行、截断，避免把整段对话写进表里。"""
+    text = " ".join(str(query or "").split())
+    return text[:limit]
+
 

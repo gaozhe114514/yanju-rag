@@ -3,9 +3,9 @@
 import unittest
 
 from answer import tools
-from answer.tools import (calc_lookup, extract_city, run_tools, study_lookup,
-                          time_lookup, tool_context, tool_will_run, weather_label,
-                          weather_lookup, web_fetch, web_search)
+from answer.tools import (calc_lookup, code_lookup, extract_city, run_tools,
+                          study_lookup, time_lookup, tool_context, tool_will_run,
+                          weather_label, weather_lookup, web_fetch, web_search)
 
 GEO = {"results": [{"name": "郑州", "admin1": "河南",
                     "latitude": 34.75778, "longitude": 113.64861}]}
@@ -183,6 +183,34 @@ class CalcToolTest(unittest.TestCase):
 
     def test_bare_number_is_not_an_expression(self):
         self.assertFalse(calc_lookup("今日 30")["ok"])
+
+
+class CodeToolTest(unittest.TestCase):
+    def test_base_conversion_and_bits(self):
+        self.assertIn("0b101010", code_lookup("bin(42)")["detail"])
+        self.assertIn("15", code_lookup("0b1010 | 0b0101 是多少")["detail"])
+        self.assertIn("8", code_lookup("1 << 3 等于多少")["detail"])
+
+    def test_comprehension_and_builtins(self):
+        res = code_lookup("sum(i*i for i in range(5))")
+        self.assertTrue(res["ok"])
+        self.assertIn("30", res["detail"])
+        self.assertIn("'abc'", code_lookup("''.join(['a','b','c'])")["detail"])
+
+    def test_imports_and_files_are_refused(self):
+        for expr in ("__import__('os').system('dir')",
+                     "open('x','w')",
+                     "print(1)",
+                     "().__class__",
+                     "sum(i for i in range(100000000))"):
+            res = code_lookup(expr)
+            self.assertFalse(res["ok"], expr)
+
+    def test_gate_keeps_calc_and_code_apart(self):
+        self.assertTrue(tool_will_run(["code"], "bin(42) 是多少"))
+        self.assertFalse(tool_will_run(["calc"], "bin(42) 是多少"))
+        self.assertTrue(tool_will_run(["calc"], "12*8 等于多少"))
+        self.assertFalse(tool_will_run(["code"], "今天几号"))
 
 
 class StudyToolTest(unittest.TestCase):

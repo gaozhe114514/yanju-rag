@@ -1906,9 +1906,44 @@
       padding: 0 1px; border-radius: 3px;
       background: var(--wash); color: var(--ink);
     }
+    .list-meta.err { color: var(--danger); }
+    .chunk-bar {
+      display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+      justify-content: space-between;
+    }
+    .chunk-note { color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .chunk-note.err { color: var(--danger); }
+    .chunk-list { max-height: 62vh; overflow-y: auto; padding-right: 2px; }
+    .chunk-card {
+      display: flex; flex-direction: column; gap: 7px;
+      padding: 12px 13px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--bg);
+    }
+    .chunk-card-head { display: flex; align-items: center; gap: 8px; }
+    .chunk-index {
+      min-width: 34px; padding: 1px 6px; border-radius: 6px;
+      background: var(--wash); color: var(--brand-dark);
+      font-size: 11px; font-weight: 500; text-align: center;
+    }
+    .chunk-text {
+      width: 100%; padding: 9px 11px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--card); color: var(--ink);
+      font-size: 13px; line-height: 1.7; resize: vertical;
+    }
+    .chunk-text:focus {
+      border-color: rgba(176, 80, 30, .4); outline: none;
+      box-shadow: 0 0 0 3px rgba(176, 80, 30, .09);
+    }
+    .chunk-actions {
+      display: flex; align-items: center; gap: 8px;
+      justify-content: flex-end; flex-wrap: wrap;
+    }
+    .chunk-actions .chunk-note { margin-right: auto; }
     @media (max-width: 860px) {
       .lib-add { padding: 14px; }
       .doc-view { max-height: 52vh; padding: 12px 13px; }
+      .chunk-list { max-height: 54vh; }
+      .chunk-actions .chunk-note { width: 100%; }
     }
 
     /* ---------- v0.27 对话界面（照 DeepTutor：无头像、无徽标、引用收成一行） ---------- */
@@ -3226,6 +3261,12 @@
             <span class="lib-add-hint" id="lib-add-hint">支持中文段落；单篇最多 50000 字，同一篇不要重复添加。</span>
             <button class="primary" id="lib-doc-add">添加资料</button>
           </div>
+          <div class="lib-add-row">
+            <span class="lib-add-hint" id="lib-file-hint">也可以直接传文件：PDF / Word / PPT / Markdown / 图片，单个不超过 20MB，由 WeKnora 解析。</span>
+            <input type="file" id="lib-file-input" hidden
+                   accept=".pdf,.doc,.docx,.ppt,.pptx,.md,.txt,.html,.png,.jpg,.jpeg,.webp">
+            <button class="ghost" id="lib-file-btn">上传文件</button>
+          </div>
         </div>
         <div class="bank-meta" id="lib-doc-meta"></div>
         <div class="stack" id="lib-docs"></div>
@@ -3586,6 +3627,8 @@
      desc: '回答「今天几号」「现在几点」时取本机时间，避免模型拿训练截止日期瞎猜。'},
     {key: 'calc', name: '计算换算',
      desc: '四则运算、百分比、平方 / 开方和常见单位换算；本地求值，不执行代码。'},
+    {key: 'code', name: '代码执行',
+     desc: '进制转换、位运算和小段推导式；只跑服务端白名单里的表达式，不能导入模块、读写文件或联网。'},
     {key: 'study', name: '学习进度',
      desc: '把本机的复习到期、掌握数、连续天数交给模型；只带摘要，不动原始记录。'},
     {key: 'search', name: '网页搜索',
@@ -3769,7 +3812,9 @@
     const headers = Object.assign({}, options.headers || {});
     const token = tokenOverride !== undefined ? tokenOverride : state.token;
     if (token) headers['X-Access-Token'] = token;
-    if (options.body && typeof options.body !== 'string') {
+    const raw = !!options.raw;
+    delete options.raw;
+    if (!raw && options.body && typeof options.body !== 'string') {
       headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(options.body);
     }
@@ -8055,11 +8100,30 @@
     list.forEach(d => {
       const row = el('div', 'list-row');
       const main = el('div', 'list-main');
-      main.appendChild(el('div', 'list-title', d.title || '未命名资料'));
-      main.appendChild(el('div', 'list-meta',
-        (d.chars || 0) + ' 字 · ' + (d.chunks || 0) + ' 段'));
+      const titleLine = el('div', 'list-title', d.title || '未命名资料');
+      const status = String(d.status || '');
+      if (status && status !== 'completed') {
+        titleLine.appendChild(document.createTextNode(' '));
+        titleLine.appendChild(el('span', 'badge' + (status === 'failed' ? ' err' : ''),
+          docStatusLabel(status)));
+      }
+      main.appendChild(titleLine);
+      const bits = [];
+      if (d.chars) bits.push(d.chars + ' 字');
+      bits.push((d.chunks || 0) + ' 段');
+      if (d.bytes) bits.push(Math.max(1, Math.round(d.bytes / 1024)) + ' KB');
+      main.appendChild(el('div', 'list-meta', bits.join(' · ')));
+      if (d.error) main.appendChild(el('div', 'list-meta err', d.error));
       row.appendChild(main);
       const acts = el('div', 'list-actions');
+      const chunks = el('button', 'row-btn', '片段');
+      chunks.addEventListener('click', () => openChunkManager(c, d));
+      acts.appendChild(chunks);
+      if (status === 'failed' || status === 'pending' || status === 'processing') {
+        const again = el('button', 'row-btn', '重解析');
+        again.addEventListener('click', () => reparseLibraryDoc(c, d));
+        acts.appendChild(again);
+      }
       const del = el('button', 'row-btn danger', '删除');
       del.addEventListener('click', () => deleteLibraryDoc(c, d));
       acts.appendChild(del);
@@ -8115,6 +8179,190 @@
         renderCollectionPage(c.id);
       })
       .catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
+  const DOC_STATUS_LABELS = {
+    pending: '排队解析', queued: '排队解析', processing: '解析中',
+    parsing: '解析中', running: '解析中', completed: '已索引',
+    success: '已索引', ready: '已索引', failed: '解析失败', error: '解析失败'
+  };
+
+  function docStatusLabel(status) {
+    return DOC_STATUS_LABELS[status] || status;
+  }
+
+  function uploadLibraryFile(file) {
+    const hint = $('#lib-file-hint');
+    const btn = $('#lib-file-btn');
+    const setHint = (msg, bad) => {
+      if (!hint) return;
+      hint.textContent = msg;
+      hint.classList.toggle('err', !!bad);
+    };
+    const cid = state.collectionId;
+    if (!cid || !file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setHint('「' + file.name + '」超过 20MB，先压缩或拆成几份再传。', true);
+      return;
+    }
+    if (btn) btn.disabled = true;
+    setHint('正在上传「' + file.name + '」，交给 WeKnora 解析…', false);
+    api('/collections/' + encodeURIComponent(cid) + '/files', {
+      method: 'POST',
+      raw: true,
+      headers: {
+        'X-Filename': encodeURIComponent(file.name),
+        'Content-Type': file.type || 'application/octet-stream'
+      },
+      body: file
+    }).then(doc => {
+      if (btn) btn.disabled = false;
+      setHint('已收到「' + (doc.title || file.name) + '」，解析完成后会自动出现在列表里。', false);
+      toast('文件已上传，正在解析');
+      state.collectionsLoaded = false;
+      renderCollectionPage(cid);
+      pollDocument(cid, doc.id, 0);
+    }).catch(e => {
+      if (btn) btn.disabled = false;
+      const msg = e && e.status === 503
+        ? '服务端还没配置 WeKnora，现在只能粘贴正文。'
+        : (e.message || '上传失败');
+      setHint(msg, true);
+    });
+  }
+
+  // WeKnora 解析是异步的：每 3 秒刷一次，最多看 10 次就停，不做无限轮询
+  function pollDocument(cid, docId, tries) {
+    if (!docId || tries >= 10) return;
+    window.setTimeout(() => {
+      if (state.page !== 'collection' || state.collectionId !== cid) return;
+      renderCollectionPage(cid);
+      api('/collections/' + encodeURIComponent(cid)).then(c => {
+        const doc = (c.documents || []).find(d => d.id === docId);
+        const status = doc && String(doc.status || '');
+        if (!doc || status === 'completed' || status === 'success' ||
+            status === 'ready' || status === 'failed' || status === 'error') {
+          state.collectionsLoaded = false;
+          return;
+        }
+        pollDocument(cid, docId, tries + 1);
+      }).catch(() => {});
+    }, 3000);
+  }
+
+  function reparseLibraryDoc(c, d) {
+    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id) + '/reparse', {method: 'POST'})
+      .then(() => {
+        toast('已重新提交解析');
+        state.collectionsLoaded = false;
+        renderCollectionPage(c.id);
+        pollDocument(c.id, d.id, 0);
+      })
+      .catch(e => toast('重新解析失败：' + e.message, 'err'));
+  }
+
+  function openChunkManager(c, d) {
+    const wrap = el('div', 'form-grid');
+    const head = el('div', 'chunk-bar');
+    const note = el('div', 'chunk-note',
+      '每一段都是引用校验的最小单位。改完立刻生效，问答只会逐字引用这里的内容。');
+    const refresh = el('button', 'ghost', '重新加载');
+    head.appendChild(note);
+    head.appendChild(refresh);
+    wrap.appendChild(head);
+    const box = el('div', 'stack chunk-list');
+    wrap.appendChild(box);
+    openModal('片段管理 · ' + (d.title || '未命名资料'), wrap);
+
+    const render = () => {
+      box.replaceChildren();
+      box.appendChild(el('div', 'chunk-note', '正在读取片段…'));
+      api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+        encodeURIComponent(d.id) + '/chunks').then(data => {
+        box.replaceChildren();
+        const items = (data && data.items) || [];
+        if (!items.length) {
+          box.appendChild(el('div', 'empty-panel',
+            '这篇资料还没有片段。解析失败时点「重解析」，成功后片段会出现在这里。'));
+          return;
+        }
+        items.forEach(ch => box.appendChild(chunkCard(c, d, ch)));
+      }).catch(e => {
+        box.replaceChildren();
+        box.appendChild(el('div', 'warn-box', e && e.status === 503
+          ? '片段管理需要服务端先配置 WeKnora（WEKNORA_BASE_URL）。'
+          : ('读取片段失败：' + e.message)));
+      });
+    };
+    refresh.addEventListener('click', render);
+    render();
+  }
+
+  function chunkCard(c, d, ch) {
+    const card = el('div', 'chunk-card');
+    const bar = el('div', 'chunk-card-head');
+    bar.appendChild(el('span', 'chunk-index', '#' + ((ch.seq || 0) + 1)));
+    bar.appendChild(el('span', 'chunk-note',
+      (ch.text || '').length + ' 字' + (ch.status ? ' · ' + ch.status : '')));
+    card.appendChild(bar);
+    const area = el('textarea', 'chunk-text');
+    area.value = ch.text || '';
+    area.rows = Math.min(14, Math.max(4, Math.ceil((ch.text || '').length / 48)));
+    card.appendChild(area);
+    const acts = el('div', 'chunk-actions');
+    const status = el('span', 'chunk-note');
+    const save = el('button', 'ghost', '保存');
+    const del = el('button', 'row-btn danger', '删除');
+    acts.appendChild(status);
+    acts.appendChild(save);
+    acts.appendChild(del);
+    card.appendChild(acts);
+    let revision = ch.revision;
+
+    save.addEventListener('click', () => {
+      const text = area.value.trim();
+      if (text.length < 1) {
+        status.textContent = '不能保存空片段';
+        status.classList.add('err');
+        return;
+      }
+      save.disabled = true;
+      status.textContent = '保存中…';
+      status.classList.remove('err');
+      api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+        encodeURIComponent(d.id) + '/chunks/' + encodeURIComponent(ch.id), {
+        method: 'PUT',
+        body: {content: text, revision}
+      }).then(out => {
+        save.disabled = false;
+        revision = out && out.revision;
+        status.textContent = '已保存，检索立即使用新内容';
+        toast('片段已更新');
+      }).catch(e => {
+        save.disabled = false;
+        status.textContent = e && e.status === 409
+          ? '这段已被别处改过，点「重新加载」再来'
+          : ('保存失败：' + e.message);
+        status.classList.add('err');
+      });
+    });
+
+    del.addEventListener('click', () => {
+      if (!window.confirm('删除这一段？被删掉的原文就不能再被引用了。')) return;
+      del.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+        encodeURIComponent(d.id) + '/chunks/' + encodeURIComponent(ch.id),
+        {method: 'DELETE'}).then(() => {
+        card.remove();
+        toast('片段已删除');
+      }).catch(e => {
+        del.disabled = false;
+        status.textContent = '删除失败：' + e.message;
+        status.classList.add('err');
+      });
+    });
+    return card;
   }
 
   function openCollectionPicker() {
@@ -11827,13 +12075,21 @@
     body.appendChild(s1.sec);
 
     const s2 = setSection('外部工具',
-      'MCP 服务、命令行应用和子代理会放在同一组里，接入前只写状态。' +
+      '这一组不默认开启，也不由浏览器临时代码决定：需要服务端明确配置才会出现。' +
       '网页搜索默认走 Bing RSS；有 Tavily / Serper / Bing 的 key 时，在服务器环境变量里配 SEARCH_PROVIDER 与 SEARCH_API_KEY 即可换用。');
-    const factRow = setRow('MCP / CLI / 子代理', '还没接入；现在只有上面这些内置工具。');
-    const facts = el('div', 'set-facts');
-    setFact(facts, '状态', '未接入');
-    factRow.main.appendChild(facts);
-    s2.body.appendChild(factRow.row);
+    [
+      ['MCP 服务', '未接入', '要接就得让服务端执行外部进程或访问任意地址，风险和权限边界没定，先不开口子。'],
+      ['命令行 / 子代理', '未接入', '本机没有可托管的沙箱；直接跑命令等于把服务器交出去，明确不做。'],
+      ['文件读写', '只读资料库', '上传文件交给 WeKnora 解析进资料库；不提供写入服务器文件系统的工具。'],
+      ['图片理解', '未接入', '需要多模态模型；当前 DeepSeek 通道只收文本，图片可以先上传到资料库再提问。'],
+      ['可跑 JS 的浏览器', '未接入', '抓网页只取正文，不执行页面脚本；避免把外部页面当代码跑。']
+    ].forEach(item => {
+      const row = setRow(item[0], item[2]);
+      const facts = el('div', 'set-facts');
+      setFact(facts, '状态', item[1]);
+      row.main.appendChild(facts);
+      s2.body.appendChild(row.row);
+    });
     body.appendChild(s2.sec);
   }
 
@@ -12340,6 +12596,12 @@
     if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
     $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
+    $('#lib-file-btn').addEventListener('click', () => $('#lib-file-input').click());
+    $('#lib-file-input').addEventListener('change', e => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (file) uploadLibraryFile(file);
+    });
     $('#lib-back').addEventListener('click', () => go('library'));
     $('#lib-ask').addEventListener('click', () => {
       const c = collectionById(state.collectionId);

@@ -58,6 +58,10 @@ TOOLS: Dict[str, Dict[str, str]] = {
         "label": "网页正文",
         "desc": "问句里带链接时抓取该页正文再回答；只允许公网 http/https，抓来的内容当不可信数据。",
     },
+    "code": {
+        "label": "代码执行",
+        "desc": "算进制、位运算和简单推导式；只执行白名单里的表达式，不能导入模块、读写文件或联网。",
+    },
 }
 
 # WMO 天气码 → 中文；模型只拿这句，不做二次推断
@@ -111,6 +115,10 @@ _WHEN = {
         r"搜一下|搜索|搜搜|网上|最新|新闻|实时|价格|比分|汇率|行情|"
         r"热搜|发生了什么|谁赢了", re.IGNORECASE),
     "fetch": re.compile(r"https?://[^\s，。；！？\"'<>]+", re.IGNORECASE),
+    "code": re.compile(
+        r"0[bxo][0-9a-fA-F]+|\b(?:bin|hex|oct|ord|chr|sum|range|sorted)\s*\(|"
+        r"位运算|进制(?:转换|换算)|代码|执行一下|运行一下|运行这段|跑一下|print\s*\(",
+        re.IGNORECASE),
 }
 
 _URL_RE = re.compile(r"https?://[^\s，。；！？\"'<>]+", re.IGNORECASE)
@@ -125,6 +133,9 @@ def _fires(name: str, query: str) -> bool:
     if name == "calc":
         # 先摘掉日期，再看还剩不剩运算符
         text = _DATE_RE.sub(" ", text)
+        # 看起来是代码表达式就交给 code，别让计算器再算一遍并报错
+        if _WHEN["code"].search(text):
+            return False
     return bool(when.search(text))
 
 
@@ -415,6 +426,260 @@ def calc_lookup(query: str, context: Optional[dict] = None) -> dict:
     return base
 
 
+# ---------- 代码执行（白名单表达式，不跑任意代码） ----------
+
+_CODE_MAX_LEN = 400
+_CODE_MAX_NAME = 3
+_CODE_MAX_RANGE = 10000
+_CODE_STR_METHODS = {
+    "upper", "lower", "strip", "lstrip", "rstrip", "split", "rsplit",
+    "join", "replace", "count", "find", "rfind", "startswith", "endswith",
+}
+_CODE_SEQ_METHODS = {"count", "index", "get", "keys", "values", "items"}
+
+
+def _code_range(start, stop=None, step=1):
+    if stop is None:
+        start, stop = 0, start
+    n = len(range(start, stop, step))
+    if n > _CODE_MAX_RANGE:
+        raise ValueError("range 太长（最多 %d）" % _CODE_MAX_RANGE)
+    return range(start, stop, step)
+
+
+_CODE_FUNCS = {
+    "abs": abs, "min": min, "max": max, "sum": sum, "len": len,
+    "round": round, "bin": bin, "oct": oct, "hex": hex,
+    "int": int, "float": float, "str": str, "bool": bool,
+    "ord": ord, "chr": chr, "sorted": sorted, "list": list,
+    "tuple": tuple, "set": set, "dict": dict, "reversed": reversed,
+    "range": _code_range, "pow": pow,
+}
+
+
+def _code_iter(node, env):
+    if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+        return _code_comp(node, env)
+    value = _code_value(node, env)
+    if isinstance(value, (str, list, tuple, set, dict, range)):
+        return value
+    raise ValueError("不支持的循环对象")
+
+
+def _code_comp(node, env):
+    if len(node.generators) != 1:
+        raise ValueError("只支持一层推导式")
+    gen = node.generators[0]
+    if gen.is_async:
+        raise ValueError("不支持 async")
+    source = _code_iter(gen.iter, env)
+    out = []
+    for item in source:
+        inner = dict(env)
+        inner[gen.target.id if isinstance(gen.target, ast.Name)
+              else "__x"] = item
+        if not all(bool(_code_value(c, inner)) for c in gen.ifs):
+            continue
+        out.append(_code_value(node.elt, inner))
+        if len(out) > _CODE_MAX_RANGE:
+            raise ValueError("结果太长")
+    return out if isinstance(node, ast.ListComp) else set(out)
+
+
+def _code_call(node, env):
+    if isinstance(node.func, ast.Name) and node.func.id in _CODE_FUNCS:
+        fn = _CODE_FUNCS[node.func.id]
+    elif isinstance(node.func, ast.Attribute):
+        target = _code_value(node.func.value, env)
+        name = node.func.attr
+        if isinstance(target, str) and name in _CODE_STR_METHODS:
+            fn = getattr(target, name)
+        elif isinstance(target, (list, tuple, dict)) and name in _CODE_SEQ_METHODS:
+            fn = getattr(target, name)
+        else:
+            raise ValueError("不支持的方法：%s" % name)
+    else:
+        raise ValueError("不支持的调用")
+    args = [_code_value(a, env) for a in node.args]
+    kwargs = {k.arg: _code_value(k.value, env) for k in node.keywords if k.arg}
+    if len(args) > 8:
+        raise ValueError("参数太多")
+    if isinstance(node.func, ast.Name) and node.func.id == "pow" \
+            and len(args) > 1 and abs(args[1]) > 64:
+        raise ValueError("指数太大")
+    return fn(*args, **kwargs)
+
+
+def _code_value(node, env):
+    if isinstance(node, ast.Expression):
+        return _code_value(node.body, env)
+    if isinstance(node, ast.Constant):
+        if type(node.value) in (int, float, bool, str):
+            return node.value
+        raise ValueError("不支持的常量")
+    if isinstance(node, ast.Name):
+        if node.id in env:
+            return env[node.id]
+        raise ValueError("未知名字：%s" % node.id)
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        maker = {ast.List: list, ast.Tuple: tuple, ast.Set: set}[type(node)]
+        return maker(_code_value(e, env) for e in node.elts)
+    if isinstance(node, ast.Dict):
+        return {_code_value(k, env): _code_value(v, env)
+                for k, v in zip(node.keys, node.values)}
+    if isinstance(node, ast.UnaryOp):
+        value = _code_value(node.operand, env)
+        if isinstance(node.op, ast.USub):
+            return -value
+        if isinstance(node.op, ast.UAdd):
+            return +value
+        if isinstance(node.op, ast.Not):
+            return not value
+        if isinstance(node.op, ast.Invert):
+            return ~value
+        raise ValueError("不支持的一元运算")
+    if isinstance(node, ast.BoolOp):
+        values = node.values
+        if isinstance(node.op, ast.And):
+            out = True
+            for v in values:
+                out = _code_value(v, env)
+                if not out:
+                    return out
+            return out
+        out = False
+        for v in values:
+            out = _code_value(v, env)
+            if out:
+                return out
+        return out
+    if isinstance(node, ast.BinOp):
+        left = _code_value(node.left, env)
+        right = _code_value(node.right, env)
+        op = node.op
+        if isinstance(op, ast.Pow) and abs(right) > 64:
+            raise ValueError("指数太大")
+        if isinstance(op, (ast.LShift, ast.RShift)) and abs(right) > 64:
+            raise ValueError("移位太大")
+        if isinstance(op, ast.Add):
+            return left + right
+        if isinstance(op, ast.Sub):
+            return left - right
+        if isinstance(op, ast.Mult):
+            return left * right
+        if isinstance(op, ast.Div):
+            return left / right
+        if isinstance(op, ast.FloorDiv):
+            return left // right
+        if isinstance(op, ast.Mod):
+            return left % right
+        if isinstance(op, ast.Pow):
+            return left ** right
+        if isinstance(op, ast.BitOr):
+            return left | right
+        if isinstance(op, ast.BitAnd):
+            return left & right
+        if isinstance(op, ast.BitXor):
+            return left ^ right
+        if isinstance(op, ast.LShift):
+            return left << right
+        if isinstance(op, ast.RShift):
+            return left >> right
+        raise ValueError("不支持的运算符")
+    if isinstance(node, ast.Compare):
+        left = _code_value(node.left, env)
+        for op, comparator in zip(node.ops, node.comparators):
+            right = _code_value(comparator, env)
+            if isinstance(op, ast.Eq):
+                ok = left == right
+            elif isinstance(op, ast.NotEq):
+                ok = left != right
+            elif isinstance(op, ast.Lt):
+                ok = left < right
+            elif isinstance(op, ast.LtE):
+                ok = left <= right
+            elif isinstance(op, ast.Gt):
+                ok = left > right
+            elif isinstance(op, ast.GtE):
+                ok = left >= right
+            elif isinstance(op, ast.In):
+                ok = left in right
+            elif isinstance(op, ast.NotIn):
+                ok = left not in right
+            else:
+                raise ValueError("不支持的比较")
+            if not ok:
+                return False
+            left = right
+        return True
+    if isinstance(node, ast.IfExp):
+        return (_code_value(node.body, env) if _code_value(node.test, env)
+                else _code_value(node.orelse, env))
+    if isinstance(node, ast.Subscript):
+        value = _code_value(node.value, env)
+        return value[_code_value(node.slice, env)]
+    if isinstance(node, ast.Slice):
+        return slice(
+            _code_value(node.lower, env) if node.lower else None,
+            _code_value(node.upper, env) if node.upper else None,
+            _code_value(node.step, env) if node.step else None)
+    if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+        return _code_comp(node, env)
+    if isinstance(node, ast.Call):
+        return _code_call(node, env)
+    raise ValueError("不支持的语法：%s" % type(node).__name__)
+
+
+def _code_expression(query: str) -> str:
+    """从中文问句里抠出能解析的表达式；抠不出返回空串。"""
+    text = str(query or "")
+    m = re.search(r"`([^`]+)`", text)
+    if m:
+        return m.group(1).strip()
+    spans = re.findall(r"[0-9A-Za-z_+\-*/%&|^~<>()\[\]{},.:'\" ]{2,}", text)
+    spans = [s.strip() for s in spans if any(ch.isalnum() for ch in s)]
+    if not spans:
+        return ""
+    spans.sort(key=len, reverse=True)
+    return spans[0].strip(".,: ")
+
+
+def code_lookup(query: str, context: Optional[dict] = None) -> dict:
+    """白名单 Python 表达式：进制、位运算、推导式；不导入、不读取、不写文件。"""
+    base = {"name": "code", "label": "代码执行", "source": "本地白名单",
+            "detail": "", "ok": False}
+    expr = _code_expression(query)
+    if not expr:
+        base["detail"] = "没找到能执行的表达式，写成「bin(42)」或「0b1010 & 0b1100」我再试。"
+        return base
+    if len(expr) > _CODE_MAX_LEN:
+        base["detail"] = "表达式太长（最多 %d 字符）。" % _CODE_MAX_LEN
+        return base
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        base["detail"] = "这句不是合法表达式，检查括号和引号。"
+        return base
+    if sum(1 for _ in ast.walk(tree)) > 200:
+        base["detail"] = "表达式太复杂，拆成几步再试。"
+        return base
+    try:
+        value = _code_value(tree, {})
+    except ZeroDivisionError:
+        base["detail"] = "算不了：除数是 0。"
+        return base
+    except (ValueError, TypeError, IndexError, KeyError, OverflowError,
+            MemoryError, AttributeError) as e:
+        base["detail"] = "没执行：%s" % (str(e) or type(e).__name__)
+        return base
+    out = repr(value)
+    if len(out) > 2000:
+        out = out[:2000] + "…（结果太长，已截断）"
+    base["detail"] = "%s\n=> %s" % (expr, out)
+    base["ok"] = True
+    return base
+
+
 # ---------- 学习进度 ----------
 
 def study_lookup(query: str, context: Optional[dict] = None) -> dict:
@@ -682,6 +947,7 @@ _HANDLERS = {
     "study": study_lookup,
     "search": web_search,
     "fetch": web_fetch,
+    "code": code_lookup,
 }
 
 

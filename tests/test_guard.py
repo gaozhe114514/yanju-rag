@@ -119,6 +119,49 @@ class DailyTest(unittest.TestCase):
         self.assertEqual(g._daily_used, 1)
 
 
+class FakeLimiter:
+    """替身：共享计数，行为与 RedisLimit 相同，但不连 Redis。"""
+
+    def __init__(self):
+        self.hits = {}
+        self.days = {}
+
+    def hit(self, key, window):
+        self.hits[key] = self.hits.get(key, 0) + 1
+        return self.hits[key]
+
+    def bump_day(self, day, ttl_s=0):
+        self.days[day] = self.days.get(day, 0) + 1
+        return self.days[day]
+
+
+class RedisLimitTest(unittest.TestCase):
+    def test_shared_rate_counter(self):
+        lim = FakeLimiter()
+        g = AccessGuard(rate_max=2, window=60, clock=FakeClock(), limiter=lim)
+        self.assertTrue(g.check({}, "a").ok)
+        self.assertTrue(g.check({}, "a").ok)
+        self.assertEqual(g.check({}, "a").status, 429)
+        # 计数在共享存储里，进程内桶不参与
+        self.assertEqual(g._hits, {})
+
+    def test_shared_daily_counter(self):
+        lim = FakeLimiter()
+        g = AccessGuard(rate_max=0, daily_max=2, limiter=lim)
+        self.assertTrue(g.check({}, "a").ok)
+        self.assertTrue(g.check({}, "b").ok)
+        self.assertEqual(g.check({}, "c").status, 429)
+
+    def test_broken_redis_falls_back_to_memory(self):
+        lim = FakeLimiter()
+        lim.hit = lambda key, window: None
+        lim.bump_day = lambda day, ttl_s=0: None
+        g = AccessGuard(rate_max=0, daily_max=1, limiter=lim)
+        self.assertTrue(g.check({}, "a").ok)
+        self.assertEqual(g.check({}, "b").status, 429)
+        self.assertEqual(g._daily_used, 1)
+
+
 class ClientIpTest(unittest.TestCase):
     def test_ignores_xff_by_default(self):
         g = AccessGuard()
