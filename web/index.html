@@ -1969,6 +1969,9 @@
     }
     .refuse-note-k { flex: none; color: var(--muted); }
     .refuse-note .link-btn { font-size: 12px; }
+    .refuse-note-or { flex: none; color: var(--muted-soft); font-size: 12px; }
+    /* 没有具体缺口时只留一排退路链接，不画底条 */
+    .refuse-note.plain { background: transparent; padding: 0; }
 
     /* 回答下面的一行元信息：核对结果、召回与过程、动作 */
     .msg-meta {
@@ -3656,6 +3659,7 @@
     deckPractice: null,
     collections: [],
     collectionsLoaded: false,
+    collectionsUnavailable: false,
     collectionId: '',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatMode: loadJSON(CHAT_MODE_KEY, 'kb') === 'chat' ? 'chat' : 'kb',
@@ -4233,11 +4237,20 @@
     window.addEventListener('resize', hideCitePop);
   }
 
-  // 拒答卡片上补一句模型自己指出的缺口（v0.44）
-  function refuseNote(data) {
-    const box = el('div', 'refuse-note');
-    box.appendChild(el('span', 'refuse-note-k', '缺口'));
-    box.appendChild(el('span', null, data.gap_detail));
+  // 生成服务和后端没起来时，换问法也没用，别给这种建议
+  function refusalHasWayOut(data) {
+    const r = data.reason || '';
+    if (r === 'server_not_ready') return false;
+    return r.indexOf('provider_error') !== 0;
+  }
+
+  // 拒答卡片上补一句模型自己指出的缺口（v0.44）；系统码拒答没有缺口，只留退路（v0.46）
+  function refuseNote(data, query) {
+    const box = el('div', 'refuse-note' + (data.gap_detail ? '' : ' plain'));
+    if (data.gap_detail) {
+      box.appendChild(el('span', 'refuse-note-k', '缺口'));
+      box.appendChild(el('span', null, data.gap_detail));
+    }
     const act = el('button', 'link-btn', data.collection ? '去这个知识库补一段 →' : '换个问法 →');
     act.type = 'button';
     act.addEventListener('click', () => {
@@ -4247,7 +4260,23 @@
       if (inp) inp.focus();
     });
     box.appendChild(act);
+    // 资料模式答不了的日常问题，别让人卡在这里：模式是显式状态，给一条明说的退路
+    if (data.mode !== 'chat' && query) {
+      box.appendChild(el('span', 'refuse-note-or', '或'));
+      const daily = el('button', 'link-btn', '切到日常再问 →');
+      daily.type = 'button';
+      daily.addEventListener('click', () => askDailyAgain(query));
+      box.appendChild(daily);
+    }
     return box;
+  }
+
+  function askDailyAgain(query) {
+    setChatMode('chat');
+    const inp = $('#composer');
+    if (inp) { inp.value = query; autoGrow(); }
+    toast('已切到日常，不查资料再问一次');
+    send();
   }
 
   function renderBotMessage(msg, avatarText) {
@@ -4267,7 +4296,7 @@
     }
 
     body.appendChild(el('div', 'answer-text', answerText(data)));
-    if (data.refused && data.gap_detail) body.appendChild(refuseNote(data));
+    if (data.refused && refusalHasWayOut(data)) body.appendChild(refuseNote(data, msg.query));
 
     const cites = (data.citations || []).filter(Boolean);
     if (cites.length) body.appendChild(citationChips(cites, data.collection));
@@ -7390,6 +7419,9 @@
           state.token = token;
           if (token) localStorage.setItem(TOKEN_KEY, token);
           else localStorage.removeItem(TOKEN_KEY);
+          // 口令变了，之前因 401 放弃的知识库列表要重新拉一次
+          state.collectionsUnavailable = false;
+          state.collectionsLoaded = false;
           renderToken();
         }
         renderSubjects();
@@ -7696,11 +7728,16 @@
 
   async function fetchCollections(force) {
     if (state.collectionsLoaded && !force) return state.collections;
+    // 没口令时这个接口必然 401，别让每次重渲染都再打一遍（会弹出成堆的设置框）
+    if (state.collectionsUnavailable && !force) return state.collections;
     try {
       const data = await api('/collections');
       state.collections = (data && data.items) || [];
       state.collectionsLoaded = true;
+      state.collectionsUnavailable = false;
     } catch (e) {
+      // 失败也别让重渲染再拉一遍；口令验证成功或用户手动刷新时才重试
+      state.collectionsUnavailable = true;
       if (e.status === 401) showAuthNeeded('请先输入访问口令。');
       state.collections = [];
     }
@@ -7761,10 +7798,17 @@
       grid.replaceChildren();
       items.forEach(c => grid.appendChild(collectionCardNode(c)));
       if (!items.length) {
-        grid.appendChild(el('div', 'empty-panel', '还没有知识库，先建一个。'));
+        grid.appendChild(el('div', 'empty-panel', state.collectionsUnavailable
+          ? '知识库列表没拉到。输入访问口令后再看。'
+          : '还没有知识库，先建一个。'));
       }
       const meta = $('#lib-meta');
-      if (meta) meta.textContent = (items.length - 1) + ' 个自建知识库';
+      if (meta) {
+        // items 为空时是没拉到列表，不是「负一个」自建库
+        meta.textContent = items.length
+          ? (items.length - 1) + ' 个自建知识库'
+          : (state.collectionsUnavailable ? '知识库未加载' : '0 个自建知识库');
+      }
     });
   }
 
@@ -8029,8 +8073,9 @@
   function renderSpace() {
     const root = clearNode('#space-groups');
     if (!root) return;
-    if (!state.collectionsLoaded) {
-      fetchCollections(true).then(() => {
+    // 只补一次：之前这里 force 拉取再重渲染，会自己触发自己，把 /collections 打成死循环
+    if (!state.collectionsLoaded && !state.collectionsUnavailable) {
+      fetchCollections().then(() => {
         if (state.page === 'space') renderSpace();
       });
     }
@@ -11741,6 +11786,8 @@
           state.token = token;
           if (token) localStorage.setItem(TOKEN_KEY, token);
           else localStorage.removeItem(TOKEN_KEY);
+          state.collectionsUnavailable = false;
+          state.collectionsLoaded = false;
           renderToken();
         }
         status.textContent = '连接正常：' + m.chunks + ' 题 · ' +
