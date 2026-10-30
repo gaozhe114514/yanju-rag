@@ -27,31 +27,35 @@ DAILY_SYSTEM = """你是「引证」里的日常助手，和用户正常聊天�
 
 
 def build_daily_messages(query: str, history: Optional[List[Dict]] = None,
-                         style: str = "") -> List[Dict]:
+                         style: str = "", tool_text: str = "") -> List[Dict]:
     """拼日常对话的 messages。历史只留 user/assistant 的短文本。"""
     messages: List[Dict] = [{"role": "system", "content": DAILY_SYSTEM}]
     if style:
         messages.append({"role": "system", "content": "讲解方式：" + style[:400]})
+    # 工具结果放在历史之前：它是这一轮的实时事实，不是聊天记录
+    if tool_text:
+        messages.append({"role": "system", "content": tool_text[:2000]})
     messages.extend(normalize_history(history, 6))
     messages.append({"role": "user", "content": (query or "").strip()})
     return messages
 
 
 def daily_reply(provider, query: str, history: Optional[List[Dict]] = None,
-                style: str = "") -> str:
+                style: str = "", tool_text: str = "") -> str:
     """非流式日常回答。没有可用模型时返回离线说明，不假装答过。"""
     if provider is None or not hasattr(provider, "complete"):
         return OFFLINE_REPLY
-    text = provider.complete(build_daily_messages(query, history, style),
+    text = provider.complete(build_daily_messages(query, history, style, tool_text),
                              temperature=0.6, max_tokens=700, json_mode=False)
     return (text or "").strip() or "（模型这次没给出内容，再说一遍试试。）"
 
 
 def daily_stream(provider, query: str, history: Optional[List[Dict]] = None,
-                 style: str = "") -> Iterator[str]:
+                 style: str = "", tool_text: str = "") -> Iterator[str]:
     """流式日常回答：模型支持流式就走流式，否则退成一整段。"""
     if provider is not None and hasattr(provider, "chat_stream"):
-        yield from provider.chat_stream(build_daily_messages(query, history, style),
-                                        temperature=0.6, max_tokens=700)
+        yield from provider.chat_stream(
+            build_daily_messages(query, history, style, tool_text),
+            temperature=0.6, max_tokens=700)
         return
-    yield daily_reply(provider, query, history, style)
+    yield daily_reply(provider, query, history, style, tool_text)

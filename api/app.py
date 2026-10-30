@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
 from answer.daily import daily_reply, daily_stream
+from answer.tools import run_tools, tool_context
 from answer.tutor import run_turn as tutor_turn
 from answer.cache import (cache_key, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
@@ -86,6 +87,8 @@ class ChatRequest(BaseModel):
     collection: str = Field("", max_length=64)
     # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
     mode: str = Field("kb", max_length=8)
+    # 设置里开着的工具名（服务端只认 answer/tools.py 的注册表）；资料模式一律忽略
+    tools: List[str] = Field(default_factory=list, max_length=4)
 
 
 class MasteryMaterial(BaseModel):
@@ -557,20 +560,26 @@ def _non_kb_payload(plan, t0: float) -> dict:
     }
 
 
-def _daily_payload(answer: str, t0: float, reason: str = "") -> dict:
+def _daily_payload(answer: str, t0: float, reason: str = "",
+                   tools: Optional[List[dict]] = None) -> dict:
     """日常对话的返回：没有引用、没有命中，也不进缓存和缺口日志。"""
     ms = int((time.time() - t0) * 1000)
+    steps = []
+    for t in tools or []:
+        steps.append({"name": t.get("label", "工具"),
+                      "ms": 0,
+                      "detail": ("已取到实时数据" if t.get("ok")
+                                 else (t.get("detail") or "调用失败"))})
+    steps.append({"name": "日常对话", "ms": ms,
+                  "detail": ("不检索资料，回答里没有引用" if not reason
+                             else "生成服务不可用，没有作答")})
     return {
         "intent": "chat", "mode": "chat", "refused": bool(reason),
         "answer": "" if reason else answer,
         "citations": [], "reason": reason, "hits": [], "attempts": 0,
+        "tools": tools or [],
         "latency_ms": ms, "rewritten_query": "",
-        "trace": {
-            "intent": "chat", "rewritten_query": "",
-            "steps": [{"name": "日常对话", "ms": ms,
-                       "detail": ("不检索资料，回答里没有引用" if not reason
-                                  else "生成服务不可用，没有作答")}],
-        },
+        "trace": {"intent": "chat", "rewritten_query": "", "steps": steps},
     }
 
 
@@ -689,26 +698,35 @@ def _daily_chat(req: ChatRequest) -> dict:
     t0 = time.time()
     metrics.bump("chat_total")
     metrics.bump("chat_daily")
+    tools = run_tools(req.tools, req.query)
     try:
         text = daily_reply(_state.get("provider_impl"), req.query,
-                           _history(req), _clean_style(req.style))
+                           _history(req), _clean_style(req.style),
+                           tool_context(tools))
     except ProviderError as e:
         metrics.bump("chat_refused")
-        return with_cache_meta(_daily_payload("", t0, "provider_error: %s" % e))
+        return with_cache_meta(_daily_payload("", t0, "provider_error: %s" % e, tools))
     metrics.bump("chat_answered")
-    return with_cache_meta(_daily_payload(text, t0))
+    return with_cache_meta(_daily_payload(text, t0, "", tools))
 
 
 def _daily_events(req: ChatRequest):
-    """日常对话的 SSE：status(daily) → delta* → done。不走检索与引用校验。"""
+    """日常对话的 SSE：status(daily) → status(tool) → delta* → done。"""
     t0 = time.time()
     metrics.bump("chat_total")
     metrics.bump("chat_daily")
     yield sse({"type": "status", "stage": "daily"})
+    tools = []
+    if req.tools:
+        # 先说要查什么，工具调用有时要一两秒，别让界面停着
+        yield sse({"type": "status", "stage": "tool", "label": "实时数据"})
+        tools = run_tools(req.tools, req.query)
+        yield sse({"type": "status", "stage": "daily"})
     parts = []
     try:
         for piece in daily_stream(_state.get("provider_impl"), req.query,
-                                  _history(req), _clean_style(req.style)):
+                                  _history(req), _clean_style(req.style),
+                                  tool_context(tools)):
             if not piece:
                 continue
             parts.append(piece)
@@ -718,11 +736,11 @@ def _daily_events(req: ChatRequest):
         reason = "provider_error: %s" % e
         yield sse({"type": "error", "message": "生成服务暂时不可用"})
         yield sse({"type": "done",
-                   "data": with_cache_meta(_daily_payload("", t0, reason))})
+                   "data": with_cache_meta(_daily_payload("", t0, reason, tools))})
         return
     metrics.bump("chat_answered")
     yield sse({"type": "done",
-               "data": with_cache_meta(_daily_payload("".join(parts), t0))})
+               "data": with_cache_meta(_daily_payload("".join(parts), t0, "", tools))})
 
 
 @app.post("/chat")

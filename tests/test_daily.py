@@ -48,6 +48,23 @@ class DailyMessagesTest(unittest.TestCase):
         ])
         self.assertEqual([m["role"] for m in msgs], ["system", "assistant", "user"])
 
+    def test_tool_context_sits_between_style_and_history(self):
+        msgs = build_daily_messages(
+            "郑州天气", [{"role": "user", "content": "上轮"}], "讲短点",
+            "工具结果：郑州晴 21℃")
+        self.assertEqual(msgs[0]["content"], DAILY_SYSTEM)
+        self.assertEqual(msgs[1]["content"], "讲解方式：讲短点")
+        self.assertEqual(msgs[2], {"role": "system", "content": "工具结果：郑州晴 21℃"})
+        self.assertEqual(msgs[-1], {"role": "user", "content": "郑州天气"})
+
+    def test_without_tool_text_nothing_is_added(self):
+        msgs = build_daily_messages("q", [], "", "")
+        self.assertEqual([m["role"] for m in msgs], ["system", "user"])
+
+    def test_tool_text_is_capped(self):
+        msgs = build_daily_messages("q", [], "", "工具" * 3000)
+        self.assertLessEqual(len(msgs[1]["content"]), 2000)
+
 
 class DailyReplyTest(unittest.TestCase):
     def test_offline_provider_says_so(self):
@@ -71,6 +88,12 @@ class DailyReplyTest(unittest.TestCase):
     def test_provider_error_propagates(self):
         with self.assertRaises(ProviderError):
             daily_reply(FakeDailyProvider(error=ProviderError("boom")), "q")
+
+    def test_tool_text_reaches_the_provider(self):
+        p = FakeDailyProvider("今天郑州 21℃")
+        daily_reply(p, "郑州天气", [], "", "工具结果：郑州晴")
+        msgs, _ = p.calls[0]
+        self.assertTrue(any("工具结果：郑州晴" in m["content"] for m in msgs))
 
 
 class DailyStreamTest(unittest.TestCase):
