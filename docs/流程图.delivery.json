@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "4ef33f5b-a251-43ff-80a3-2c928aa082e4",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "E:\\工程项目1\\.archify\\workflow-408-rag-full-flow-20261030-113636\\candidate.json",
+  "output": "E:\\工程项目1\\docs\\流程图.html",
+  "specification": {
+    "sha256": "e81be1e29bb5ea36ce7e95d99b3eb2c6be33ebb690d55a1579d131bdd4b7b1ac",
+    "bytes": 16025
+  },
+  "artifact": {
+    "sha256": "3a1532758f27d2c1692206df554cbd19655b00ebc358031dca2823ba43024111",
+    "bytes": 873879
+  }
+}

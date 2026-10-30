@@ -28,9 +28,9 @@ _CONTEXT_CUES = (
 )
 
 _INTRO = (
-    "我是 408 真题知识库助手，负责从题库原文里找依据并给出可核对的引用。"
+    "我是「引证」的资料问答助手，负责从资料原文里找依据并给出可核对的引用。"
     "你可以直接问题目或知识点，例如「CSMA/CD 最小帧长怎么算」。"
-    "题库没覆盖的内容我会明确拒答，不硬编。"
+    "资料没覆盖的内容我会明确拒答，不硬编。"
 )
 
 
@@ -94,7 +94,7 @@ def _rule_rewrite(query: str, history: List[Dict]) -> str:
     return (last_user + " " + query).strip() if last_user else query
 
 
-_UNDERSTAND_SYSTEM = """你是 408 考研真题问答系统的查询理解模块。
+_UNDERSTAND_SYSTEM = """你是「引证」资料问答系统的查询理解模块。
 根据对话历史，把用户最后一句话改写成不依赖上文、可直接检索的独立问题。
 
 只输出 JSON：
