@@ -9230,6 +9230,19 @@
       back.appendChild(el('p', 'mp-ev-line', extra.join(' · ')));
       box.appendChild(back);
     }
+    const step = (path.steps || []).find(s => s.id === point.id);
+    if (step && step.cardId) {
+      const src = el('div', 'mp-ev-sec');
+      src.appendChild(el('div', 'mp-ev-sec-title', '关联考点'));
+      const cardBtn = el('button', 'ghost', '看考点原卡 →');
+      cardBtn.type = 'button';
+      cardBtn.addEventListener('click', () => {
+        closeModal();
+        openKnowledge(step.cardId);
+      });
+      src.appendChild(cardBtn);
+      box.appendChild(src);
+    }
     box.appendChild(el('p', 'mp-ev-note',
       '掌握由系统按最近作答、正确率和难度判定，不靠一次答对；差在哪里会写在判分后的题卡下面。'));
     openModal(point.name, box);
