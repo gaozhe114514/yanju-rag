@@ -2670,6 +2670,33 @@
     .mp-profile-item b { margin-right: 4px; color: var(--muted-soft); font-weight: 500; }
     .mp-profile-item span { color: var(--ink-2); }
     .mp-profile-hint { color: var(--muted-soft); font-size: 10.5px; }
+    /* 掌握证据弹层：点已掌握的知识点看作答记录与复习计划 */
+    .mp-ev { display: flex; flex-direction: column; gap: 16px; }
+    .mp-ev-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .mp-ev-state { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .mp-ev-state.done { background: var(--ok-surface); color: var(--ok); }
+    .mp-ev-state.todo { background: var(--muted-surface); color: var(--muted); }
+    .mp-ev-meta { color: var(--muted); font-size: 12px; }
+    .mp-ev-obj { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+    .mp-ev-sec { display: flex; flex-direction: column; gap: 8px; }
+    .mp-ev-sec-title { color: var(--muted-soft); font-size: 10.5px; letter-spacing: .12em; }
+    .mp-ev-list { display: flex; flex-direction: column; gap: 6px; }
+    .mp-ev-attempt {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
+      color: var(--muted); font-size: 12px;
+    }
+    .mp-ev-mark { color: var(--danger); font-weight: 600; }
+    .mp-ev-attempt.ok .mp-ev-mark { color: var(--ok); }
+    .mp-ev-diff { margin-left: auto; color: var(--muted-soft); font-size: 11px; }
+    .mp-ev-when { color: var(--muted-soft); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .mp-ev-line { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+    .mp-ev-line b { color: var(--ink); font-weight: 600; }
+    .mp-ev-empty { margin: 0; color: var(--muted-soft); font-size: 12px; line-height: 1.7; }
+    .mp-ev-note {
+      margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
+      color: var(--muted-soft); font-size: 11px; line-height: 1.7;
+    }
     .mp-nooutline {
       max-width: 760px; margin-top: 18px; padding: 20px;
       border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--card);
@@ -9133,6 +9160,81 @@
     return box;
   }
 
+  function masteryDayLabel(ts) {
+    const d = new Date(Number(ts) || 0);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+  }
+
+  // 点已掌握的知识点：看它不是听一遍就绿了，证据、复习时间、退路记录都在这里
+  function openMasteryEvidence(path, point, module) {
+    const done = masteryPointDone(path, point.id);
+    const box = el('div', 'mp-ev');
+    const head = el('div', 'mp-ev-head');
+    head.appendChild(el('span', 'mp-ev-state ' + (done ? 'done' : 'todo'),
+      done ? '已掌握' : '还没掌握'));
+    head.appendChild(el('span', 'mp-ev-meta',
+      (module && module.name ? module.name + ' · ' : '') +
+      (KP_TYPE_LABELS[point.type] || '概念') +
+      (point.manual ? ' · 手动标记' : '')));
+    box.appendChild(head);
+    if (module && module.objective) {
+      box.appendChild(el('p', 'mp-ev-obj', '学完要能做到：' + module.objective));
+    }
+
+    const attempts = (point.attempts || []).slice(-8).reverse();
+    const sec = el('div', 'mp-ev-sec');
+    sec.appendChild(el('div', 'mp-ev-sec-title', '作答记录'));
+    if (!attempts.length) {
+      sec.appendChild(el('p', 'mp-ev-empty', '还没有作答记录。答过一道题，这里会出现结果。'));
+    } else {
+      const list = el('div', 'mp-ev-list');
+      attempts.forEach(a => {
+        const row = el('div', 'mp-ev-attempt' + (a.ok ? ' ok' : ''));
+        row.appendChild(el('span', 'mp-ev-mark', a.ok ? '✓' : '✗'));
+        row.appendChild(el('span', null,
+          a.kind === 'assess' ? '用自己的话讲' : '选择题'));
+        row.appendChild(el('span', 'mp-ev-diff', '难度 ' + (Number(a.diff) || 1)));
+        row.appendChild(el('span', 'mp-ev-when', formatWhen(a.at)));
+        list.appendChild(row);
+      });
+      sec.appendChild(list);
+    }
+    box.appendChild(sec);
+
+    const plan = el('div', 'mp-ev-sec');
+    plan.appendChild(el('div', 'mp-ev-sec-title', '复习计划'));
+    if (done && Number(point.masteredAt)) {
+      const due = masteryNextReview(point);
+      const late = due && due <= Date.now();
+      const line = el('p', 'mp-ev-line');
+      line.appendChild(document.createTextNode(
+        '掌握于 ' + masteryDayLabel(point.masteredAt) + '；'));
+      line.appendChild(el('b', null,
+        due ? (late ? '复习已到期' : '下次复习 ' + masteryDayLabel(due)) : '还没有排复习'));
+      plan.appendChild(line);
+    } else {
+      plan.appendChild(el('p', 'mp-ev-empty',
+        '答对并通过门槛后，会按 1 / 3 / 7 / 21 天排复习。'));
+    }
+    box.appendChild(plan);
+
+    const extra = [];
+    if (Number(point.skips)) extra.push('跳过 ' + Number(point.skips) + ' 次');
+    if (Number(point.repairs)) extra.push('修题 ' + Number(point.repairs) + ' 次');
+    if (Number(point.deferredAt)) {
+      extra.push('已暂缓' + (point.deferredReason ? '：' + point.deferredReason : ''));
+    }
+    if (extra.length) {
+      const back = el('div', 'mp-ev-sec');
+      back.appendChild(el('div', 'mp-ev-sec-title', '退路记录'));
+      back.appendChild(el('p', 'mp-ev-line', extra.join(' · ')));
+      box.appendChild(back);
+    }
+    box.appendChild(el('p', 'mp-ev-note',
+      '掌握由系统按最近作答、正确率和难度判定，不靠一次答对；差在哪里会写在判分后的题卡下面。'));
+    openModal(point.name, box);
+  }
+
   function masteryPointDone(path, pointId) {
     return !!(path.done && path.done[pointId]);
   }
@@ -9924,7 +10026,7 @@
         row.type = 'button';
         row.setAttribute('aria-label',
           p.name + '，' + (KP_TYPE_LABELS[p.type] || '概念') +
-          (done ? '，已掌握' : deferred ? '，已暂缓' : current ? '，当前' : ''));
+          (done ? '，已掌握，查看作答证据' : deferred ? '，已暂缓' : current ? '，当前' : ''));
         const dot = el('span', 'ms-pt-dot');
         if (done) dot.textContent = '✓';
         else if (deferred) dot.textContent = '–';
@@ -9937,7 +10039,7 @@
           : (KP_TYPE_HINTS[p.type] || '');
         row.appendChild(kind);
         row.addEventListener('click', () => {
-          if (done) { toast('这个知识点已经掌握了'); return; }
+          if (done) { openMasteryEvidence(path, p, m); return; }
           masterySetMode(path, 'study');
           if (deferred) {
             masteryControl(path, 'resume', p.id);
