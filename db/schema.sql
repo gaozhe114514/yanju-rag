@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 
+-- v2.17：文档解析状态机。老库没有这几列，用 ADD COLUMN IF NOT EXISTS 补上，
+-- 已有的资料按 completed 处理，不会因为升级丢内容。
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'completed';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS error text NOT NULL DEFAULT '';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS bytes int NOT NULL DEFAULT 0;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT '';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS documents_collection_idx
     ON documents (collection_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS documents_sha_idx
@@ -70,6 +78,9 @@ CREATE TABLE IF NOT EXISTS doc_chunks (
     embedding     vector({dim}),
     created_at    timestamptz NOT NULL DEFAULT now()
 );
+
+-- 片段编辑的乐观锁：每次改字 revision + 1，冲突回 409，不覆盖别人的修改
+ALTER TABLE doc_chunks ADD COLUMN IF NOT EXISTS revision int NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS doc_chunks_collection_idx
     ON doc_chunks (collection_id, document_id, seq);

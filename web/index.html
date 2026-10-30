@@ -1896,6 +1896,54 @@
       font-size: 11.5px; line-height: 1.6;
     }
     .lib-add-hint.err { color: var(--danger); }
+    /* 上传区：虚线框，拖入时整块变色；上传任务在下面一行一条 */
+    .lib-drop {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+      padding: 18px 16px; border: 1px dashed var(--line-strong);
+      border-radius: 12px; background: var(--surface-2);
+      text-align: center; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .lib-drop:hover { border-color: var(--brand); }
+    .lib-drop:focus-visible {
+      outline: 2px solid rgba(176, 80, 30, .5); outline-offset: 2px;
+    }
+    .lib-drop.on {
+      border-color: var(--brand); background: var(--brand-soft);
+    }
+    .lib-drop-main { color: var(--ink); font-size: 13px; font-weight: 500; }
+    .lib-drop-sub {
+      max-width: 520px; color: var(--muted);
+      font-size: 11.5px; line-height: 1.6;
+    }
+    .upload-list { display: flex; flex-direction: column; gap: 6px; }
+    .upload-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--bg); font-size: 12px;
+    }
+    .upload-name {
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; color: var(--ink);
+    }
+    .upload-track {
+      width: 72px; height: 3px; border-radius: 999px;
+      background: var(--muted-surface); overflow: hidden;
+    }
+    .upload-fill {
+      height: 100%; width: 0; border-radius: 999px; background: var(--brand);
+      transition: width .18s;
+    }
+    .upload-row .badge { flex: none; }
+    .upload-size {
+      flex: none; color: var(--muted); font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .upload-msg {
+      max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; color: var(--muted); font-size: 11.5px;
+    }
+    .upload-msg.err { color: var(--danger); }
     .doc-view {
       max-height: 58vh; overflow: auto; padding: 14px 16px;
       border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
@@ -1941,6 +1989,8 @@
     .chunk-actions .chunk-note { margin-right: auto; }
     @media (max-width: 860px) {
       .lib-add { padding: 14px; }
+      .lib-drop { padding: 14px 12px; }
+      .upload-track { display: none; }
       .doc-view { max-height: 52vh; padding: 12px 13px; }
       .chunk-list { max-height: 54vh; }
       .chunk-actions .chunk-note { width: 100%; }
@@ -3261,12 +3311,14 @@
             <span class="lib-add-hint" id="lib-add-hint">支持中文段落；单篇最多 50000 字，同一篇不要重复添加。</span>
             <button class="primary" id="lib-doc-add">添加资料</button>
           </div>
-          <div class="lib-add-row">
-            <span class="lib-add-hint" id="lib-file-hint">也可以直接传文件：PDF / Word / PPT / Markdown / 图片，单个不超过 20MB，由 WeKnora 解析。</span>
-            <input type="file" id="lib-file-input" hidden
-                   accept=".pdf,.doc,.docx,.ppt,.pptx,.md,.txt,.html,.png,.jpg,.jpeg,.webp">
-            <button class="ghost" id="lib-file-btn">上传文件</button>
+          <div class="lib-drop" id="lib-drop" role="button" tabindex="0"
+               aria-label="上传文件：拖进来，或点击选择">
+            <span class="lib-drop-main">把文件拖到这里，或点击选择</span>
+            <span class="lib-drop-sub">PDF / Word(.docx) / PPT(.pptx) / Markdown / TXT / HTML，单个不超过 20MB，一次最多 3 个；图片暂不支持 OCR</span>
+            <input type="file" id="lib-file-input" hidden multiple
+                   accept=".pdf,.docx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json">
           </div>
+          <div class="upload-list" id="lib-uploads"></div>
         </div>
         <div class="bank-meta" id="lib-doc-meta"></div>
         <div class="stack" id="lib-docs"></div>
@@ -8094,7 +8146,7 @@
     if (meta) meta.textContent = list.length ? list.length + ' 篇资料' : '';
     if (!list.length) {
       box.appendChild(el('div', 'empty-panel',
-        '这个库还没有资料。把一段正文粘贴到上面，切分后就能开始提问。'));
+        '这个库还没有资料。把一段正文粘贴到上面，或把文件拖进上传区，切分后就能开始提问。'));
       return;
     }
     list.forEach(d => {
@@ -8120,7 +8172,7 @@
       chunks.addEventListener('click', () => openChunkManager(c, d));
       acts.appendChild(chunks);
       if (status === 'failed' || status === 'pending' || status === 'processing') {
-        const again = el('button', 'row-btn', '重解析');
+        const again = el('button', 'row-btn', '重切分');
         again.addEventListener('click', () => reparseLibraryDoc(c, d));
         acts.appendChild(again);
       }
@@ -8191,75 +8243,203 @@
     return DOC_STATUS_LABELS[status] || status;
   }
 
-  function uploadLibraryFile(file) {
-    const hint = $('#lib-file-hint');
-    const btn = $('#lib-file-btn');
-    const setHint = (msg, bad) => {
-      if (!hint) return;
-      hint.textContent = msg;
-      hint.classList.toggle('err', !!bad);
-    };
+  /* ---------- 上传队列：拖进来或点选，最多 3 个同时传 ---------- */
+  const LIB_UPLOAD_MAX = 3;
+  const LIB_UPLOAD_LIMIT = 20 * 1024 * 1024;
+  const LIB_UPLOAD_EXT = /\.(pdf|docx|pptx|md|markdown|txt|html?|csv|json)$/i;
+  const libUploadTasks = [];
+
+  function libFileSize(n) {
+    if (!n) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function libUploadActive() {
+    return libUploadTasks.filter(t => t.status === 'uploading' ||
+      t.status === 'parsing').length;
+  }
+
+  function enqueueLibraryFiles(files) {
     const cid = state.collectionId;
-    if (!cid || !file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      setHint('「' + file.name + '」超过 20MB，先压缩或拆成几份再传。', true);
-      return;
-    }
-    if (btn) btn.disabled = true;
-    setHint('正在上传「' + file.name + '」，交给 WeKnora 解析…', false);
-    api('/collections/' + encodeURIComponent(cid) + '/files', {
-      method: 'POST',
-      raw: true,
-      headers: {
-        'X-Filename': encodeURIComponent(file.name),
-        'Content-Type': file.type || 'application/octet-stream'
-      },
-      body: file
-    }).then(doc => {
-      if (btn) btn.disabled = false;
-      setHint('已收到「' + (doc.title || file.name) + '」，解析完成后会自动出现在列表里。', false);
-      toast('文件已上传，正在解析');
-      state.collectionsLoaded = false;
-      renderCollectionPage(cid);
-      pollDocument(cid, doc.id, 0);
-    }).catch(e => {
-      if (btn) btn.disabled = false;
-      const msg = e && e.status === 503
-        ? '服务端还没配置 WeKnora，现在只能粘贴正文。'
-        : (e.message || '上传失败');
-      setHint(msg, true);
+    if (!cid || !files || !files.length) return;
+    Array.prototype.forEach.call(files, file => {
+      if (!file) return;
+      const name = file.name || '未命名文件';
+      const task = {
+        id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6),
+        cid, name, size: file.size || 0, status: 'queued', progress: 0,
+        tries: 0, file, error: ''
+      };
+      if (!LIB_UPLOAD_EXT.test(name)) {
+        task.status = 'failed';
+        task.error = '不支持这种文件；支持 PDF / Word(.docx) / PPT(.pptx) / Markdown / TXT / HTML';
+      } else if (file.size > LIB_UPLOAD_LIMIT) {
+        task.status = 'failed';
+        task.error = '超过 20MB，先压缩或拆成几份再传';
+      }
+      libUploadTasks.unshift(task);
+    });
+    while (libUploadTasks.length > 12) libUploadTasks.pop();
+    renderUploadTasks();
+    pumpLibraryUploads();
+  }
+
+  function renderUploadTasks() {
+    const box = $('#lib-uploads');
+    if (!box) return;
+    box.replaceChildren();
+    const tasks = libUploadTasks
+      .filter(t => t.cid === state.collectionId).slice(0, 6);
+    tasks.forEach(t => {
+      const row = el('div', 'upload-row');
+      row.appendChild(el('span', 'upload-name', t.name));
+      row.appendChild(el('span', 'upload-size', libFileSize(t.size)));
+      if (t.status === 'uploading') {
+        const track = el('div', 'upload-track');
+        const fill = el('div', 'upload-fill');
+        fill.style.width = Math.round((t.progress || 0) * 100) + '%';
+        track.appendChild(fill);
+        row.appendChild(track);
+      }
+      const label = {queued: '排队中', uploading: '上传中', parsing: '解析中',
+        done: '已索引', failed: '失败'}[t.status] || t.status;
+      row.appendChild(el('span', 'badge' +
+        (t.status === 'failed' ? ' err' : (t.status === 'done' ? '' : ' neutral')),
+        label));
+      if (t.status === 'failed' && t.error) {
+        const msg = el('span', 'upload-msg err', t.error);
+        msg.title = t.error;
+        row.appendChild(msg);
+        if (t.file) {
+          const retry = el('button', 'row-btn', '重试');
+          retry.addEventListener('click', () => {
+            t.status = 'queued'; t.error = ''; t.progress = 0; t.tries = 0;
+            renderUploadTasks();
+            pumpLibraryUploads();
+          });
+          row.appendChild(retry);
+        }
+      } else if (t.status === 'done') {
+        row.appendChild(el('span', 'upload-msg',
+          (t.chunks || 0) + ' 段已可引用'));
+      }
+      box.appendChild(row);
     });
   }
 
-  // WeKnora 解析是异步的：每 3 秒刷一次，最多看 10 次就停，不做无限轮询
-  function pollDocument(cid, docId, tries) {
-    if (!docId || tries >= 10) return;
+  function pumpLibraryUploads() {
+    let slots = LIB_UPLOAD_MAX - libUploadActive();
+    // unshift 进来的是新任务，从尾部取才是先来先传
+    for (let i = libUploadTasks.length - 1; i >= 0 && slots > 0; i--) {
+      const t = libUploadTasks[i];
+      if (t.status === 'queued') {
+        slots--;
+        startLibraryUpload(t);
+      }
+    }
+  }
+
+  function startLibraryUpload(task) {
+    task.status = 'uploading';
+    task.progress = 0;
+    renderUploadTasks();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/collections/' + encodeURIComponent(task.cid) + '/files');
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(task.name));
+    xhr.setRequestHeader('Content-Type', task.file.type || 'application/octet-stream');
+    if (state.token) xhr.setRequestHeader('X-Access-Token', state.token);
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      task.progress = Math.min(0.99, e.loaded / e.total);
+      renderUploadTasks();
+    };
+    xhr.onload = () => {
+      let data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300 && data) {
+        task.docId = data.id;
+        task.progress = 1;
+        task.status = 'parsing';
+        task.tries = 0;
+        renderUploadTasks();
+        toast('「' + task.name + '」已上传，正在解析');
+        state.collectionsLoaded = false;
+        if (state.page === 'collection' && state.collectionId === task.cid) {
+          renderCollectionPage(task.cid);
+        }
+        pollUploadTask(task);
+      } else {
+        failUploadTask(task, (data && data.detail) ||
+          ('上传失败（HTTP ' + xhr.status + '）'));
+      }
+      pumpLibraryUploads();
+    };
+    xhr.onerror = () => {
+      failUploadTask(task, '网络错误，上传没成功');
+      pumpLibraryUploads();
+    };
+    xhr.send(task.file);
+  }
+
+  function failUploadTask(task, msg) {
+    task.status = 'failed';
+    task.error = msg || '失败了';
+    renderUploadTasks();
+    pumpLibraryUploads();
+  }
+
+  // 解析是后台线程做的：每 2 秒看一眼，最多 10 次，不做无限轮询
+  function pollUploadTask(task) {
+    if (task.status !== 'parsing') return;
+    if ((task.tries || 0) >= 10) {
+      failUploadTask(task, '解析时间偏长，稍后点这篇资料的「重切分」或刷新看看');
+      return;
+    }
+    task.tries = (task.tries || 0) + 1;
     window.setTimeout(() => {
-      if (state.page !== 'collection' || state.collectionId !== cid) return;
-      renderCollectionPage(cid);
-      api('/collections/' + encodeURIComponent(cid)).then(c => {
-        const doc = (c.documents || []).find(d => d.id === docId);
-        const status = doc && String(doc.status || '');
-        if (!doc || status === 'completed' || status === 'success' ||
-            status === 'ready' || status === 'failed' || status === 'error') {
-          state.collectionsLoaded = false;
+      api('/collections/' + encodeURIComponent(task.cid)).then(c => {
+        if (state.page === 'collection' && state.collectionId === task.cid) {
+          renderCollectionDocs(c);
+        }
+        const doc = (c.documents || []).find(d => d.id === task.docId);
+        if (!doc) {
+          failUploadTask(task, '列表里找不到这篇资料，可能被删掉了');
           return;
         }
-        pollDocument(cid, docId, tries + 1);
-      }).catch(() => {});
-    }, 3000);
+        const status = String(doc.status || '');
+        if (status === 'completed' || status === 'success' || status === 'ready') {
+          task.status = 'done';
+          task.chunks = doc.chunks || 0;
+          state.collectionsLoaded = false;
+          renderUploadTasks();
+          toast('「' + task.name + '」已索引' +
+            (task.chunks ? '，' + task.chunks + ' 段可引用' : ''));
+          pumpLibraryUploads();
+          return;
+        }
+        if (status === 'failed' || status === 'error') {
+          failUploadTask(task, doc.error || '解析失败');
+          return;
+        }
+        pollUploadTask(task);
+      }).catch(() => pollUploadTask(task));
+    }, 2000);
   }
 
   function reparseLibraryDoc(c, d) {
     api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
       encodeURIComponent(d.id) + '/reparse', {method: 'POST'})
-      .then(() => {
-        toast('已重新提交解析');
+      .then(out => {
+        toast(out && out.status === 'failed'
+          ? ('重新切分失败：' + (out.error || '检查文件内容'))
+          : '已重新切分，检索立即使用新片段',
+          out && out.status === 'failed' ? 'err' : undefined);
         state.collectionsLoaded = false;
         renderCollectionPage(c.id);
-        pollDocument(c.id, d.id, 0);
       })
-      .catch(e => toast('重新解析失败：' + e.message, 'err'));
+      .catch(e => toast('重新切分失败：' + e.message, 'err'));
   }
 
   function openChunkManager(c, d) {
@@ -8284,25 +8464,24 @@
         const items = (data && data.items) || [];
         if (!items.length) {
           box.appendChild(el('div', 'empty-panel',
-            '这篇资料还没有片段。解析失败时点「重解析」，成功后片段会出现在这里。'));
+            '这篇资料还没有片段。解析失败时点「重切分」，成功后片段会出现在这里。'));
           return;
         }
-        items.forEach(ch => box.appendChild(chunkCard(c, d, ch)));
+        items.forEach((ch, i) => box.appendChild(chunkCard(c, d, ch, i)));
       }).catch(e => {
         box.replaceChildren();
-        box.appendChild(el('div', 'warn-box', e && e.status === 503
-          ? '片段管理需要服务端先配置 WeKnora（WEKNORA_BASE_URL）。'
-          : ('读取片段失败：' + e.message)));
+        box.appendChild(el('div', 'warn-box', '读取片段失败：' + e.message));
       });
     };
     refresh.addEventListener('click', render);
     render();
   }
 
-  function chunkCard(c, d, ch) {
+  function chunkCard(c, d, ch, index) {
     const card = el('div', 'chunk-card');
     const bar = el('div', 'chunk-card-head');
-    bar.appendChild(el('span', 'chunk-index', '#' + ((ch.seq || 0) + 1)));
+    bar.appendChild(el('span', 'chunk-index',
+      '#' + (ch.seq || (index || 0) + 1)));
     bar.appendChild(el('span', 'chunk-note',
       (ch.text || '').length + ' 字' + (ch.status ? ' · ' + ch.status : '')));
     card.appendChild(bar);
@@ -8322,8 +8501,8 @@
 
     save.addEventListener('click', () => {
       const text = area.value.trim();
-      if (text.length < 1) {
-        status.textContent = '不能保存空片段';
+      if (text.length < 10) {
+        status.textContent = '片段至少要 10 个字，太短的片段没法作为引用依据';
         status.classList.add('err');
         return;
       }
@@ -12080,7 +12259,7 @@
     [
       ['MCP 服务', '未接入', '要接就得让服务端执行外部进程或访问任意地址，风险和权限边界没定，先不开口子。'],
       ['命令行 / 子代理', '未接入', '本机没有可托管的沙箱；直接跑命令等于把服务器交出去，明确不做。'],
-      ['文件读写', '只读资料库', '上传文件交给 WeKnora 解析进资料库；不提供写入服务器文件系统的工具。'],
+      ['文件读写', '只读资料库', '上传的文件在服务端解析进资料库；不提供写入服务器文件系统的工具。'],
       ['图片理解', '未接入', '需要多模态模型；当前 DeepSeek 通道只收文本，图片可以先上传到资料库再提问。'],
       ['可跑 JS 的浏览器', '未接入', '抓网页只取正文，不执行页面脚本；避免把外部页面当代码跑。']
     ].forEach(item => {
@@ -12596,11 +12775,38 @@
     if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
     $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
-    $('#lib-file-btn').addEventListener('click', () => $('#lib-file-input').click());
-    $('#lib-file-input').addEventListener('change', e => {
-      const file = e.target.files && e.target.files[0];
+    const libDrop = $('#lib-drop');
+    const libInput = $('#lib-file-input');
+    const openLibPicker = () => libInput.click();
+    libDrop.addEventListener('click', openLibPicker);
+    libDrop.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openLibPicker();
+      }
+    });
+    ['dragenter', 'dragover'].forEach(name => {
+      libDrop.addEventListener(name, e => {
+        e.preventDefault();
+        libDrop.classList.add('on');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      libDrop.addEventListener(name, e => {
+        e.preventDefault();
+        libDrop.classList.remove('on');
+      });
+    });
+    libDrop.addEventListener('drop', e => {
+      if (e.dataTransfer && e.dataTransfer.files) {
+        enqueueLibraryFiles(e.dataTransfer.files);
+      }
+    });
+    libInput.addEventListener('change', e => {
+      // 先拷成数组：清空 input.value 会让文件列表当场变空，清完再读就成了空数组。
+      const files = Array.prototype.slice.call(e.target.files || []);
       e.target.value = '';
-      if (file) uploadLibraryFile(file);
+      if (files.length) enqueueLibraryFiles(files);
     });
     $('#lib-back').addEventListener('click', () => go('library'));
     $('#lib-ask').addEventListener('click', () => {

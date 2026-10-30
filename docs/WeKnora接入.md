@@ -1,4 +1,9 @@
-# WeKnora 接入说明
+# WeKnora 接入说明（可选后端）
+
+> **v0.49 起不再默认使用。** 用户资料库默认由本项目自己进料（`kb/parsers.py` + 后台解析线程，
+> 见 [借鉴WeKnora-改造方案.md](借鉴WeKnora-改造方案.md)）。本文只留给确实要接 WeKnora 的人：
+> 服务端配了 `WEKNORA_BASE_URL` 才会切换，不配就走本地。放弃默认的原因很简单——官方建议
+> 4C8G，线上那台 2C / 3.7G 跑不起整套 `app + docreader + postgres + redis`。
 
 本项目的用户资料库可以整套交给 [腾讯开源 WeKnora](https://github.com/Tencent/WeKnora)：
 文档解析、切片、向量化、召回由它负责；**拒答闸门、生成、逐字引用校验仍在本项目**。

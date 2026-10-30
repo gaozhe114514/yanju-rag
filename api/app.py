@@ -46,6 +46,7 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
 from kb import PRESET_COLLECTION, Library, LibraryError
+from kb.parsers import IMAGE_EXT, ParseError, extension_of, extract_text
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
@@ -1350,7 +1351,7 @@ def _lib_error(e: LibraryError) -> HTTPException:
     msg = str(e)
     if "不存在" in msg:
         status = 404
-    elif "同名" in msg or "已经在库里" in msg:
+    elif "同名" in msg or "已经在库里" in msg or "已被别处改过" in msg:
         status = 409
     else:
         status = 400
@@ -1510,18 +1511,42 @@ def _upload_name(raw: str) -> str:
     return (name or "upload.bin")[:120]
 
 
+def _start_parse_job(cid: str, doc_id: str, name: str, data: bytes) -> None:
+    """后台解析一份上传的文件：解析 → 切分 → 入库，失败就把原因写回文档。"""
+
+    def work() -> None:
+        lib = _state.get("library")
+        if lib is None:
+            return
+        try:
+            text, _ = extract_text(name, data)
+        except ParseError as e:
+            lib.fail_document(cid, doc_id, str(e))
+            return
+        except Exception as e:  # 解析器自己炸了，别把后台线程带崩
+            lib.fail_document(cid, doc_id, "解析失败：%s" % e)
+            return
+        try:
+            lib.finish_document(cid, doc_id, text)
+        except Exception as e:
+            lib.fail_document(cid, doc_id, "入库失败：%s" % e)
+
+    # 单测里同步跑，省掉等线程的 sleep
+    if _state.get("sync_parse"):
+        work()
+    else:
+        threading.Thread(target=work, daemon=True).start()
+
+
 @app.post("/collections/{cid}/files")
 async def document_upload(cid: str, request: Request,
                           _: None = Depends(enforce_guard)) -> dict:
-    """上传原始文件：PDF / Word / PPT / Markdown / 图片交给 WeKnora 解析。
+    """上传原始文件，本地解析成正文后切分入库。
 
     前端直接把文件放进请求体，文件名走 X-Filename（URI 编码），
     不依赖 python-multipart，也不把文件内容读进模型上下文。
+    配了 WeKnora 时仍然交给它解析（可选后端）。
     """
-    wk = _weknora()
-    if wk is None:
-        raise HTTPException(status_code=503,
-                            detail="上传文件需要先配置 WeKnora（WEKNORA_BASE_URL）")
     body = await request.body()
     if not body:
         raise HTTPException(status_code=400, detail="空文件")
@@ -1529,11 +1554,28 @@ async def document_upload(cid: str, request: Request,
         raise HTTPException(status_code=413,
                             detail="文件太大，单篇最多 %d MB" % (MAX_UPLOAD // 1024 // 1024))
     name = _upload_name(request.headers.get("X-Filename", ""))
+    wk = _weknora()
+    if wk is not None:
+        try:
+            doc = wk.upload_document(cid, name, body)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        _state["doc_pipelines"].pop(cid, None)
+        return doc
+
+    ext = extension_of(name)
+    if ext in IMAGE_EXT:
+        raise HTTPException(status_code=422,
+                            detail="图片解析需要 OCR，本地暂时不支持；"
+                                   "先把图片里的文字转成文本再上传")
+    lib = _library()
     try:
-        doc = wk.upload_document(cid, name, body)
-    except WeKnoraError as e:
-        raise _wk_error(e)
+        doc = lib.create_pending_document(
+            cid, Path(name).stem or name, source=ext, nbytes=len(body))
+    except LibraryError as e:
+        raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _start_parse_job(cid, doc["id"], name, body)
     return doc
 
 
@@ -1542,13 +1584,16 @@ def document_chunks(cid: str, doc_id: str,
                     _: None = Depends(enforce_content)) -> dict:
     """一篇资料切出来的片段；片段是引用校验的最小单位。"""
     wk = _weknora()
-    if wk is None:
-        raise HTTPException(status_code=503,
-                            detail="片段管理需要先配置 WeKnora")
-    try:
-        items = wk.list_chunks(doc_id)
-    except WeKnoraError as e:
-        raise _wk_error(e)
+    if wk is not None:
+        try:
+            items = wk.list_chunks(doc_id)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        return {"items": items, "total": len(items), "editable": True}
+    lib = _library()
+    if lib.get_collection(cid) is None:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    items = lib.document_chunks(cid, doc_id)
     return {"items": items, "total": len(items), "editable": True}
 
 
@@ -1557,13 +1602,18 @@ def chunk_update(cid: str, doc_id: str, chunk_id: str,
                  req: ChunkUpdateRequest,
                  _: None = Depends(enforce_guard)) -> dict:
     wk = _weknora()
-    if wk is None:
-        raise HTTPException(status_code=503,
-                            detail="片段管理需要先配置 WeKnora")
+    if wk is not None:
+        try:
+            chunk = wk.update_chunk(doc_id, chunk_id, req.content, req.revision)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        _state["doc_pipelines"].pop(cid, None)
+        return chunk
     try:
-        chunk = wk.update_chunk(doc_id, chunk_id, req.content, req.revision)
-    except WeKnoraError as e:
-        raise _wk_error(e)
+        chunk = _library().update_chunk(cid, doc_id, chunk_id,
+                                        req.content, req.revision)
+    except LibraryError as e:
+        raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
     return chunk
 
@@ -1572,13 +1622,13 @@ def chunk_update(cid: str, doc_id: str, chunk_id: str,
 def chunk_delete(cid: str, doc_id: str, chunk_id: str,
                  _: None = Depends(enforce_content)) -> dict:
     wk = _weknora()
-    if wk is None:
-        raise HTTPException(status_code=503,
-                            detail="片段管理需要先配置 WeKnora")
-    try:
-        ok = wk.delete_chunk(doc_id, chunk_id)
-    except WeKnoraError as e:
-        raise _wk_error(e)
+    if wk is not None:
+        try:
+            ok = wk.delete_chunk(doc_id, chunk_id)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+    else:
+        ok = _library().delete_chunk(cid, doc_id, chunk_id)
     if not ok:
         raise HTTPException(status_code=404, detail="片段不存在")
     _state["doc_pipelines"].pop(cid, None)
@@ -1589,15 +1639,24 @@ def chunk_delete(cid: str, doc_id: str, chunk_id: str,
 def document_reparse(cid: str, doc_id: str,
                      _: None = Depends(enforce_guard)) -> dict:
     wk = _weknora()
-    if wk is None:
-        raise HTTPException(status_code=503,
-                            detail="重新解析需要先配置 WeKnora")
+    if wk is not None:
+        try:
+            doc = wk.reparse_document(doc_id)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        _state["doc_pipelines"].pop(cid, None)
+        return doc
+    lib = _library()
     try:
-        doc = wk.reparse_document(doc_id)
-    except WeKnoraError as e:
-        raise _wk_error(e)
+        doc = lib.reparse_document(cid, doc_id)
+    except LibraryError as e:
+        raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
-    return doc
+    row = lib.get_document(cid, doc_id) or {}
+    return {"id": doc_id,
+            "status": "completed" if doc else "failed",
+            "chunks": (doc or {}).get("chunks", 0),
+            "error": row.get("error") or ""}
 
 
 @app.post("/bank/generate")

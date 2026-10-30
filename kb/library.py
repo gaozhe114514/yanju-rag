@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from db.store import vector_literal
+from db.store import RevisionConflict, vector_literal
 from retrieval.chunk import Chunk
 from retrieval.rerank import CrossEncoderReranker, LexicalReranker
 from retrieval.search import HybridSearcher, build_searcher
@@ -197,17 +197,28 @@ class Library:
                 rows.append({"id": d["id"], "title": d["title"],
                              "sha256": d.get("sha256", ""),
                              "created_at": d["created_at"],
+                             "updated_at": d.get("updated_at") or d["created_at"],
+                             "status": d.get("status") or "completed",
+                             "error": d.get("error") or "",
+                             "bytes": int(d.get("bytes") or 0),
+                             "source": d.get("source") or "",
                              "chars": len(d["text"]), "chunk_count": n})
         return [{
             "id": r["id"],
             "title": r["title"] or "未命名资料",
             "created_at": str(r.get("created_at") or ""),
+            "updated_at": str(r.get("updated_at") or r.get("created_at") or ""),
+            "status": r.get("status") or "completed",
+            "error": r.get("error") or "",
+            "bytes": int(r.get("bytes") or 0),
+            "source": r.get("source") or "",
             "chars": int(r.get("chars") or 0),
             "chunks": int(r.get("chunk_count") or 0),
             "sha256": r.get("sha256") or "",
         } for r in rows]
 
-    def add_document(self, cid: str, text: str, title: str = "") -> Dict:
+    def add_document(self, cid: str, text: str, title: str = "",
+                     source: str = "", nbytes: int = 0) -> Dict:
         if self.get_collection(cid) is None:
             raise LibraryError("资料库不存在")
         text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -240,12 +251,15 @@ class Library:
                 arr = self.embedder.embed([c["text"] for c in chunks])
                 vectors = {c["id"]: vector_literal(v)
                            for c, v in zip(chunks, arr)}
-            self.store.add_document(doc_id, cid, title, text, sha, chunks, vectors)
+            self.store.add_document(doc_id, cid, title, text, sha, chunks, vectors,
+                                    source=source, nbytes=nbytes)
         else:
             now = _now()
             self._mem["documents"].append({
                 "id": doc_id, "collection_id": cid, "title": title,
-                "text": text, "sha256": sha, "created_at": now})
+                "text": text, "sha256": sha, "created_at": now,
+                "updated_at": now, "status": "completed", "error": "",
+                "source": source, "bytes": int(nbytes or 0)})
             for c in chunks:
                 self._mem["chunks"].append({**c, "collection_id": cid,
                                             "document_id": doc_id})
@@ -286,6 +300,179 @@ class Library:
     def document_text(self, cid: str, doc_id: str) -> Optional[str]:
         row = self.get_document(cid, doc_id)
         return row["text"] if row else None
+
+    # ---------- 文件进料：先占位（processing），解析完再切分入库 ----------
+
+    def create_pending_document(self, cid: str, title: str, source: str = "",
+                                nbytes: int = 0) -> Dict:
+        """上传一落地就建一条 processing 的记录，前端据此显示「解析中」。"""
+        if self.get_collection(cid) is None:
+            raise LibraryError("资料库不存在")
+        if len(self.list_documents(cid)) >= MAX_DOCS:
+            raise LibraryError("单个资料库最多 %d 篇，先删掉一些再加" % MAX_DOCS)
+        title = _clean(title, MAX_TITLE) or "未命名资料"
+        doc_id = _new_id("doc")
+        now = _now()
+        if self.store is not None:
+            self.store.add_document(doc_id, cid, title, "", "", [], {},
+                                    status="processing", source=source,
+                                    nbytes=nbytes)
+        else:
+            self._mem["documents"].append({
+                "id": doc_id, "collection_id": cid, "title": title,
+                "text": "", "sha256": "", "created_at": now, "updated_at": now,
+                "status": "processing", "error": "", "source": source,
+                "bytes": int(nbytes or 0)})
+            self._save_state()
+        return {"id": doc_id, "title": title, "status": "processing", "chars": 0,
+                "chunks": 0, "source": source, "bytes": int(nbytes or 0)}
+
+    def finish_document(self, cid: str, doc_id: str, text: str) -> Optional[Dict]:
+        """解析出的正文：查重 → 切分 → 向量化 → 替换片段，状态转 completed。"""
+        doc = self.get_document(cid, doc_id)
+        if doc is None:
+            return None
+        text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if len(text) < 20:
+            self._fail_document(cid, doc_id, "没提取到足够的文字（至少 20 字）")
+            return None
+        if len(text) > MAX_DOC_CHARS:
+            self._fail_document(cid, doc_id, "提取到 %d 字，超过单篇 %d 字上限，"
+                                "请拆分后再上传" % (len(text), MAX_DOC_CHARS))
+            return None
+        sha = _sha(text)
+        for d in self.list_documents(cid):
+            if d["id"] != doc_id and d.get("sha256") == sha:
+                self._fail_document(cid, doc_id,
+                                    "这篇资料已经在库里了：%s" % d["title"])
+                return None
+        pieces = split_text(text)
+        if not pieces:
+            self._fail_document(cid, doc_id, "没有切出可用片段，检查一下资料内容")
+            return None
+
+        chunks = [{"id": "%s-%03d" % (doc_id, p["seq"]), "seq": p["seq"],
+                   "text": p["text"], "start": p["start"], "end": p["end"]}
+                  for p in pieces]
+        vectors: Dict[str, str] = {}
+        if self.store is not None and self.embedder is not None:
+            arr = self.embedder.embed([c["text"] for c in chunks])
+            vectors = {c["id"]: vector_literal(v) for c, v in zip(chunks, arr)}
+
+        now = _now()
+        if self.store is not None:
+            self.store.replace_doc_chunks(cid, doc_id, chunks, vectors,
+                                          text=text, status="completed")
+        else:
+            for d in self._mem["documents"]:
+                if d["id"] == doc_id and d["collection_id"] == cid:
+                    d.update({"text": text, "sha256": sha, "status": "completed",
+                              "error": "", "updated_at": now})
+            self._mem["chunks"] = [
+                k for k in self._mem["chunks"] if k["document_id"] != doc_id]
+            for c in chunks:
+                self._mem["chunks"].append({**c, "collection_id": cid,
+                                            "document_id": doc_id,
+                                            "revision": 0})
+            self._save_state()
+        self._searchers.pop(cid, None)
+        return {"id": doc_id, "title": doc.get("title") or "", "status": "completed",
+                "chars": len(text), "chunks": len(chunks)}
+
+    def fail_document(self, cid: str, doc_id: str, error: str) -> bool:
+        return self._fail_document(cid, doc_id, error)
+
+    def _fail_document(self, cid: str, doc_id: str, error: str) -> bool:
+        if self.store is not None:
+            return self.store.set_document_status(cid, doc_id, "failed",
+                                                  error=error or "解析失败")
+        for d in self._mem["documents"]:
+            if d["id"] == doc_id and d["collection_id"] == cid:
+                d.update({"status": "failed", "error": error or "解析失败",
+                          "updated_at": _now()})
+                self._save_state()
+                return True
+        return False
+
+    # ---------- 片段管理：引用校验的最小单位 ----------
+
+    def document_chunks(self, cid: str, doc_id: str) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.doc_chunks(cid, doc_id)
+        else:
+            rows = [k for k in self._mem["chunks"]
+                    if k["collection_id"] == cid and k["document_id"] == doc_id]
+            rows.sort(key=lambda k: int(k.get("seq") or 0))
+        return [{"id": r["id"], "seq": int(r.get("seq") or 0),
+                 "text": r.get("text") or "",
+                 "chars": len(r.get("text") or ""),
+                 "revision": int(r.get("revision") or 0)} for r in rows]
+
+    def update_chunk(self, cid: str, doc_id: str, chunk_id: str, text: str,
+                     revision: Optional[int] = None) -> Dict:
+        text = (text or "").replace("\r\n", "\n").strip()
+        if len(text) < 10:
+            raise LibraryError("片段至少要 10 个字，太短的片段没法作为引用依据")
+        if len(text) > 4000:
+            raise LibraryError("单个片段最多 4000 字，长文请拆成多段")
+        emb = None
+        if self.embedder is not None:
+            emb = vector_literal(self.embedder.embed([text])[0])
+        if self.store is not None:
+            try:
+                row = self.store.update_doc_chunk(cid, doc_id, chunk_id, text, emb,
+                                                  revision)
+            except RevisionConflict:
+                raise LibraryError("这段已被别处改过，点「重新加载」再来")
+            if row is None:
+                raise LibraryError("片段不存在")
+            out = {"id": row["id"], "seq": int(row["seq"]), "text": row["text"],
+                   "chars": len(row["text"]),
+                   "revision": int(row.get("revision") or 0)}
+        else:
+            target = None
+            for k in self._mem["chunks"]:
+                if (k["id"] == chunk_id and k["document_id"] == doc_id
+                        and k["collection_id"] == cid):
+                    target = k
+                    break
+            if target is None:
+                raise LibraryError("片段不存在")
+            cur = int(target.get("revision") or 0)
+            if revision is not None and int(revision) != cur:
+                raise LibraryError("这段已被别处改过，点「重新加载」再来")
+            target.update({"text": text, "revision": cur + 1, "start": 0, "end": 0})
+            self._save_state()
+            out = {"id": chunk_id, "seq": int(target.get("seq") or 0),
+                   "text": text, "chars": len(text), "revision": cur + 1}
+        self._searchers.pop(cid, None)
+        return out
+
+    def delete_chunk(self, cid: str, doc_id: str, chunk_id: str) -> bool:
+        if self.store is not None:
+            ok = self.store.delete_doc_chunk(cid, doc_id, chunk_id)
+        else:
+            before = len(self._mem["chunks"])
+            self._mem["chunks"] = [
+                k for k in self._mem["chunks"]
+                if not (k["id"] == chunk_id and k["document_id"] == doc_id
+                        and k["collection_id"] == cid)]
+            ok = len(self._mem["chunks"]) != before
+            if ok:
+                self._save_state()
+        self._searchers.pop(cid, None)
+        return ok
+
+    def reparse_document(self, cid: str, doc_id: str) -> Optional[Dict]:
+        """按已提取的正文重新切分；不重读原文件（原文件不在服务端留着）。"""
+        doc = self.get_document(cid, doc_id)
+        if doc is None:
+            raise LibraryError("资料不存在")
+        text = (doc.get("text") or "").strip()
+        if len(text) < 20:
+            raise LibraryError("这篇资料没有可用的正文，重新切分帮不上忙；"
+                               "删掉它重新上传一次")
+        return self.finish_document(cid, doc_id, text)
 
     # ---------- 检索 ----------
 

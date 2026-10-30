@@ -23,6 +23,14 @@ def _psycopg():
     return psycopg, dict_row
 
 
+class RevisionConflict(ValueError):
+    """片段被别处改过：调用方回 409，不要拿旧内容覆盖新的。"""
+
+    def __init__(self, current: int = 0):
+        super().__init__("这段已被别处改过，重新加载后再改")
+        self.current = int(current or 0)
+
+
 def vector_literal(vec: Sequence[float]) -> str:
     """把 numpy/list 向量转成 pgvector 的文本形式。"""
     return "[" + ",".join("%.7f" % float(x) for x in vec) + "]"
@@ -262,14 +270,17 @@ class Store:
 
     def add_document(self, doc_id: str, cid: str, title: str, text: str,
                      sha: str, chunks: Sequence[Dict],
-                     vectors: Optional[Dict[str, str]] = None) -> None:
+                     vectors: Optional[Dict[str, str]] = None,
+                     status: str = "completed", error: str = "",
+                     source: str = "", nbytes: int = 0) -> None:
         """写入一篇文档及其片段；vectors 是 {chunk_id: pgvector 文本}。"""
         vectors = vectors or {}
         with self.connect() as conn:
             conn.execute(
-                "INSERT INTO documents (id, collection_id, title, text, sha256)"
-                " VALUES (%s, %s, %s, %s, %s)",
-                (doc_id, cid, title, text, sha))
+                "INSERT INTO documents (id, collection_id, title, text, sha256,"
+                " status, error, bytes, source)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (doc_id, cid, title, text, sha, status, error, nbytes, source))
             for c in chunks:
                 conn.execute(
                     "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
@@ -284,7 +295,8 @@ class Store:
     def list_documents(self, cid: str) -> List[Dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT d.id, d.title, d.sha256, d.created_at,"
+                "SELECT d.id, d.title, d.sha256, d.created_at, d.updated_at,"
+                " d.status, d.error, d.bytes, d.source,"
                 " length(d.text) AS chars,"
                 " (SELECT count(*)::int FROM doc_chunks k"
                 "   WHERE k.document_id = d.id) AS chunk_count"
@@ -295,10 +307,31 @@ class Store:
     def get_document(self, cid: str, doc_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, collection_id, title, text, sha256, created_at"
+                "SELECT id, collection_id, title, text, sha256, created_at,"
+                " updated_at, status, error, bytes, source"
                 " FROM documents WHERE collection_id = %s AND id = %s",
                 (cid, doc_id)).fetchone()
         return dict(row) if row else None
+
+    def set_document_status(self, cid: str, doc_id: str, status: str,
+                            error: str = "", text: Optional[str] = None,
+                            nbytes: Optional[int] = None) -> bool:
+        """只改状态（解析线程用）；有 text 时一并写回提取到的正文。"""
+        sets = ["status = %s", "error = %s", "updated_at = now()"]
+        args = [status, error]
+        if text is not None:
+            sets.append("text = %s")
+            args.append(text)
+        if nbytes is not None:
+            sets.append("bytes = %s")
+            args.append(int(nbytes))
+        args.extend([cid, doc_id])
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE documents SET " + ", ".join(sets) +
+                " WHERE collection_id = %s AND id = %s", tuple(args))
+            conn.commit()
+            return cur.rowcount > 0
 
     def delete_document(self, cid: str, doc_id: str) -> bool:
         with self.connect() as conn:
@@ -313,15 +346,91 @@ class Store:
                 conn.commit()
             return cur.rowcount > 0
 
-    def doc_chunks(self, cid: str) -> List[Dict]:
+    def doc_chunks(self, cid: str, document_id: Optional[str] = None) -> List[Dict]:
+        sql = ("SELECT k.id, k.document_id, k.seq, k.text, k.start_off, k.end_off,"
+               " k.revision, d.title"
+               " FROM doc_chunks k JOIN documents d ON d.id = k.document_id"
+               " WHERE k.collection_id = %s")
+        args: list = [cid]
+        if document_id:
+            sql += " AND k.document_id = %s"
+            args.append(document_id)
+        sql += " ORDER BY k.document_id, k.seq"
         with self.connect() as conn:
-            rows = conn.execute(
-                "SELECT k.id, k.document_id, k.seq, k.text, k.start_off, k.end_off,"
-                " d.title"
-                " FROM doc_chunks k JOIN documents d ON d.id = k.document_id"
-                " WHERE k.collection_id = %s ORDER BY k.document_id, k.seq",
-                (cid,)).fetchall()
+            rows = conn.execute(sql, tuple(args)).fetchall()
         return [dict(r) for r in rows]
+
+    def get_doc_chunk(self, cid: str, doc_id: str, chunk_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, document_id, seq, text, start_off, end_off, revision"
+                " FROM doc_chunks WHERE collection_id = %s AND document_id = %s"
+                " AND id = %s", (cid, doc_id, chunk_id)).fetchone()
+        return dict(row) if row else None
+
+    def update_doc_chunk(self, cid: str, doc_id: str, chunk_id: str, text: str,
+                         embedding: Optional[str] = None,
+                         revision: Optional[int] = None) -> Optional[Dict]:
+        """改一段文字并重建它的向量；带 revision 时做乐观锁。
+
+        返回更新后的行；revision 对不上返回 None（调用方回 409）。
+        """
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT revision FROM doc_chunks WHERE collection_id = %s"
+                " AND document_id = %s AND id = %s",
+                (cid, doc_id, chunk_id)).fetchone()
+            if row is None:
+                return None
+            current = int(row["revision"] or 0)
+            if revision is not None and int(revision) != current:
+                raise _RevisionConflict(current)
+            conn.execute(
+                "UPDATE doc_chunks SET text = %s, embedding = %s::vector,"
+                " revision = revision + 1 WHERE id = %s",
+                (text, embedding, chunk_id))
+            conn.execute(
+                "UPDATE documents SET updated_at = now() WHERE id = %s", (doc_id,))
+            conn.commit()
+            out = conn.execute(
+                "SELECT id, document_id, seq, text, start_off, end_off, revision"
+                " FROM doc_chunks WHERE id = %s", (chunk_id,)).fetchone()
+        return dict(out) if out else None
+
+    def delete_doc_chunk(self, cid: str, doc_id: str, chunk_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM doc_chunks WHERE collection_id = %s"
+                " AND document_id = %s AND id = %s", (cid, doc_id, chunk_id))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def replace_doc_chunks(self, cid: str, doc_id: str, chunks: Sequence[Dict],
+                           vectors: Optional[Dict[str, str]] = None,
+                           text: Optional[str] = None,
+                           status: str = "completed", error: str = "") -> None:
+        """重新切分：整篇片段换掉、正文与状态一起更新，一步提交。"""
+        vectors = vectors or {}
+        with self.connect() as conn:
+            conn.execute("DELETE FROM doc_chunks WHERE document_id = %s", (doc_id,))
+            for c in chunks:
+                conn.execute(
+                    "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
+                    " text, start_off, end_off, embedding)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)",
+                    (c["id"], cid, doc_id, c["seq"], c["text"],
+                     c["start"], c["end"], vectors.get(c["id"])))
+            sets = ["status = %s", "error = %s", "updated_at = now()"]
+            args = [status, error]
+            if text is not None:
+                sets.append("text = %s")
+                args.append(text)
+            args.extend([cid, doc_id])
+            conn.execute("UPDATE documents SET " + ", ".join(sets) +
+                         " WHERE collection_id = %s AND id = %s", tuple(args))
+            conn.execute(
+                "UPDATE collections SET updated_at = now() WHERE id = %s", (cid,))
+            conn.commit()
 
     def vector_search_docs(self, query_vec: Sequence[float], top_k: int,
                            cid: str) -> List[Tuple[str, float]]:

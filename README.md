@@ -2,7 +2,9 @@
 
 以 408（计算机学科专业基础综合）真题为内置语料的知识库问答系统：**每个结论都能被引用回原文，答不出来就明说，不硬编。** 不考 408 也能用——把讲义、笔记、手册贴进自建知识库，同一套检索、引用校验与拒答直接生效。
 
-> 状态：v0.48。**日常工具补齐：时间、计算、学习进度、网页搜索与正文**：设置页「服务 · 工具」现在有七个开关（天气、时间日期、计算换算、代码执行、学习进度、网页搜索、网页正文），只在日常模式生效，资料模式一个都不调用。代码执行只跑服务端白名单里的表达式（进制、位运算、简单推导式），不能导入模块、读写文件或联网；MCP / CLI / 子代理 / 浏览器脚本仍未接入，设置里逐项写清原因。问「今天几号」取本机时间，问「12*8+3」「180cm 是多少米」在本地白名单里算，问「我复习到期几个」由前端带一份本机学习摘要（原始记录不出浏览器），问「搜一下…」走 Bing RSS（不需要密钥，服务器配了 Tavily / Serper / Bing API 可换用），问句里带链接才抓那个公网页面正文。每个工具都有触发词，问法不沾边就不调用；回答元信息写清用了哪个工具、来源是什么，失败写「工具失败 · …」并给原因。网页抓取只允许公网 http/https，挡掉内网与云元数据地址；外部内容按不可信数据交给模型，不执行网页里的指令。规范见 [design.md](design.md) v2.16 §6.16。
+> 状态：v0.49。**上传文件不再需要 WeKnora**：自建知识库的进料回到本项目自己做——解析（`kb/parsers.py`）直接读 PDF / Word(.docx) / PPT(.pptx) / Markdown / TXT / HTML，GBK 老讲义不乱码，扫描件、加密 PDF、旧版 `.doc` 会明确说「为什么读不了」而不是假装成功；上传后文档先记 `processing`，后台线程解析完再变 `completed`，失败落 `failed` 并保留原因。界面上照 WeKnora 补了拖拽上传区与任务面板：拖进虚线框上传，单个文件带进度条与状态（排队中 / 上传中 / 解析中 / 已索引 / 失败），最多同时传 3 个，失败可重试；每篇资料可打开片段逐段改正文（`revision` 乐观锁，冲突回 409）、删除，或一键重新切分。测下来一个 4KB 的 docx 切出 950 字 / 2 段，改完片段立刻可被引用。WeKnora 客户端保留为可选后端，配 `WEKNORA_BASE_URL` 才启用，不再默认、不再对外推荐。方案见 [docs/借鉴WeKnora-改造方案.md](docs/借鉴WeKnora-改造方案.md)，规范见 [design.md](design.md) v2.17 §6.15。
+>
+> v0.48：**日常工具补齐：时间、计算、学习进度、网页搜索与正文**：设置页「服务 · 工具」现在有七个开关（天气、时间日期、计算换算、代码执行、学习进度、网页搜索、网页正文），只在日常模式生效，资料模式一个都不调用。代码执行只跑服务端白名单里的表达式（进制、位运算、简单推导式），不能导入模块、读写文件或联网；MCP / CLI / 子代理 / 浏览器脚本仍未接入，设置里逐项写清原因。问「今天几号」取本机时间，问「12*8+3」「180cm 是多少米」在本地白名单里算，问「我复习到期几个」由前端带一份本机学习摘要（原始记录不出浏览器），问「搜一下…」走 Bing RSS（不需要密钥，服务器配了 Tavily / Serper / Bing API 可换用），问句里带链接才抓那个公网页面正文。每个工具都有触发词，问法不沾边就不调用；回答元信息写清用了哪个工具、来源是什么，失败写「工具失败 · …」并给原因。网页抓取只允许公网 http/https，挡掉内网与云元数据地址；外部内容按不可信数据交给模型，不执行网页里的指令。规范见 [design.md](design.md) v2.16 §6.16。
 >
 > v0.47：**缺工具就去设置里开，不用再答「查不了」**：照 DeepTutor 的工具 / MCP 设置思路，设置页「服务」组多了一个「工具」，日常模式可打开「天气查询」（Open-Meteo，无需密钥）。开着时日常提问会把工具名单随请求发出，服务端按白名单执行、问法不沾边（例如「帮我排个计划」）就不调用，回答元信息写 `工具 · 天气 · Open-Meteo`，调用阶段提示「正在查实时数据…」，工具查不到就写 `工具失败 · 天气` 并给出原因，不编天气。资料模式永远不调用工具，仍只按原文回答；MCP / CLI / 子代理还没接入，设置里如实写「未接入」，不摆假开关。规范见 [design.md](design.md) v2.15 §6.16。
 >
@@ -262,14 +264,22 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 - **不串库**：应答缓存键额外拼上 collection id（内置库沿用原命名空间），断拒答日志带 `|collection:<cid>`，甲的答案不会喂给乙的资料。
 - **边界**：单篇 20–50000 字、同库最多 200 篇、同名文档按 sha256 去重；空知识库提问直接回「这个知识库里还没有资料」，不硬编答案。
 
-### 知识库后端：WeKnora（v0.48）
+### 文件进料与片段管理（v0.49，自己解析）
 
-用户资料库可以整套交给腾讯开源的 [WeKnora](https://github.com/Tencent/WeKnora)：在服务端配好 `WEKNORA_BASE_URL` 与 `WEKNORA_API_KEY` 后，`/collections` 与文档、片段接口自动切到 WeKnora，不配则继续用内置 Postgres 实现，旧行为不变。
+自建知识库不再依赖外部服务：文件上传到本地后由 `kb/parsers.py` 解析，切分、向量、检索、引用校验全在本项目。
 
-- **只用它做进料与召回**：PDF / Word / PPT / Markdown / 图片 / 网页解析、切片、向量与 rerank 由 WeKnora 负责；**闸门、生成、逐字引用校验、拒答仍在本项目**，不调用它的 `/knowledge-chat`，否则「引用必须逐字命中原句」这条硬规则就失守了。
-- **上传**：知识库详情页可直接选文件（单个 ≤20MB），前端把文件放进请求体、文件名走 `X-Filename` 头，不依赖 `python-multipart`；上传后每 3 秒刷新一次解析状态，最多看 10 次。
-- **片段管理**：每篇资料的「片段」按钮打开片段列表，可逐段改正文（带 `content_revision` 乐观锁，冲突提示重新加载）、删除；解析失败或有新版本时可「重解析」。
-- **降级**：WeKnora 连不上时接口回 502 并在界面提示；没配时上传 / 片段管理接口回 503，粘贴正文仍可用。内置「408 考研」语料永远走本地，不受影响。
+- **支持格式**：`.pdf`（pypdf，逐页取文字层）、`.docx`（`word/document.xml` 按段落换行）、`.pptx`（按页码排序，每页前加「第 N 页」）、`.md / .markdown / .txt / .csv / .json / .html / .htm`（HTML 先去掉 `script / style`）。编码依次试 UTF-8 / GB18030 / Big5，仍失败再交给 chardet，老讲义不乱码。
+- **读不出来就说原因**：图片（没有 OCR）、旧版 `.doc / .ppt / .xls`、未知扩展名、空文件、超过 20MB、解析后超过 50000 字（提示拆分）都会被拒绝，原因直接显示在上传任务行里；扫描件 PDF 与加密 PDF 各有各的说明，不假装解析成功。
+- **状态机**：上传先建 `processing` 文档并立刻返回，后台线程解析完写入片段、状态转 `completed`；失败转 `failed` 并保留 `error`。文本与已有文档重复时同样落 `failed`，理由写「已经在库里」。
+- **片段管理**：每篇资料的「片段」打开逐段列表（`#1 #2 …`），可改正文、删除、一键重新切分。修改带 `revision` 乐观锁，两个窗口同时改同一段时后保存的回 409 并要求重新加载；段落下限 10 字、上限 4000 字。
+- **界面**：虚线拖拽区上传（点选、键盘也可），任务面板显示大小、进度与状态，最多同时传 3 个，解析状态每 2 秒看一次、最多 10 次，失败可重试。
+
+### 可选的 WeKnora 后端（v0.48，默认关闭）
+
+[腾讯开源 WeKnora](https://github.com/Tencent/WeKnora) 的客户端仍保留：服务端配好 `WEKNORA_BASE_URL` 与 `WEKNORA_API_KEY` 才会把用户资料库切到 WeKnora，不配就走上面的本地进料。之所以不再作为默认：官方建议 4C8G，线上那台 2C / 3.7G 跑整套 `app + docreader + postgres + redis` 没有余量，而本项目自己的进料链路已经够用。接入细节见 [docs/WeKnora接入.md](docs/WeKnora接入.md)。
+
+- **只用它做进料与召回**：闸门、生成、逐字引用校验、拒答仍在本项目，不调用它的 `/knowledge-chat`。
+- **降级**：WeKnora 连不上时接口回 502 并在界面提示；内置「408 考研」语料永远走本地。
 
 问答检索同时覆盖真题和考点两个库：BM25 + 向量召回 → RRF → Cross-Encoder 精排，引用校验对两类 chunk 用同一套逐字规则。考点只作为概念解释的补充，涉及具体题目答案时以真题解析为准。
 
@@ -292,13 +302,13 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `GET /collections/{cid}` | 知识库详情（含文档列表） |
 | `DELETE /collections/{cid}` | 删除知识库：连文档和片段一起删，内置库拒绝（400） |
 | `POST /collections/{cid}/documents` | 加资料：`{"text": "20–50000 字", "title": "可选，≤80 字"}`，返回切出的片段数；同一份资料重复添加回 409 |
-| `GET /collections/{cid}/documents/{doc_id}` | 资料原文（前端用来高亮引用原句）；WeKnora 后端返回它的预览正文 |
+| `GET /collections/{cid}/documents/{doc_id}` | 资料原文（前端用来高亮引用原句）；解析中的文档回 409，失败的回 404 并带原因 |
 | `DELETE /collections/{cid}/documents/{doc_id}` | 删除一篇资料，删完该库的检索索引随之失效重建 |
-| `POST /collections/{cid}/files` | 上传原始文件（WeKnora 后端）：请求体是文件本身，`X-Filename` 放 URI 编码后的文件名，单个 ≤20MB；返回解析中的文档 |
-| `GET /collections/{cid}/documents/{doc_id}/chunks` | 资料切出的片段（WeKnora 后端），供片段管理弹窗读取 |
-| `PUT /collections/{cid}/documents/{doc_id}/chunks/{chunk_id}` | 改片段正文：`{"content": "...", "revision": 3}`；`revision` 是乐观锁，冲突回 409 |
+| `POST /collections/{cid}/files` | 上传原始文件：请求体是文件本身，`X-Filename` 放 URI 编码后的文件名，单个 ≤20MB；本地解析，立即返回 `processing` 文档，失败原因写进 `status: failed` |
+| `GET /collections/{cid}/documents/{doc_id}/chunks` | 资料切出的片段（含 `seq` / `text` / `revision`），供片段管理弹窗读取 |
+| `PUT /collections/{cid}/documents/{doc_id}/chunks/{chunk_id}` | 改片段正文：`{"content": "...", "revision": 3}`（10–4000 字）；`revision` 是乐观锁，冲突回 409 |
 | `DELETE /collections/{cid}/documents/{doc_id}/chunks/{chunk_id}` | 删片段，删完该库检索缓存失效 |
-| `POST /collections/{cid}/documents/{doc_id}/reparse` | 重新解析一篇资料（解析失败或换了解析器时用） |
+| `POST /collections/{cid}/documents/{doc_id}/reparse` | 用已存原文重新切分；没有可切分的原文时回 400 并提示重新上传 |
 | `GET /stats/requests` | 请求日志：`days` / `limit`，返回总数、按路径（次数 / 平均耗时 / 5xx）、按天与最近请求 |
 | `GET /eval/results` | 评测结果列表：`name` / `limit`；`POST` 同路径写入一次评测摘要（需 `DATABASE_URL`） |
 | `GET /chunks` | 题库列表：`q` / `subject` / `year` / `limit` / `offset`，只返回题干和选项 |
@@ -458,7 +468,8 @@ api/gap.py     拒答缺口日志（JSONL，仅内存模式）
 api/feedback.py 反馈标准化、JSONL 落盘与统计（纯函数 + 文件 IO）
 kb/
   chunking.py  用户资料切分（512 字目标 / 50 字重叠，保留原文起止偏移）
-  library.py   知识库管理：建库、加资料（切分 + 向量）、删文档、按库惰性建 searcher
+  parsers.py   本地文件解析：PDF / docx / pptx / md / txt / html，编码探测与拒绝理由
+  library.py   知识库管理：建库、加资料（切分 + 向量）、删文档、片段改删与重新切分、按库惰性建 searcher
 db/
   schema.sql   chunks / collections / documents / doc_chunks / meta / gap_logs / answer_cache / answer_feedback 表与索引
   store.py     语料同步、向量召回、SQL 筛选、拒答与反馈日志、统计聚合
