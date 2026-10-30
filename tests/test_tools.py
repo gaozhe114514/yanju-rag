@@ -3,8 +3,9 @@
 import unittest
 
 from answer import tools
-from answer.tools import (extract_city, run_tools, tool_context, weather_label,
-                          weather_lookup)
+from answer.tools import (calc_lookup, extract_city, run_tools, study_lookup,
+                          time_lookup, tool_context, tool_will_run, weather_label,
+                          weather_lookup, web_fetch, web_search)
 
 GEO = {"results": [{"name": "郑州", "admin1": "河南",
                     "latitude": 34.75778, "longitude": 113.64861}]}
@@ -104,7 +105,7 @@ class RunToolsTest(unittest.TestCase):
         # 「排个计划」不该被当成地名去查天气
         calls = []
         old = tools._HANDLERS["weather"]
-        tools._HANDLERS["weather"] = lambda q: calls.append(q) or {"ok": True}
+        tools._HANDLERS["weather"] = lambda q, context=None: calls.append(q) or {"ok": True}
         try:
             self.assertEqual(run_tools(["weather"], "帮我排个学习计划"), [])
             self.assertEqual(run_tools(["weather"], "郑州今天多少度"), [{"ok": True}])
@@ -117,7 +118,7 @@ class RunToolsTest(unittest.TestCase):
         old = tools._HANDLERS["weather"]
         calls = []
 
-        def fake(query):
+        def fake(query, context=None):
             calls.append(query)
             return {"name": "weather", "label": "天气", "ok": True,
                     "detail": "晴", "source": "Open-Meteo"}
@@ -129,6 +130,138 @@ class RunToolsTest(unittest.TestCase):
             tools._HANDLERS["weather"] = old
         self.assertEqual(len(out), 1)
         self.assertEqual(calls, ["郑州天气"])
+
+
+class TimeToolTest(unittest.TestCase):
+    def test_reports_china_time_and_exam_days(self):
+        res = time_lookup("今天几号", {"exam_days": 51})
+        self.assertTrue(res["ok"])
+        self.assertIn("Asia/Shanghai", res["detail"])
+        self.assertIn("星期", res["detail"])
+        self.assertIn("51 天", res["detail"])
+
+
+class CalcToolTest(unittest.TestCase):
+    def test_arithmetic(self):
+        self.assertTrue(calc_lookup("1+2×3 等于多少")["ok"])
+        self.assertIn("= 7", calc_lookup("1+2×3 等于多少")["detail"])
+
+    def test_percent(self):
+        res = calc_lookup("200 的 15% 是多少")
+        self.assertTrue(res["ok"])
+        self.assertIn("30", res["detail"])
+
+    def test_power_and_root(self):
+        self.assertIn("81", calc_lookup("9 的平方")["detail"])
+        self.assertIn("4", calc_lookup("根号 16")["detail"])
+
+    def test_unit_conversion(self):
+        res = calc_lookup("180cm 是多少米")
+        self.assertTrue(res["ok"])
+        self.assertIn("1.8", res["detail"])
+        self.assertIn("长度换算", res["detail"])
+        temp = calc_lookup("100 摄氏度是多少华氏度")
+        self.assertTrue(temp["ok"])
+        self.assertIn("212", temp["detail"])
+
+    def test_mismatched_units(self):
+        res = calc_lookup("180cm 是多少千克")
+        self.assertFalse(res["ok"])
+        self.assertIn("不是同一类", res["detail"])
+
+    def test_bad_expression_does_not_raise(self):
+        self.assertFalse(calc_lookup("1/0")["ok"])
+        self.assertFalse(calc_lookup("__import__('os')")["ok"])
+        self.assertFalse(calc_lookup("什么也看不出来")["ok"])
+
+
+class StudyToolTest(unittest.TestCase):
+    def test_no_context_is_honest(self):
+        res = study_lookup("我还有多少复习到期")
+        self.assertFalse(res["ok"])
+        self.assertIn("浏览器", res["detail"])
+
+    def test_summary_text(self):
+        res = study_lookup("学习进度", {
+            "exam_days": 51, "streak": 4, "paths": 2, "points": 10,
+            "mastered": 6, "due": 2, "due_names": ["快速排序", "LRU"],
+            "week_asks": 9, "week_drills": 12,
+        })
+        self.assertTrue(res["ok"])
+        for part in ("51 天", "连续学习 4 天", "已掌握 6 个", "复习到期 2 个",
+                     "快速排序", "问 9 次、练 12 次"):
+            self.assertIn(part, res["detail"])
+
+
+RSS = """<?xml version="1.0" encoding="utf-8"?><rss><channel>
+<item><title>DeepSeek Harness</title><link>https://example.com/a</link>
+<description>一切皆插件</description></item>
+<item><title>第二条</title><link>https://example.com/b</link>
+<description>&lt;b&gt;摘要&lt;/b&gt;</description></item>
+</channel></rss>"""
+
+
+class SearchToolTest(unittest.TestCase):
+    def test_terms_are_stripped(self):
+        self.assertEqual(tools._search_terms("帮我搜一下 2026 考研时间"), "2026 考研时间")
+
+    def test_bing_rss_is_parsed(self):
+        hits = tools._parse_bing_rss(RSS)
+        self.assertEqual(len(hits), 2)
+        self.assertEqual(hits[0]["url"], "https://example.com/a")
+        self.assertEqual(hits[1]["snippet"], "摘要")
+
+    def test_search_uses_bing_when_no_key(self):
+        old_text, old_cfg = tools._get_text, tools._search_config
+        tools._get_text = lambda *a, **k: RSS
+        tools._search_config = lambda: ("", "")
+        try:
+            res = web_search("搜一下 DeepSeek Harness")
+        finally:
+            tools._get_text, tools._search_config = old_text, old_cfg
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["source"], "Bing RSS")
+        self.assertIn("https://example.com/a", res["detail"])
+        self.assertTrue(res["external"])
+
+    def test_missing_key_for_configured_provider(self):
+        old_cfg = tools._search_config
+        tools._search_config = lambda: ("tavily", "")
+        try:
+            res = web_search("搜一下 新闻")
+        finally:
+            tools._search_config = old_cfg
+        self.assertFalse(res["ok"])
+        self.assertIn("没配密钥", res["detail"])
+
+
+class FetchToolTest(unittest.TestCase):
+    def test_rejects_non_public_urls(self):
+        self.assertFalse(tools._url_allowed("file:///etc/passwd"))
+        self.assertFalse(tools._url_allowed("http://localhost:8000/health"))
+        self.assertFalse(tools._url_allowed(
+            "http://foo.example/", resolve=lambda *a, **k: [
+                (2, 1, 6, "", ("127.0.0.1", 80))]))
+        self.assertFalse(tools._url_allowed(
+            "http://foo.example/", resolve=lambda *a, **k: [
+                (2, 1, 6, "", ("169.254.169.254", 80))]))
+        self.assertTrue(tools._url_allowed(
+            "https://example.com/", resolve=lambda *a, **k: [
+                (2, 1, 6, "", ("93.184.216.34", 443))]))
+
+    def test_no_url_is_a_polite_failure(self):
+        res = web_fetch("帮我看看这个页面")
+        self.assertFalse(res["ok"])
+        self.assertIn("链接", res["detail"])
+
+
+class ToolGateTest(unittest.TestCase):
+    def test_will_run_only_for_matching_query(self):
+        self.assertTrue(tool_will_run(["time"], "今天几号"))
+        self.assertFalse(tool_will_run(["time"], "帮我排个学习计划"))
+        self.assertTrue(tool_will_run(["calc"], "12*8 等于多少"))
+        self.assertTrue(tool_will_run(["fetch"], "看看 https://example.com/a"))
+        self.assertFalse(tool_will_run([], "今天几号"))
 
 
 class ToolContextTest(unittest.TestCase):

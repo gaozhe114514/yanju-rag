@@ -3577,11 +3577,31 @@
     return out;
   }
 
+  // 日常模式的内置工具；资料模式永远不调用（回答只能来自原文）。
+  // 顺序就是设置页里的行顺序，也是请求里 tools 名单的顺序。
+  const TOOL_SPECS = [
+    {key: 'weather', name: '天气查询',
+     desc: '问天气时用 Open-Meteo 取实时气温、今天与明天的预报，不需要密钥，也不会读你的资料。'},
+    {key: 'time', name: '时间日期',
+     desc: '回答「今天几号」「现在几点」时取本机时间，避免模型拿训练截止日期瞎猜。'},
+    {key: 'calc', name: '计算换算',
+     desc: '四则运算、百分比、平方 / 开方和常见单位换算；本地求值，不执行代码。'},
+    {key: 'study', name: '学习进度',
+     desc: '把本机的复习到期、掌握数、连续天数交给模型；只带摘要，不动原始记录。'},
+    {key: 'search', name: '网页搜索',
+     desc: '查最新消息用；默认走 Bing RSS，不需要密钥，服务器配了搜索 API 会更稳。'},
+    {key: 'fetch', name: '网页正文',
+     desc: '问句里带链接时抓取该页正文；只抓公网 http/https，外部内容按不可信数据处理。'}
+  ];
+  const DEFAULT_TOOLS = TOOL_SPECS.reduce((out, t) => {
+    out[t.key] = true;
+    return out;
+  }, {});
+
   /* 偏好只影响这台设备的界面，不参与检索；口令不进这里 */
   const DEFAULT_PREFS = {
     startPage: 'chat', reducedMotion: false, masteryCount: '5', theme: 'snow',
-    // 日常模式的内置工具；资料模式永远不调用（回答只能来自原文）
-    tools: { weather: true }
+    tools: DEFAULT_TOOLS
   };
 
   // 主题只换色板：默认（纯白·蓝）、奶油（暖纸·陶土）、深色（近黑·陶土）、琉璃（深紫·紫）。
@@ -3607,15 +3627,46 @@
     if (['3', '4', '5'].indexOf(String(prefs.masteryCount)) < 0) prefs.masteryCount = '5';
     prefs.masteryCount = String(prefs.masteryCount);
     prefs.reducedMotion = !!prefs.reducedMotion;
-    // 工具只认注册表里有的名字；老数据没有 tools 时按默认开
+    // 工具只认注册表里有的名字；老数据没有某个开关时按默认开
     const savedTools = prefs.tools && typeof prefs.tools === 'object' ? prefs.tools : {};
-    prefs.tools = { weather: savedTools.weather !== false };
+    prefs.tools = {};
+    TOOL_SPECS.forEach(t => { prefs.tools[t.key] = savedTools[t.key] !== false; });
     return prefs;
   }
 
   function enabledTools() {
     const t = state.prefs.tools || {};
     return Object.keys(t).filter(k => t[k]);
+  }
+
+  // 学习记录只在本机：给「学习进度」工具带一份摘要，服务端读不到原始数据
+  function studySummary() {
+    const now = Date.now();
+    let points = 0, mastered = 0, due = 0;
+    const dueNames = [];
+    (state.mastery || []).forEach(path => {
+      masteryModules(path).forEach(m => (m.points || []).forEach(pt => {
+        points += 1;
+        if (!masteryPointDone(path, pt.id)) return;
+        mastered += 1;
+        const at = masteryNextReview(pt);
+        if (at && at <= now) {
+          due += 1;
+          if (dueNames.length < 5) dueNames.push(pt.name);
+        }
+      }));
+    });
+    const st = streakInfo();
+    const week = recentActivity(7);
+    const left = daysUntil(examDate());
+    return {
+      paths: (state.mastery || []).length,
+      points, mastered, due, due_names: dueNames,
+      streak: st.streak || 0,
+      exam_days: left > 0 ? left : 0,
+      week_asks: week.asks || 0,
+      week_drills: week.drills || 0
+    };
   }
 
   const state = {
@@ -4541,6 +4592,9 @@
         mode: state.chatMode,
         // 工具只在日常模式带上；资料模式服务端也会忽略
         tools: state.chatMode === 'chat' ? enabledTools() : [],
+        // 学习进度只在本机，开「学习进度」工具时带摘要（不含原始记录）
+        study: state.chatMode === 'chat' && enabledTools().indexOf('study') >= 0
+          ? studySummary() : {},
         // 空字符串 = 内置 408 语料；否则只在这个知识库里检索
         collection: state.chatMode === 'chat' ? '' : (state.chatCollection || '')
       }, evt => {
@@ -11759,16 +11813,22 @@
   }
 
   function settingsTools(body) {
-    const s1 = setSection('实时查询', '开着时，日常模式会先取实时数据再交给模型作答；资料模式不调用任何工具。');
-    const row = setRow('天气查询',
-      '问天气时用 Open-Meteo 取实时气温、今天与明天的预报，不需要密钥，也不会读你的资料。');
-    row.ctrl.appendChild(setSwitch(!!draftPrefs().tools.weather, v => {
-      stagePref({tools: Object.assign({}, draftPrefs().tools, {weather: v})});
-    }, '天气查询'));
-    s1.body.appendChild(row.row);
+    const s1 = setSection('日常工具',
+      '开着时，日常模式会先取数据再交给模型作答；问法不沾边就不调用。资料模式不调用任何工具。');
+    TOOL_SPECS.forEach(t => {
+      const row = setRow(t.name, t.desc);
+      row.ctrl.appendChild(setSwitch(!!draftPrefs().tools[t.key], v => {
+        const next = Object.assign({}, draftPrefs().tools);
+        next[t.key] = v;
+        stagePref({tools: next});
+      }, t.name));
+      s1.body.appendChild(row.row);
+    });
     body.appendChild(s1.sec);
 
-    const s2 = setSection('外部工具', 'MCP 服务、命令行应用和子代理会放在同一组里，接入前只写状态。');
+    const s2 = setSection('外部工具',
+      'MCP 服务、命令行应用和子代理会放在同一组里，接入前只写状态。' +
+      '网页搜索默认走 Bing RSS；有 Tavily / Serper / Bing 的 key 时，在服务器环境变量里配 SEARCH_PROVIDER 与 SEARCH_API_KEY 即可换用。');
     const factRow = setRow('MCP / CLI / 子代理', '还没接入；现在只有上面这些内置工具。');
     const facts = el('div', 'set-facts');
     setFact(facts, '状态', '未接入');

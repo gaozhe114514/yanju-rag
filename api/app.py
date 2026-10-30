@@ -25,7 +25,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
 from answer.daily import daily_reply, daily_stream
-from answer.tools import run_tools, tool_context
+from answer.tools import run_tools, tool_context, tool_will_run
 from answer.tutor import run_turn as tutor_turn
 from answer.cache import (cache_key, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
@@ -88,7 +88,9 @@ class ChatRequest(BaseModel):
     # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
     mode: str = Field("kb", max_length=8)
     # 设置里开着的工具名（服务端只认 answer/tools.py 的注册表）；资料模式一律忽略
-    tools: List[str] = Field(default_factory=list, max_length=4)
+    tools: List[str] = Field(default_factory=list, max_length=6)
+    # 学习进度只存在浏览器里，由前端带一份摘要给「学习进度」工具用
+    study: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MasteryMaterial(BaseModel):
@@ -698,7 +700,7 @@ def _daily_chat(req: ChatRequest) -> dict:
     t0 = time.time()
     metrics.bump("chat_total")
     metrics.bump("chat_daily")
-    tools = run_tools(req.tools, req.query)
+    tools = run_tools(req.tools, req.query, req.study)
     try:
         text = daily_reply(_state.get("provider_impl"), req.query,
                            _history(req), _clean_style(req.style),
@@ -717,10 +719,10 @@ def _daily_events(req: ChatRequest):
     metrics.bump("chat_daily")
     yield sse({"type": "status", "stage": "daily"})
     tools = []
-    if req.tools:
+    if req.tools and tool_will_run(req.tools, req.query):
         # 先说要查什么，工具调用有时要一两秒，别让界面停着
         yield sse({"type": "status", "stage": "tool", "label": "实时数据"})
-        tools = run_tools(req.tools, req.query)
+        tools = run_tools(req.tools, req.query, req.study)
         yield sse({"type": "status", "stage": "daily"})
     parts = []
     try:
