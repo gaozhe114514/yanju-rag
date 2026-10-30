@@ -87,6 +87,10 @@ _STOP_WORDS = [
 ]
 _PUNCT = re.compile(r"[。，、！？,.!?;；:：\"'“”‘’()（）\[\]【】\s]+")
 
+# 日期不是算式：2026-10-30 里的连字符不能让计算工具误以为要减法
+_DATE_RE = re.compile(
+    r"\d{4}\s*[-/.年]\s*\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?")
+
 # 只有问法确实沾边才调用：开着工具闲聊，不该白打外部接口
 _WHEN = {
     "weather": re.compile(
@@ -110,6 +114,18 @@ _WHEN = {
 }
 
 _URL_RE = re.compile(r"https?://[^\s，。；！？\"'<>]+", re.IGNORECASE)
+
+
+def _fires(name: str, query: str) -> bool:
+    """这个问法要不要真的调用该工具。"""
+    when = _WHEN.get(name)
+    if when is None:
+        return True
+    text = str(query or "")
+    if name == "calc":
+        # 先摘掉日期，再看还剩不剩运算符
+        text = _DATE_RE.sub(" ", text)
+    return bool(when.search(text))
 
 
 def extract_city(query: str) -> str:
@@ -351,7 +367,7 @@ def calc_lookup(query: str, context: Optional[dict] = None) -> dict:
     """四则 / 百分比 / 平方 / 开方 / 单位换算；只认本地白名单，不执行代码。"""
     base = {"name": "calc", "label": "计算", "source": "本地求值",
             "detail": "", "ok": False}
-    text = str(query or "")
+    text = _DATE_RE.sub(" ", str(query or ""))
     conv = _convert(text)
     if conv is not None:
         base.update(conv)
@@ -383,7 +399,9 @@ def calc_lookup(query: str, context: Optional[dict] = None) -> dict:
     expr = re.sub(r"[^0-9+\-*/().%^ ]", " ", expr)
     expr = re.sub(r"\s+", "", expr).replace("=", "")
     expr = re.sub(r"(?<=[\d)])\(", "*(", expr)
-    if not expr or not re.search(r"\d", expr):
+    # 光秃秃一个数字（12月25日、版本号、MAC 段）不是算式，别算出一个「= 自己」
+    if not expr or not re.search(r"\d", expr) \
+            or not re.search(r"[0-9)]\s*[+\-*/^%]", expr):
         base["detail"] = "没找到能算的表达式，写成「12*8」或「180cm 是多少米」我再试。"
         return base
     try:
@@ -671,8 +689,7 @@ def tool_will_run(names: List[str], query: str) -> bool:
     """前端据此决定要不要先报「正在查…」，避免没调用也闪一下。"""
     for name in names or []:
         name = str(name or "").strip()
-        when = _WHEN.get(name)
-        if name in _HANDLERS and (when is None or when.search(query or "")):
+        if name in _HANDLERS and _fires(name, query):
             return True
     return False
 
@@ -686,8 +703,7 @@ def run_tools(names: List[str], query: str,
         name = str(name or "").strip()
         if not name or name in seen or name not in _HANDLERS:
             continue
-        when = _WHEN.get(name)
-        if when is not None and not when.search(query or ""):
+        if not _fires(name, query):
             continue
         seen.add(name)
         out.append(_HANDLERS[name](query, context=context))

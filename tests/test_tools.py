@@ -174,6 +174,16 @@ class CalcToolTest(unittest.TestCase):
         self.assertFalse(calc_lookup("__import__('os')")["ok"])
         self.assertFalse(calc_lookup("什么也看不出来")["ok"])
 
+    def test_date_is_not_a_subtraction(self):
+        # 2026-10-30 里的连字符不是减号，别算成 1986
+        self.assertFalse(calc_lookup("2026-10-30 是星期几")["ok"])
+        self.assertFalse(calc_lookup("12月25日还有几天")["ok"])
+        self.assertFalse(tool_will_run(["calc"], "2026-10-30 是星期几"))
+        self.assertTrue(tool_will_run(["time"], "2026-10-30 是星期几"))
+
+    def test_bare_number_is_not_an_expression(self):
+        self.assertFalse(calc_lookup("今日 30")["ok"])
+
 
 class StudyToolTest(unittest.TestCase):
     def test_no_context_is_honest(self):
