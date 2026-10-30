@@ -2434,6 +2434,19 @@
     }
     .ms-quiz-aux-btn:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink-2); }
     .ms-quiz-aux-btn:disabled { opacity: .55; }
+    /* 改大纲先预览：确认后才落到 path.modules，避免一次误改丢掉掌握记录 */
+    .ms-preview {
+      margin-top: 10px; padding: 12px;
+      border: 1px solid var(--info-line); border-radius: 12px; background: var(--card);
+    }
+    .ms-preview-title { color: var(--ink); font-size: 12.5px; font-weight: 600; }
+    .ms-preview-meta { margin-top: 4px; color: var(--muted); font-size: 11.5px; line-height: 1.7; }
+    .ms-preview-warn { margin-top: 6px; color: var(--danger); font-size: 11.5px; line-height: 1.7; }
+    .ms-preview-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .ms-preview-acts .primary, .ms-preview-acts .ghost {
+      padding: 6px 12px; font-size: 12px;
+    }
+    .ms-preview-skip { margin-top: 8px; color: var(--muted-soft); font-size: 11px; }
     .ms-rail-bar {
       height: 3px; margin: 0 14px 10px; border-radius: 2px; background: var(--line);
       overflow: hidden;
@@ -9191,6 +9204,89 @@
     return box;
   }
 
+  // 改大纲前比一比：新增 / 删除多少，哪些已掌握的记录会跟着丢
+  function masteryOutlineDiff(path, next) {
+    const before = {};
+    masteryModules(path).forEach(m => (m.points || []).forEach(p => {
+      const name = String(p.name || '').trim();
+      if (name) before[name] = p;
+    }));
+    const after = {};
+    let total = 0;
+    (next.modules || []).forEach(m => (m.points || []).forEach(p => {
+      const name = String(p.name || '').trim();
+      if (!name) return;
+      after[name] = p;
+      total++;
+    }));
+    const added = Object.keys(after).filter(name => !before[name]).length;
+    const removedNames = Object.keys(before).filter(name => !after[name]);
+    const masteredLost = removedNames.filter(name =>
+      masteryPointDone(path, before[name].id));
+    const prevModules = masteryModules(path).map(m => String(m.name || '').trim()).join('\n');
+    const nextModules = (next.modules || []).map(m => String(m.name || '').trim()).join('\n');
+    return {
+      added, removed: removedNames.length, total, masteredLost,
+      changed: !!(added || removedNames.length || prevModules !== nextModules)
+    };
+  }
+
+  function masteryPreviewCard(path, msg) {
+    if (!msg.preview) {
+      return msg.previewSkipped
+        ? el('div', 'ms-preview-skip', '这一版大纲没有应用，还是原来那版。')
+        : null;
+    }
+    const diff = msg.previewDiff || {};
+    const card = el('div', 'ms-preview');
+    card.appendChild(el('div', 'ms-preview-title', '大纲改好了，看一眼再应用'));
+    const parts = [];
+    if (diff.added) parts.push('新增 ' + diff.added + ' 个知识点');
+    if (diff.removed) parts.push('删除 ' + diff.removed + ' 个');
+    parts.push('应用后共 ' + (diff.total || 0) + ' 个');
+    card.appendChild(el('div', 'ms-preview-meta', parts.join(' · ')));
+    if ((diff.masteredLost || []).length) {
+      const lost = diff.masteredLost;
+      card.appendChild(el('div', 'ms-preview-warn',
+        '注意：会丢掉 ' + lost.length + ' 个已掌握知识点的记录（' +
+        lost.slice(0, 3).join('、') + (lost.length > 3 ? ' 等' : '') + '）。'));
+    }
+    const acts = el('div', 'ms-preview-acts');
+    const apply = el('button', 'primary', '应用这版');
+    apply.type = 'button';
+    apply.addEventListener('click', () => masteryApplyPreview(path, msg));
+    const skip = el('button', 'ghost', '先不改');
+    skip.type = 'button';
+    skip.addEventListener('click', () => {
+      delete msg.preview;
+      delete msg.previewDiff;
+      msg.previewSkipped = true;
+      saveMastery();
+      renderMastery();
+      toast('这一版没有应用');
+    });
+    acts.appendChild(apply);
+    acts.appendChild(skip);
+    card.appendChild(acts);
+    return card;
+  }
+
+  async function masteryApplyPreview(path, msg) {
+    const outline = msg.preview;
+    if (!outline) return;
+    delete msg.preview;
+    delete msg.previewDiff;
+    applyMasteryOutline(path, outline);
+    path.updatedAt = Date.now();
+    saveMastery();
+    renderMastery();
+    await linkMasteryCards(path);
+    saveMastery();
+    renderMastery();
+    toast('大纲已更新：' + masteryModules(path).length + ' 个模块 · ' +
+      (path.steps || []).length + ' 个知识点');
+  }
+
   function masteryDayLabel(ts) {
     const d = new Date(Number(ts) || 0);
     return (d.getMonth() + 1) + '月' + d.getDate() + '日';
@@ -9411,6 +9507,10 @@
       });
     });
     path.steps = steps;
+    // 删掉的知识点不留在完成表里，预览卡说的「会丢掉记录」才算真的丢了
+    const ids = {};
+    steps.forEach(st => { ids[st.id] = true; });
+    Object.keys(path.done || {}).forEach(id => { if (!ids[id]) delete path.done[id]; });
   }
 
   function applyMasteryOutline(path, outline) {
@@ -9687,11 +9787,29 @@
         if (res.control && ctrlCopy[res.control.kind]) toast(ctrlCopy[res.control.kind]);
       }
       if (res.outline && mode === 'outline') {
-        applyMasteryOutline(path, res.outline);
-        await linkMasteryCards(path);
-        toast('大纲已更新：' + masteryModules(path).length + ' 个模块 · ' +
-          (path.steps || []).length + ' 个知识点' +
-          (profileCount ? '，档案记下 ' + profileCount + ' 项' : ''));
+        const hadOutline = masteryModules(path).length > 0;
+        const diff = masteryOutlineDiff(path, res.outline);
+        if (hadOutline && diff.changed) {
+          // 改大纲不直接落库：先出一张预览卡，确认后才应用
+          (path.chat || []).forEach(m => {
+            if (m !== msg && m.preview) {
+              delete m.preview;
+              delete m.previewDiff;
+              m.previewSkipped = true;
+            }
+          });
+          msg.preview = res.outline;
+          msg.previewDiff = {added: diff.added, removed: diff.removed,
+            total: diff.total, masteredLost: diff.masteredLost};
+          toast('大纲改好了，先看一眼再应用' +
+            (profileCount ? '；档案记下 ' + profileCount + ' 项' : ''));
+        } else {
+          applyMasteryOutline(path, res.outline);
+          await linkMasteryCards(path);
+          toast('大纲已更新：' + masteryModules(path).length + ' 个模块 · ' +
+            (path.steps || []).length + ' 个知识点' +
+            (profileCount ? '，档案记下 ' + profileCount + ' 项' : ''));
+        }
       } else if (res.outline) {
         // 学习 / 复习模式：服务端把证据带回来了，只合并进度，不重排结构
         mergeMasteryState(path, res.outline);
@@ -10059,6 +10177,8 @@
       body.appendChild(el('div', 'ms-msg-error', msg.content));
     } else {
       if (msg.content) body.appendChild(mdLite(msg.content));
+      const preview = masteryPreviewCard(path, msg);
+      if (preview) body.appendChild(preview);
       const card = masteryAskCard(path, msg);
       if (card) body.appendChild(card);
       const quiz = masteryQuestionCard(path, msg);
