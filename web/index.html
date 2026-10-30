@@ -1986,6 +1986,8 @@
     .mini-det > summary::before { content: none; }
     .mini-det > summary:hover { color: var(--brand); }
     .mini-det .hit-list, .mini-det .trace { margin-top: 8px; }
+    /* 展开的召回 / 过程铺满整行，别被元信息那行挤成窄条 */
+    .mini-det[open] { flex: 1 0 100%; }
     .msg-tools {
       display: flex; align-items: center; gap: 2px; margin-left: auto;
       opacity: 0; transition: opacity .15s ease;
@@ -4236,10 +4238,11 @@
     const box = el('div', 'refuse-note');
     box.appendChild(el('span', 'refuse-note-k', '缺口'));
     box.appendChild(el('span', null, data.gap_detail));
-    const act = el('button', 'link-btn', data.collection ? '去知识库补一段 →' : '换个问法 →');
+    const act = el('button', 'link-btn', data.collection ? '去这个知识库补一段 →' : '换个问法 →');
     act.type = 'button';
     act.addEventListener('click', () => {
-      if (data.collection) { go('library'); return; }
+      // 自建库直接开到出问题的那个库，少一步找库
+      if (data.collection) { go('collection', data.collection); return; }
       const inp = $('#composer');
       if (inp) inp.focus();
     });
@@ -4286,7 +4289,11 @@
 
     if (data.hits && data.hits.length) {
       const det = el('details', 'mini-det');
-      det.appendChild(el('summary', null, '召回 ' + data.hits.length + ' 条'));
+      // 拒答时最需要看召回到了什么，默认摊开；正常作答仍折叠
+      det.open = !!data.refused;
+      det.appendChild(el('summary', null, data.refused
+        ? '召回 ' + data.hits.length + ' 条 · 都没能作为依据'
+        : '召回 ' + data.hits.length + ' 条'));
       if (data.rewritten_query) {
         const rw = el('div', 'rewrite');
         rw.appendChild(document.createTextNode('检索时使用：'));
@@ -4352,16 +4359,19 @@
           toast('浏览器不允许写入剪贴板', 'err');
         }
       });
-      const nb = el('button', 'tool-btn', '存到笔记本');
-      nb.addEventListener('click', () => saveAnswerToNotebook(msg));
+      // 拒答没有正文可存，不给「存到笔记本」，免得存出一条空笔记
+      const nb = data.refused ? null : el('button', 'tool-btn', '存到笔记本');
+      if (nb) nb.addEventListener('click', () => saveAnswerToNotebook(msg));
       const jr = el('button', 'tool-btn', '记入日志');
       jr.addEventListener('click', () => {
         journalAdd('chat', clip(msg.query, 40),
-          data.refused ? '资料未覆盖，已记录这个缺口。' : clip(data.answer, 160));
+          data.refused
+            ? (data.gap_detail ? '缺：' + data.gap_detail : '资料未覆盖，已记录这个缺口。')
+            : clip(data.answer, 160));
         toast('已记入学习日志');
       });
       tools.appendChild(cp);
-      tools.appendChild(nb);
+      if (nb) tools.appendChild(nb);
       tools.appendChild(jr);
       meta.appendChild(tools);
     }
