@@ -18,6 +18,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .providers import ProviderError, parse_payload
 
+
+class GuardError(ProviderError):
+    """模型答应了出题却没出：话以冒号结尾、把选项写成散文、或声称题卡已给。"""
+
+
 MAX_MODULES = 10
 MAX_POINTS = 48
 MAX_POINTS_PER_MODULE = 8
@@ -41,6 +46,16 @@ PROFILE_LABELS = {
 STAGES = ("intake", "draft", "approved")
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
+
+# 回合后守卫：出题即结束这一轮，说了要出题就必须真的把题放进来
+_GUARD_END_COLON = re.compile(r"[:：]\s*$")
+_GUARD_PROMISE = re.compile(
+    r"(题目如下|下面这道题|接下来这道|来一道[^。！？\n]{0,12}题|考考你|"
+    r"看看你(?:知不知道|会不会|能不能|掌握没)|请选择|选一个|做一道题)")
+_GUARD_PROSE_OPTION = re.compile(r"(?:^|\n)\s*([A-DＡ-Ｄ])[\s.、:：)）]\s*\S")
+_GUARD_FAKE_CARD = re.compile(
+    r"(?:题目|题卡|题目卡|卡片)[^。！？\n]{0,6}(?:已|已经)(?:给|放|挂|出现|生成)")
+CONTROL_KINDS = ("skip", "repair", "defer", "resume")
 
 
 TUTOR_SYSTEM = """你是「引证 · 精通之路」里的一对一导师。这一轮你在和一个学习者一起定他的精通大纲，不是上课，也不出题。
@@ -504,10 +519,12 @@ def _point_done(point) -> bool:
 
 
 def current_point(outline) -> Optional[Dict]:
-    """下一步该学的知识点：按模块顺序，第一个没掌握的。"""
+    """下一步该学的知识点：按模块顺序，第一个没掌握、也没被暂缓的。"""
     for row in _all_points(outline):
-        if not _point_done(row["point"]):
-            return row
+        point = row["point"]
+        if _point_done(point) or int(point.get("deferredAt") or 0):
+            continue
+        return row
     return None
 
 
@@ -531,10 +548,93 @@ def _status_lines(outline) -> str:
             quiz = _quiz_attempts(point)
             right = sum(1 for a in quiz if a.get("ok"))
             state = "已掌握" if _point_done(point) else (
+                "已暂缓" if int(point.get("deferredAt") or 0) else
                 "作答 %d 次，对 %d 次" % (len(quiz), right) if quiz else "未开始")
             rows.append("%s（%s，%s）" % (point.get("name"), point.get("type") or "concept", state))
         lines.append("- %s：%s" % (module.get("name"), "；".join(rows)))
     return "\n".join(lines)
+
+
+def _guard_say(say: str, quiz, assess) -> str:
+    """这一轮没有题时，检查话里是不是答应了出题。返回问题描述，没问题返回空串。"""
+    if quiz or assess or not say:
+        return ""
+    text = say.strip()
+    problems = []
+    if _GUARD_END_COLON.search(text):
+        problems.append("话以冒号结尾，却没有出题")
+    elif _GUARD_PROMISE.search(text):
+        problems.append("话里说要出题，却把题空着")
+    labels = {m.group(1) for m in _GUARD_PROSE_OPTION.finditer(text)}
+    if len(labels) >= 2:
+        problems.append("把选项写进了正文，没有放进 quiz")
+    if _GUARD_FAKE_CARD.search(text):
+        problems.append("声称题目已经给到，实际没有题")
+    return "；".join(problems)
+
+
+def _strip_dangling(say: str) -> str:
+    return re.sub(r"[\s:：]+$", "", (say or "").strip())
+
+
+def _apply_control(payload: dict, outline: Dict, pending: Optional[Dict]) -> Optional[Dict]:
+    """退路不是「给掌握」：跳过和修题不记作答，暂缓只把知识点挪开。
+
+    返回这一轮的控制事实（写进提示词）；没有控制或控制无效时返回 None。
+    """
+    control = payload.get("control")
+    if not isinstance(control, dict):
+        return None
+    kind = str(control.get("kind") or "").strip().lower()
+    if kind not in CONTROL_KINDS:
+        return None
+    if kind in ("skip", "repair") and not pending:
+        return None
+    now = int(payload.get("now") or 0)
+    note = _clip(control.get("note"), 400).strip()
+    kp_id = str((pending or {}).get("kpId") or control.get("kpId") or "")
+    point = _find_point(outline, kp_id)
+    if point is None and kind == "defer":
+        row = current_point(outline)
+        point = (row or {}).get("point")
+    if point is None:
+        return None
+    if kind == "skip":
+        point["skips"] = int(point.get("skips") or 0) + 1
+        point["lastSkippedAt"] = now
+    elif kind == "repair":
+        point["repairs"] = int(point.get("repairs") or 0) + 1
+        point["lastRepairedAt"] = now
+    elif kind == "defer":
+        point["deferredAt"] = now or 1
+        point["deferredReason"] = note[:200]
+    else:
+        point["deferredAt"] = 0
+        point["deferredReason"] = ""
+    return {"kind": kind, "kpId": point.get("id") or "",
+            "name": point.get("name") or "", "note": note,
+            "deferredAt": int(point.get("deferredAt") or 0)}
+
+
+def _control_block(control: Optional[Dict]) -> str:
+    if not control:
+        return ""
+    kind = control.get("kind")
+    name = control.get("name") or "这个知识点"
+    if kind == "skip":
+        return ("【学习者跳过了这道题】\n没有判分，也没有给掌握分，门槛原地不动。"
+                "不要重出同一道题，不要公布答案键；换一道更小的题确认，"
+                "或先换个角度把这一点讲清楚再问。")
+    if kind == "repair":
+        note = control.get("note") or "题干或选项有问题"
+        return ("【学习者说这道题有问题】\n他说：%s\n不要重出原题，也不要怪学习者；"
+                "先用一句话说明这道题想考什么，再出一道修正后的题。" % note)
+    if kind == "defer":
+        return ("【学习者要求先放一放】\n「%s」这一轮先不学，也不要给它判分或宣布掌握。"
+                "改讲下一个还没掌握、也没暂缓的知识点；如果都不剩了，就如实说。"
+                % name)
+    return ("【学习者要把「%s」放回来】\n这一轮从它开始讲，不要跳过去；"
+            "它还没有掌握，正常讲、正常出题。" % name)
 
 
 STUDY_SYSTEM = """你是「引证 · 精通之路」里的一对一导师。现在在「学习」模式：陪着学习者按一份已经排好的大纲走，一次讲一个知识点，讲完出题检查。
@@ -693,7 +793,7 @@ def clean_assess(raw, outline) -> Optional[Dict]:
 
 
 def _session_context(payload: dict, digest: Sequence[dict], mode: str,
-                     grade: Optional[Dict]) -> str:
+                     grade: Optional[Dict], control: Optional[Dict] = None) -> str:
     parts = []
     parts.append("【精通目标】\n" + (_clip(payload.get("goal"), 2000) or "（还没写）"))
     subject = _clip(payload.get("subject"), 20)
@@ -721,6 +821,9 @@ def _session_context(payload: dict, digest: Sequence[dict], mode: str,
         parts.append("【到期要复习】\n" + ("、".join(due) if due else "（没有到期项）"))
     else:
         target = current_point(outline)
+        if control and control.get("kind") == "resume":
+            target = next((row for row in _all_points(outline)
+                           if str(row["point"].get("id") or "") == control.get("kpId")), target)
         if target:
             point = target["point"]
             module = target["module"]
@@ -728,7 +831,7 @@ def _session_context(payload: dict, digest: Sequence[dict], mode: str,
                 point.get("name"), point.get("type") or "concept",
                 module.get("objective") or "（没写）"))
         else:
-            parts.append("【这一轮该讲】\n（大纲里的知识点都掌握了）")
+            parts.append("【这一轮该讲】\n（没有可讲的知识点了：剩下的都已掌握或已暂缓）")
 
     pending = payload.get("pending")
     if isinstance(pending, dict) and pending.get("prompt"):
@@ -736,6 +839,10 @@ def _session_context(payload: dict, digest: Sequence[dict], mode: str,
             _clip(pending.get("prompt"), 600),
             "／".join("%s. %s" % (o.get("label"), o.get("body"))
                      for o in pending.get("options") or [])))
+
+    block = _control_block(control)
+    if block:
+        parts.append(block)
 
     if grade:
         rows = ["学习者作答：%s" % (grade.get("answerText") or grade.get("choice") or "（空）"),
@@ -763,6 +870,9 @@ def _parse_session(raw: str, outline, mode: str) -> Dict:
         assess = None
     if not say and not quiz and not assess:
         raise ProviderError("模型既没有说话也没有出题")
+    problem = _guard_say(say, quiz, assess)
+    if problem:
+        raise GuardError(problem)
     stage = "review" if mode == "review" else "study"
     return {"reply": say, "quiz": quiz, "assess": assess, "stage": stage,
             "ask": None, "profile": {}, "outline": None, "offline": False}
@@ -842,6 +952,12 @@ def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str)
     pending = payload.get("pending") if isinstance(payload.get("pending"), dict) else None
     answer = payload.get("answer") if isinstance(payload.get("answer"), dict) else None
 
+    control = _apply_control(payload, outline, pending)
+    if control:
+        # 跳过 / 修题 / 暂缓都不判分；这一轮不把旧题再摆给模型看
+        pending = None
+        answer = None
+
     grade = None
     if pending and answer and str(answer.get("questionId") or "") == str(pending.get("questionId") or ""):
         outline, grade, mastered_point = _apply_grade(payload, outline, pending, answer, provider)
@@ -849,11 +965,14 @@ def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str)
         mastered_point = None
 
     if provider is None or not hasattr(provider, "complete"):
-        return _offline_session(payload, outline, grade, mastered_point, mode)
+        return _offline_session(payload, outline, grade, mastered_point, mode, control)
 
+    ctx_payload = dict(payload)
+    if control:
+        ctx_payload["pending"] = None
     messages = [
         {"role": "system", "content": STUDY_SYSTEM if mode == "study" else REVIEW_SYSTEM},
-        {"role": "user", "content": _session_context(payload, digest, mode, grade)},
+        {"role": "user", "content": _session_context(ctx_payload, digest, mode, grade, control)},
     ]
     last_error = None
     raw = ""
@@ -865,6 +984,8 @@ def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str)
             result["grade"] = grade
             result["outline"] = outline
             result["mode"] = mode
+            if control:
+                result["control"] = control
             if mastered_point is not None:
                 result["mastered"] = {"id": mastered_point.get("id"),
                                       "name": mastered_point.get("name")}
@@ -872,11 +993,30 @@ def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str)
         except ProviderError as exc:
             last_error = exc
             if attempt == 0:
+                if isinstance(exc, GuardError):
+                    hint = ("上一次的输出没通过出题规则（%s）。如果话里答应了出题，就必须在 "
+                            "quiz 或 assess 里给出完整题目，选项只放在 options 里；"
+                            "如果这一轮不出题，就不要承诺出题，也不要用冒号收尾。" % exc)
+                else:
+                    hint = ("上一次的输出不能直接用（%s）。只输出一个 JSON 对象，"
+                            "键是 say / quiz / assess。" % exc)
                 messages = messages + [
                     {"role": "assistant", "content": _clip(raw, 300)},
-                    {"role": "user", "content": "上一次的输出不能直接用（%s）。只输出一个 JSON 对象，"
-                                                "键是 say / quiz / assess。" % exc},
+                    {"role": "user", "content": hint},
                 ]
+    if isinstance(last_error, GuardError):
+        # 两次都没把题补完整：不硬凑题，也不把半句话当消息发出去
+        try:
+            obj = parse_payload(raw)
+        except ProviderError:
+            obj = {}
+        say = _strip_dangling(_clean_say(obj.get("say")))
+        note = "（这一轮没能把题目补完整，先不硬凑；你说「再来一道」，我就接着出。）"
+        return {"reply": (say + "\n\n" + note) if say else note,
+                "quiz": None, "assess": None, "grade": grade, "outline": outline,
+                "mode": mode, "stage": mode, "ask": None, "profile": {},
+                "offline": False, "error": False, "guarded": True,
+                **({"control": control} if control else {})}
     # 模型没给出可用结果时，判分仍然有效，只是这一轮不再出题
     return {"reply": "（导师这次没能接着说下去：%s）" % last_error,
             "quiz": None, "assess": None, "grade": grade, "outline": outline,
@@ -884,9 +1024,16 @@ def run_session_turn(provider, payload: dict, digest: Sequence[dict], mode: str)
             "offline": False, "error": True}
 
 
-def _offline_session(payload, outline, grade, mastered_point, mode) -> Dict:
+def _offline_session(payload, outline, grade, mastered_point, mode,
+                     control=None) -> Dict:
     """离线演示：能判分，但不出新题——出题必须有模型。"""
-    if grade:
+    if control:
+        done = {"skip": "这道题先跳过，没判分也没给掌握分。",
+                "repair": "这道题标成有问题，原题不再追问。",
+                "defer": "「%s」先暂缓，大纲里的进度不动。" % (control.get("name") or "这个知识点"),
+                }[control.get("kind")]
+        say = done + "\n\n（离线演示：没有生成模型，暂时不能接着出下一道题。）"
+    elif grade:
         verdict = "答对了。" if grade.get("ok") else "这道答错了。"
         extra = grade.get("correctLabel") and ("正确答案：" + grade["correctLabel"] + "。") or ""
         note = "（离线演示：判分是本地算的，但没有模型就不能接着出下一道题。）"
@@ -894,9 +1041,12 @@ def _offline_session(payload, outline, grade, mastered_point, mode) -> Dict:
     else:
         say = ("现在是离线演示模式，没有接生成模型。大纲和判分都能用，"
                "但讲课和出题需要模型——接上模型后这里会接着讲。")
-    return {"reply": say, "quiz": None, "assess": None, "grade": grade,
-            "outline": outline, "mode": mode, "stage": mode, "ask": None,
-            "profile": {}, "offline": True}
+    result = {"reply": say, "quiz": None, "assess": None, "grade": grade,
+              "outline": outline, "mode": mode, "stage": mode, "ask": None,
+              "profile": {}, "offline": True}
+    if control:
+        result["control"] = control
+    return result
 
 
 def run_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:

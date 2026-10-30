@@ -2233,6 +2233,8 @@
       color: transparent; font-size: 8px;
     }
     .ms-pt.done .ms-pt-dot { border-color: var(--ok); background: var(--ok); color: var(--bg); }
+    .ms-pt.deferred .ms-pt-dot { border-style: dashed; color: var(--muted-soft); }
+    .ms-pt.deferred .ms-pt-name { color: var(--muted-soft); }
     .ms-pt-name {
       flex: 1; min-width: 0; color: var(--ink-2); font-size: 12px; line-height: 1.5;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2407,6 +2409,13 @@
       color: var(--ok); font-size: 11.5px; font-weight: 600;
     }
     .ms-quiz-note { padding: 0 12px 10px; color: var(--muted-soft); font-size: 11px; }
+    .ms-quiz-aux { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
+    .ms-quiz-aux-btn {
+      padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px;
+      background: transparent; color: var(--muted); font-size: 11px; line-height: 1.5;
+    }
+    .ms-quiz-aux-btn:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink-2); }
+    .ms-quiz-aux-btn:disabled { opacity: .55; }
     .ms-rail-bar {
       height: 3px; margin: 0 14px 10px; border-radius: 2px; background: var(--line);
       overflow: hidden;
@@ -9175,6 +9184,10 @@
       if (Array.isArray(s.attempts)) p.attempts = s.attempts;
       p.masteredAt = Number(s.masteredAt) || 0;
       p.manual = !!s.manual;
+      p.skips = Number(s.skips) || 0;
+      p.repairs = Number(s.repairs) || 0;
+      p.deferredAt = Number(s.deferredAt) || 0;
+      p.deferredReason = s.deferredReason || '';
       if (s.done || p.manual) path.done[p.id] = true;
       else delete path.done[p.id];
     }));
@@ -9213,7 +9226,7 @@
     for (let i = 0; i < modules.length; i++) {
       const points = modules[i].points || [];
       for (let j = 0; j < points.length; j++) {
-        if (!masteryPointDone(path, points[j].id)) {
+        if (!masteryPointDone(path, points[j].id) && !Number(points[j].deferredAt)) {
           return {point: points[j], module: modules[i]};
         }
       }
@@ -9221,7 +9234,7 @@
     return null;
   }
 
-  function masteryTurnBody(path, message, history, answer) {
+  function masteryTurnBody(path, message, history, answer, control) {
     return {
       goal: path.goal || path.name || '',
       emoji: path.emoji || '',
@@ -9242,13 +9255,18 @@
             done: masteryPointDone(path, p.id),
             attempts: (p.attempts || []).slice(-40),
             masteredAt: Number(p.masteredAt) || 0,
-            manual: !!p.manual
+            manual: !!p.manual,
+            skips: Number(p.skips) || 0,
+            repairs: Number(p.repairs) || 0,
+            deferredAt: Number(p.deferredAt) || 0,
+            deferredReason: p.deferredReason || ''
           }))
         }))
       },
       mode: masteryMode(path),
       pending: path.pending || null,
       answer: answer || null,
+      control: control || null,
       review: masteryDue(path).map(x => x.name),
       now: Date.now(),
       messages: (history || []).slice(-10).map(m => ({
@@ -9258,7 +9276,7 @@
     };
   }
 
-  async function masterySend(path, text, answer) {
+  async function masterySend(path, text, answer, control) {
     if (!path || path.busy) return;
     text = String(text || '').trim();
     if (!text) return;
@@ -9276,7 +9294,7 @@
     }, 7000);
     try {
       const res = await api('/mastery/turn', {
-        method: 'POST', body: masteryTurnBody(path, text, history, answer)
+        method: 'POST', body: masteryTurnBody(path, text, history, answer, control)
       });
       const mode = res.mode || masteryMode(path);
       path.mode = mode;
@@ -9294,8 +9312,8 @@
       path.chat.push(msg);
       if (res.profile) path.learner = Object.assign({}, path.learner || {}, res.profile);
       if (res.stage && mode === 'outline') path.stage = res.stage;
-      if (answer) {
-        // 作答已经判完：把结果挂到出题那条消息上，挂着的题收起来
+      if (answer || control) {
+        // 作答或退路（跳过 / 修题 / 暂缓）：这一道不再挂着
         path.pending = null;
         if (res.grade) {
           for (let i = path.chat.length - 2; i >= 0; i--) {
@@ -9306,6 +9324,10 @@
             }
           }
         }
+        const ctrlCopy = {skip: '这道题先跳过，没判分',
+          repair: '这题先放下，让导师换一道', defer: '这个知识点先放一放',
+          resume: '接着学这个知识点'};
+        if (res.control && ctrlCopy[res.control.kind]) toast(ctrlCopy[res.control.kind]);
       }
       if (res.outline && mode === 'outline') {
         applyMasteryOutline(path, res.outline);
@@ -9524,6 +9546,25 @@
     return row;
   }
 
+  // 未作答时的退路：跳过 / 这题有问题 / 暂缓这个知识点。都不给掌握分。
+  function masteryQuizAux(path, q) {
+    const row = el('div', 'ms-quiz-aux');
+    const items = [
+      ['skip', '跳过这题', '跳过不判分，门槛原地不动'],
+      ['repair', '这题有问题', '题干或选项不对：原题不再追问，换一道'],
+      ['defer', '暂缓这个知识点', '先学别的，之后可以点大纲把它放回来']
+    ];
+    items.forEach(([kind, label, hint]) => {
+      const b = el('button', 'ms-quiz-aux-btn', label);
+      b.type = 'button';
+      b.title = hint;
+      b.disabled = !!path.busy;
+      b.addEventListener('click', () => masteryControl(path, kind, q.kpId));
+      row.appendChild(b);
+    });
+    return row;
+  }
+
   // 一道挂在会话里的题：选择卡或自述卡。答完就地显示判定和解释。
   function masteryQuestionCard(path, msg) {
     const q = msg.quiz;
@@ -9568,6 +9609,7 @@
         row.appendChild(el('span', 'ms-quiz-hint', '写得越具体，导师越知道差在哪'));
         row.appendChild(send);
         card.appendChild(row);
+        card.appendChild(masteryQuizAux(path, q));
       }
     } else {
       const opts = el('div', 'ms-quiz-opts');
@@ -9588,6 +9630,7 @@
         opts.appendChild(row);
       });
       card.appendChild(opts);
+      if (live) card.appendChild(masteryQuizAux(path, q));
     }
 
     if (grade) {
@@ -9620,6 +9663,26 @@
       questionId: q.questionId,
       choice: choice || '',
       text: text || ''
+    });
+  }
+
+  // 退路：跳过 / 这题有问题 / 暂缓知识点 / 恢复。都不是「给掌握」，门槛原地不动。
+  function masteryControl(path, kind, kpId, note) {
+    if (path.busy) return;
+    const q = path.pending;
+    if (kind !== 'defer' && kind !== 'resume' && !q) return;
+    const text = {
+      skip: '这道题先跳过。',
+      repair: '这道题有问题，换一道。',
+      defer: '这个知识点先放一放。',
+      resume: '把这个知识点放回来，接着学。'
+    }[kind];
+    if (!text) return;
+    masterySend(path, text, null, {
+      kind: kind,
+      questionId: (q && q.questionId) || '',
+      kpId: kpId || (q && q.kpId) || '',
+      note: note || ''
     });
   }
 
@@ -9740,22 +9803,32 @@
       if (m.objective) sec.appendChild(el('div', 'ms-mod-obj', m.objective));
       points.forEach(p => {
         const done = masteryPointDone(path, p.id);
+        const deferred = !done && !!Number(p.deferredAt);
         const current = !!(cur && cur.point && cur.point.id === p.id);
-        const row = el('button', 'ms-pt' + (done ? ' done' : '') + (current ? ' current' : ''));
+        const row = el('button', 'ms-pt' + (done ? ' done' : '') +
+          (deferred ? ' deferred' : '') + (current ? ' current' : ''));
         row.type = 'button';
         row.setAttribute('aria-label',
           p.name + '，' + (KP_TYPE_LABELS[p.type] || '概念') +
-          (done ? '，已掌握' : current ? '，当前' : ''));
+          (done ? '，已掌握' : deferred ? '，已暂缓' : current ? '，当前' : ''));
         const dot = el('span', 'ms-pt-dot');
         if (done) dot.textContent = '✓';
+        else if (deferred) dot.textContent = '–';
         row.appendChild(dot);
         row.appendChild(el('span', 'ms-pt-name', p.name));
-        const kind = el('span', 'ms-pt-type', KP_TYPE_LABELS[p.type] || '概念');
-        kind.title = KP_TYPE_HINTS[p.type] || '';
+        const kind = el('span', 'ms-pt-type',
+          deferred ? '已暂缓' : (KP_TYPE_LABELS[p.type] || '概念'));
+        kind.title = deferred
+          ? (p.deferredReason || '点一下放回来，接着学')
+          : (KP_TYPE_HINTS[p.type] || '');
         row.appendChild(kind);
         row.addEventListener('click', () => {
           if (done) { toast('这个知识点已经掌握了'); return; }
           masterySetMode(path, 'study');
+          if (deferred) {
+            masteryControl(path, 'resume', p.id);
+            return;
+          }
           masterySend(path, '先讲「' + p.name + '」这个知识点。');
         });
         sec.appendChild(row);

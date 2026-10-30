@@ -112,6 +112,11 @@ class MasteryPoint(BaseModel):
     attempts: List[MasteryAttempt] = Field(default_factory=list)
     masteredAt: int = 0
     manual: bool = False
+    # v0.37 退路工具：跳过 / 修题只记次数，不记作答；暂缓把知识点挪出当前队列
+    skips: int = 0
+    repairs: int = 0
+    deferredAt: int = 0
+    deferredReason: str = Field("", max_length=200)
 
 
 class MasteryModule(BaseModel):
@@ -145,6 +150,14 @@ class MasteryAnswer(BaseModel):
     text: str = Field("", max_length=2000)
 
 
+class MasteryControl(BaseModel):
+    """题卡上的退路：跳过 / 这题有问题 / 暂缓这个知识点。"""
+    kind: str = Field("", max_length=12)
+    questionId: str = Field("", max_length=60)
+    kpId: str = Field("", max_length=60)
+    note: str = Field("", max_length=400)
+
+
 class MasteryTurnRequest(BaseModel):
     """精通之路的一轮导师会话。状态放在浏览器，这里只收一份快照。"""
     goal: str = Field("", max_length=2000)
@@ -159,6 +172,7 @@ class MasteryTurnRequest(BaseModel):
     mode: str = Field("", max_length=12)
     pending: Optional[MasteryQuiz] = None
     answer: Optional[MasteryAnswer] = None
+    control: Optional[MasteryControl] = None
     review: List[str] = Field(default_factory=list)
     now: int = 0
 

@@ -281,5 +281,124 @@ class RunTurnRoutingTest(unittest.TestCase):
         self.assertIn("【当前模式】学习", provider.calls[0][0][1]["content"])
 
 
+class GuardTest(unittest.TestCase):
+    """出题即结束这一轮：答应了出题却没出，要在重试后如实收尾。"""
+
+    def payload(self):
+        return {"goal": "一周复习完线性代数", "outline": outline([point()]),
+                "pending": None, "answer": None, "now": 1000,
+                "message": "开始学", "mode": "study", "messages": []}
+
+    def good(self):
+        return json.dumps({"say": "讲到这里，试一道。", "quiz": {
+            "kpId": "p1", "prompt": "二分查找要求数组怎样？",
+            "options": [{"label": "A", "body": "已排序"},
+                        {"label": "B", "body": "完全逆序"}],
+            "key": "A", "explanation": "折半依赖有序。", "difficulty": 2},
+            "assess": None})
+
+    def test_dangling_colon_is_retried(self):
+        provider = FakeProvider([json.dumps({"say": "下面这道题：", "quiz": None,
+                                             "assess": None}), self.good()])
+        result = run_session_turn(provider, self.payload(), [], "study")
+        self.assertIsNotNone(result["quiz"])
+        self.assertEqual(len(provider.calls), 2)
+        self.assertIn("出题规则", provider.calls[1][0][-1]["content"])
+
+    def test_falls_back_without_fabricating_a_question(self):
+        bad = json.dumps({"say": "来看看你知不知道：", "quiz": None, "assess": None})
+        result = run_session_turn(FakeProvider([bad, bad]), self.payload(), [], "study")
+        self.assertTrue(result["guarded"])
+        self.assertIsNone(result["quiz"])
+        self.assertFalse(result.get("error"))
+        self.assertIn("没能把题目补完整", result["reply"])
+        self.assertFalse(result["reply"].rstrip().endswith("："))
+
+    def test_prose_options_count_as_a_missing_quiz(self):
+        bad = json.dumps({"say": "你认为哪个对？\nA. 数组已排序\nB. 数组接近有序",
+                          "quiz": None, "assess": None})
+        result = run_session_turn(FakeProvider([bad, bad]), self.payload(), [], "study")
+        self.assertTrue(result["guarded"])
+
+    def test_a_plain_explanation_is_not_flagged(self):
+        provider = FakeProvider([json.dumps({"say": "这一段讲了划分的边界。",
+                                             "quiz": None, "assess": None})])
+        result = run_session_turn(provider, self.payload(), [], "study")
+        self.assertFalse(result.get("guarded"))
+        self.assertEqual(len(provider.calls), 1)
+
+
+class ControlTest(unittest.TestCase):
+    """跳过 / 修题 / 暂缓 / 恢复：都不给掌握分，证据原样保留。"""
+
+    def payload(self, **extra):
+        body = {"goal": "一周复习完线性代数", "outline": outline([point()]),
+                "pending": pending(diff=2), "answer": None, "now": 1000,
+                "message": "跳过", "mode": "study", "messages": []}
+        body.update(extra)
+        return body
+
+    def reply(self):
+        return json.dumps({"say": "换一道更小的：二分查找的第一步是？", "quiz": {
+            "kpId": "p1", "prompt": "二分查找的第一步是？",
+            "options": [{"label": "A", "body": "取中间元素比较"},
+                        {"label": "B", "body": "从头遍历"}],
+            "key": "A", "explanation": "先看中间。", "difficulty": 1},
+            "assess": None})
+
+    def test_skip_records_no_attempt(self):
+        provider = FakeProvider([self.reply()])
+        result = run_session_turn(
+            provider, self.payload(control={"kind": "skip", "questionId": "q-1"}),
+            [], "study")
+        p = result["outline"]["modules"][0]["points"][0]
+        self.assertEqual(p["attempts"], [])
+        self.assertEqual(p["skips"], 1)
+        self.assertIsNone(result["grade"])
+        self.assertIn("跳过了这道题", provider.calls[0][0][1]["content"])
+        self.assertIn("不要重出同一道题", provider.calls[0][0][1]["content"])
+
+    def test_repair_counts_and_asks_for_a_fixed_question(self):
+        provider = FakeProvider([self.reply()])
+        result = run_session_turn(
+            provider, self.payload(control={"kind": "repair", "note": "选项有错"}),
+            [], "study")
+        p = result["outline"]["modules"][0]["points"][0]
+        self.assertEqual(p["repairs"], 1)
+        self.assertEqual(p["attempts"], [])
+        self.assertIn("这道题有问题", provider.calls[0][0][1]["content"])
+
+    def test_defer_moves_the_target_forward(self):
+        body = self.payload(control={"kind": "defer"})
+        body["outline"] = outline([point(pid="p1", name="二分查找"),
+                                   point(pid="p2", name="哈希表")])
+        provider = FakeProvider([self.reply()])
+        result = run_session_turn(provider, body, [], "study")
+        first = result["outline"]["modules"][0]["points"][0]
+        self.assertEqual(first["deferredAt"], 1000)
+        self.assertEqual(first["attempts"], [])
+        prompt = provider.calls[0][0][1]["content"]
+        self.assertIn("先放一放", prompt)
+        self.assertIn("哈希表", prompt)
+
+    def test_resume_clears_the_deferral(self):
+        body = self.payload(pending=None, control={"kind": "resume", "kpId": "p1"})
+        body["outline"] = outline([point(pid="p1", name="二分查找")])
+        body["outline"]["modules"][0]["points"][0]["deferredAt"] = 900
+        provider = FakeProvider([self.reply()])
+        result = run_session_turn(provider, body, [], "study")
+        p = result["outline"]["modules"][0]["points"][0]
+        self.assertEqual(p["deferredAt"], 0)
+        self.assertIn("二分查找", provider.calls[0][0][1]["content"])
+
+    def test_offline_control_still_explains_itself(self):
+        result = run_session_turn(
+            None, self.payload(control={"kind": "skip", "questionId": "q-1"}),
+            [], "study")
+        self.assertTrue(result["offline"])
+        self.assertIsNone(result["grade"])
+        self.assertIn("先跳过", result["reply"])
+
+
 if __name__ == "__main__":
     unittest.main()
