@@ -2105,6 +2105,20 @@
       color: var(--ok); font-size: 12.5px; line-height: 1.7;
     }
     .mp-done-banner b { font-weight: 600; }
+    /* 到期复习横幅：照 DeepTutor 的复习提醒，一行字 + 一个主按钮 */
+    .mp-due {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      max-width: 760px; margin: 2px 0 16px; padding: 12px 16px;
+      border: 1px solid var(--info-line); border-radius: 14px;
+      background: var(--info-surface);
+    }
+    .mp-due-text {
+      flex: 1; min-width: 180px; color: var(--ink-2);
+      font-size: 12.5px; line-height: 1.7;
+    }
+    .mp-due-text b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .mp-due .primary { flex: none; background: var(--info); }
+    .mp-due .primary:hover { background: var(--info-dark); }
 
     .mp-groups {
       display: flex; flex-direction: column; gap: 24px;
@@ -2641,6 +2655,21 @@
       max-width: 560px; margin-top: 6px; color: var(--muted);
       font-size: 12px; line-height: 1.7;
     }
+    /* 学习档案：只显示学习者真说过的四项；改它只有一个入口——对话 */
+    .mp-profile {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+      max-width: 620px; margin-top: 6px; color: var(--muted);
+      font-size: 11.5px; line-height: 1.8;
+    }
+    .mp-profile-label {
+      color: var(--muted-soft); font-size: 10.5px; letter-spacing: .12em;
+    }
+    .mp-profile-item {
+      max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mp-profile-item b { margin-right: 4px; color: var(--muted-soft); font-weight: 500; }
+    .mp-profile-item span { color: var(--ink-2); }
+    .mp-profile-hint { color: var(--muted-soft); font-size: 10.5px; }
     .mp-nooutline {
       max-width: 760px; margin-top: 18px; padding: 20px;
       border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--card);
@@ -8598,6 +8627,36 @@
     head.appendChild(acts);
     root.appendChild(head);
 
+    // 有到期的先提醒：直接进第一条到期路的复习，不必一条条点开找
+    if (state.mastery.length) {
+      const dueInfo = masteryDueAll();
+      if (dueInfo.total) {
+        const banner = el('div', 'mp-due');
+        const text = el('div', 'mp-due-text');
+        text.appendChild(el('b', null, String(dueInfo.total)));
+        text.appendChild(document.createTextNode(' 个知识点该复习了'));
+        if (dueInfo.paths.length > 1) {
+          text.appendChild(document.createTextNode(
+            '，分布在 ' + dueInfo.paths.length + ' 条路'));
+        }
+        text.appendChild(document.createTextNode('。'));
+        banner.appendChild(text);
+        const first = dueInfo.paths[0].path;
+        const goBtn = el('button', 'primary',
+          dueInfo.paths.length > 1 ? '复习第一条' : '去复习');
+        goBtn.addEventListener('click', () => {
+          first.mode = 'review';
+          first.updatedAt = Date.now();
+          saveMastery();
+          go('mastery', first.id);
+          const names = masteryDue(first).map(x => x.name).slice(0, 6);
+          masterySend(first, '开始复习：' + names.join('、'));
+        });
+        banner.appendChild(goBtn);
+        root.appendChild(banner);
+      }
+    }
+
     if (!state.mastery.length) {
       const empty = el('div', 'empty-panel');
       empty.appendChild(el('strong', null, '还没有精通之路'));
@@ -9050,6 +9109,30 @@
 
   function masteryModules(path) { return (path && path.modules) || []; }
 
+  // 学习档案的四个字段：与后端 PROFILE_KEYS 一一对应
+  const MASTERY_PROFILE_FIELDS = [
+    ['prior', '已经会'], ['target', '想达到'], ['time', '时间'], ['style', '讲法']
+  ];
+
+  function masteryProfileNode(path) {
+    const learner = (path && path.learner) || {};
+    const rows = MASTERY_PROFILE_FIELDS.filter(([key]) =>
+      String(learner[key] || '').trim());
+    if (!rows.length) return null;
+    const box = el('div', 'mp-profile');
+    box.appendChild(el('span', 'mp-profile-label', '关于你'));
+    rows.forEach(([key, label]) => {
+      const item = el('span', 'mp-profile-item');
+      item.appendChild(el('b', null, label));
+      const value = el('span', null, String(learner[key]));
+      value.title = String(learner[key]);
+      item.appendChild(value);
+      box.appendChild(item);
+    });
+    box.appendChild(el('span', 'mp-profile-hint', '想改就在对话里说'));
+    return box;
+  }
+
   function masteryPointDone(path, pointId) {
     return !!(path.done && path.done[pointId]);
   }
@@ -9225,6 +9308,20 @@
     return list;
   }
 
+  // 列表页用：所有路加起来的到期项，以及各自到期多少
+  function masteryDueAll() {
+    const paths = [];
+    let total = 0;
+    state.mastery.forEach(p => {
+      const due = masteryDue(p).length;
+      if (!due) return;
+      total += due;
+      paths.push({path: p, due});
+    });
+    paths.sort((a, b) => b.due - a.due);
+    return {total, paths};
+  }
+
   function masteryCurrentPoint(path) {
     const modules = masteryModules(path);
     for (let i = 0; i < modules.length; i++) {
@@ -9314,7 +9411,11 @@
       const question = res.quiz || res.assess || null;
       if (question) msg.quiz = question;
       path.chat.push(msg);
-      if (res.profile) path.learner = Object.assign({}, path.learner || {}, res.profile);
+      let profileCount = 0;
+      if (res.profile) {
+        profileCount = Object.keys(res.profile).length;
+        path.learner = Object.assign({}, path.learner || {}, res.profile);
+      }
       if (res.stage && mode === 'outline') path.stage = res.stage;
       if (answer || control) {
         // 作答或退路（跳过 / 修题 / 暂缓）：这一道不再挂着
@@ -9337,7 +9438,8 @@
         applyMasteryOutline(path, res.outline);
         await linkMasteryCards(path);
         toast('大纲已更新：' + masteryModules(path).length + ' 个模块 · ' +
-          (path.steps || []).length + ' 个知识点');
+          (path.steps || []).length + ' 个知识点' +
+          (profileCount ? '，档案记下 ' + profileCount + ' 项' : ''));
       } else if (res.outline) {
         // 学习 / 复习模式：服务端把证据带回来了，只合并进度，不重排结构
         mergeMasteryState(path, res.outline);
@@ -9345,6 +9447,8 @@
         if (res.mastered && res.mastered.name) {
           toast('「' + res.mastered.name + '」掌握了');
         }
+      } else if (profileCount) {
+        toast('学习档案记下 ' + profileCount + ' 项');
       }
       if (question) path.pending = Object.assign({}, question, {at: Date.now()});
       path.updatedAt = Date.now();
@@ -10135,6 +10239,8 @@
         stats.total + ' 个知识点 · 答对关联真题才算掌握'
       : subjectName(path.subject) + ' · 还没排大纲'));
     if (path.goal) left.appendChild(el('div', 'mp-goal', path.goal));
+    const profileNode = masteryProfileNode(path);
+    if (profileNode) left.appendChild(profileNode);
     head.appendChild(left);
     const acts = el('div', 'page-actions');
     const again = el('button', 'ghost', '重开一条');
