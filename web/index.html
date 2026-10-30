@@ -2697,6 +2697,24 @@
       margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--line);
       color: var(--muted-soft); font-size: 11px; line-height: 1.7;
     }
+    /* 对话记录：一份大纲下可以有多段对话，换一段不动掌握证据 */
+    .mp-sessions { display: flex; flex-direction: column; gap: 14px; }
+    .mp-sessions-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .mp-sessions-list { display: flex; flex-direction: column; gap: 8px; }
+    .mp-session {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    }
+    .mp-session.current { border-color: var(--info-line); background: var(--info-surface); }
+    .mp-session-main { flex: 1; min-width: 0; }
+    .mp-session-title {
+      color: var(--ink); font-size: 12.5px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mp-session-meta { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .mp-session .ghost, .mp-session .row-btn {
+      flex: none; padding: 4px 8px; font-size: 11px;
+    }
     .mp-nooutline {
       max-width: 760px; margin-top: 18px; padding: 20px;
       border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--card);
@@ -3454,7 +3472,20 @@
           mode: p.mode === 'study' || p.mode === 'review' || p.mode === 'outline'
             ? p.mode
             : ((p.modules || []).length ? 'study' : 'outline'),
-          pending: p.pending && typeof p.pending === 'object' ? p.pending : null
+          pending: p.pending && typeof p.pending === 'object' ? p.pending : null,
+          // v0.42：一段路可以有多段对话；只换当前会话，大纲与证据共用
+          archived: (Array.isArray(p.archived) ? p.archived : [])
+            .filter(s => s && Array.isArray(s.chat))
+            .slice(0, 12)
+            .map(s => ({
+              id: s.id || ('s-' + Math.random().toString(36).slice(2, 8)),
+              chat: s.chat,
+              mode: s.mode === 'study' || s.mode === 'review' || s.mode === 'outline'
+                ? s.mode
+                : 'outline',
+              pending: s.pending && typeof s.pending === 'object' ? s.pending : null,
+              at: Number(s.at) || 0
+            }))
         });
         (path.modules || []).forEach(m => (m.points || []).forEach(pt => {
           if (pt && !Array.isArray(pt.attempts)) pt.attempts = [];
@@ -9248,6 +9279,112 @@
     openModal(point.name, box);
   }
 
+  function masterySessionLabel(chat) {
+    const first = (chat || []).find(m => m.role === 'user' && String(m.content || '').trim());
+    return first ? String(first.content).trim().slice(0, 30) : '还没有对话';
+  }
+
+  function masteryModeLabel(mode) {
+    const hit = MASTERY_MODES.find(([key]) => key === mode);
+    return hit ? hit[1] : '定大纲';
+  }
+
+  function masteryArchiveCurrent(path) {
+    if (!(path.chat || []).length) return false;
+    path.archived = path.archived || [];
+    path.archived.unshift({
+      id: 's-' + Date.now().toString(36),
+      chat: path.chat.slice(),
+      mode: masteryMode(path),
+      pending: path.pending || null,
+      at: Date.now()
+    });
+    path.archived = path.archived.slice(0, 12);
+    path.chat = [];
+    path.pending = null;
+    return true;
+  }
+
+  function masteryOpenArchived(path, id) {
+    if (path.busy) { toast('等这一轮说完再切换'); return; }
+    const list = (path.archived || []).slice();
+    const idx = list.findIndex(s => s.id === id);
+    if (idx < 0) return;
+    const target = list[idx];
+    list.splice(idx, 1);
+    if ((path.chat || []).length) {
+      list.unshift({
+        id: 's-' + Date.now().toString(36),
+        chat: path.chat.slice(),
+        mode: masteryMode(path),
+        pending: path.pending || null,
+        at: Date.now()
+      });
+    }
+    path.archived = list.slice(0, 12);
+    path.chat = target.chat || [];
+    path.pending = target.pending || null;
+    path.mode = target.mode;
+    path.updatedAt = Date.now();
+    saveMastery();
+    closeModal();
+    renderMastery();
+  }
+
+  function masteryNewSession(path) {
+    if (path.busy) { toast('等这一轮说完再新开'); return; }
+    if (!(path.chat || []).length) { toast('现在就是一段新对话'); return; }
+    masteryArchiveCurrent(path);
+    path.updatedAt = Date.now();
+    saveMastery();
+    closeModal();
+    renderMastery();
+    toast('新开了一段对话，大纲和掌握记录都还在');
+  }
+
+  function openMasterySessions(path) {
+    if (path.busy) { toast('等这一轮说完再看'); return; }
+    const box = el('div', 'mp-sessions');
+    box.appendChild(el('p', 'mp-sessions-note',
+      '同一份大纲和掌握记录，所有对话共用；换一段对话不会清进度。'));
+    const list = el('div', 'mp-sessions-list');
+    const rows = [{id: '', chat: path.chat || [], mode: masteryMode(path),
+      at: Date.now(), current: true}].concat(path.archived || []);
+    rows.forEach(s => {
+      const row = el('div', 'mp-session' + (s.current ? ' current' : ''));
+      const main = el('div', 'mp-session-main');
+      main.appendChild(el('div', 'mp-session-title',
+        masterySessionLabel(s.chat) + (s.current ? '（当前）' : '')));
+      main.appendChild(el('div', 'mp-session-meta',
+        masteryModeLabel(s.mode) + ' · ' + (s.chat || []).length + ' 条消息 · ' +
+        (s.current ? '正在用' : formatWhen(s.at))));
+      row.appendChild(main);
+      if (!s.current) {
+        const open = el('button', 'ghost', '打开');
+        open.type = 'button';
+        open.addEventListener('click', () => masteryOpenArchived(path, s.id));
+        row.appendChild(open);
+        const del = el('button', 'row-btn danger', '删除');
+        del.type = 'button';
+        del.addEventListener('click', () => {
+          path.archived = (path.archived || []).filter(x => x.id !== s.id);
+          saveMastery();
+          openMasterySessions(path);
+        });
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    const acts = el('div', 'page-actions');
+    const fresh = el('button', 'primary', '新开一段对话');
+    fresh.type = 'button';
+    fresh.addEventListener('click', () => masteryNewSession(path));
+    acts.appendChild(fresh);
+    box.appendChild(acts);
+    openModal('对话记录', box);
+  }
+
   function masteryPointDone(path, pointId) {
     return !!(path.done && path.done[pointId]);
   }
@@ -10358,6 +10495,11 @@
     if (profileNode) left.appendChild(profileNode);
     head.appendChild(left);
     const acts = el('div', 'page-actions');
+    const sessions = el('button', 'ghost', '对话记录');
+    sessions.type = 'button';
+    sessions.title = '切换或新开一段对话；大纲和掌握记录共用';
+    sessions.addEventListener('click', () => openMasterySessions(path));
+    acts.appendChild(sessions);
     const again = el('button', 'ghost', '重开一条');
     again.addEventListener('click', () => openMasteryEditor(path.subject));
     acts.appendChild(again);
