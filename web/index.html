@@ -3314,9 +3314,9 @@
           <div class="lib-drop" id="lib-drop" role="button" tabindex="0"
                aria-label="上传文件：拖进来，或点击选择">
             <span class="lib-drop-main">把文件拖到这里，或点击选择</span>
-            <span class="lib-drop-sub">PDF / Word(.docx) / PPT(.pptx) / Markdown / TXT / HTML，单个不超过 20MB，一次最多 3 个；图片暂不支持 OCR</span>
+            <span class="lib-drop-sub">PDF / Word(.docx) / PPT(.pptx) / 图片(PNG / JPG) / Markdown / TXT / HTML，单个不超过 20MB，一次最多 3 个；图片会走本地 OCR，太糊可能识别不出</span>
             <input type="file" id="lib-file-input" hidden multiple
-                   accept=".pdf,.docx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json">
+                   accept=".pdf,.docx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff">
           </div>
           <div class="upload-list" id="lib-uploads"></div>
         </div>
@@ -8246,7 +8246,7 @@
   /* ---------- 上传队列：拖进来或点选，最多 3 个同时传 ---------- */
   const LIB_UPLOAD_MAX = 3;
   const LIB_UPLOAD_LIMIT = 20 * 1024 * 1024;
-  const LIB_UPLOAD_EXT = /\.(pdf|docx|pptx|md|markdown|txt|html?|csv|json)$/i;
+  const LIB_UPLOAD_EXT = /\.(pdf|docx|pptx|md|markdown|txt|html?|csv|json|png|jpe?g|webp|bmp|gif|tiff?)$/i;
   const libUploadTasks = [];
 
   function libFileSize(n) {
@@ -8274,7 +8274,7 @@
       };
       if (!LIB_UPLOAD_EXT.test(name)) {
         task.status = 'failed';
-        task.error = '不支持这种文件；支持 PDF / Word(.docx) / PPT(.pptx) / Markdown / TXT / HTML';
+        task.error = '不支持这种文件；支持 PDF / Word(.docx) / PPT(.pptx) / 图片(PNG / JPG / WebP) / Markdown / TXT / HTML';
       } else if (file.size > LIB_UPLOAD_LIMIT) {
         task.status = 'failed';
         task.error = '超过 20MB，先压缩或拆成几份再传';

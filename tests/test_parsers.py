@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """本地文件解析：能取到的文字要取全，取不到的要说明原因，不许假装解析成功。"""
 import io
+import os
 import unittest
 import zipfile
+from unittest import mock
 
+from kb import parsers
 from kb.parsers import ParseError, extract_text
 
 LONG = "".join(
@@ -99,11 +102,73 @@ class OfficeTest(unittest.TestCase):
         self.assertIn("没有可提取的文字", str(ctx.exception))
 
 
+def make_png(width=64, height=32):
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class FakeOCR:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = 0
+
+    def __call__(self, image):
+        self.calls += 1
+        return self.rows, [0.01]
+
+
+class OcrTest(unittest.TestCase):
+    def test_image_is_read_by_ocr(self):
+        fake = FakeOCR([
+            [[[0, 0], [10, 0], [10, 10], [0, 10]], "第一章：操作系统概述，进程是资源分配的单位。", 0.98],
+            [[[0, 20], [10, 20], [10, 30], [0, 30]], "第二章：线程是调度的基本单位。", 0.91],
+        ])
+        with mock.patch.object(parsers, "_ocr_engine", return_value=fake):
+            text, meta = extract_text("扫描件.png", make_png())
+        self.assertIn("进程是资源分配的单位", text)
+        self.assertIn("线程是调度的基本单位", text)
+        self.assertTrue(meta["ocr"])
+        self.assertEqual(fake.calls, 1)
+
+    def test_low_confidence_lines_are_dropped(self):
+        fake = FakeOCR([
+            [[[0, 0], [10, 0], [10, 10], [0, 10]], "这一行是清楚的：进程是资源分配的单位，线程是调度的基本单位。", 0.95],
+            [[[0, 20], [10, 20], [10, 30], [0, 30]], "模糊噪声lll", 0.12],
+        ])
+        with mock.patch.object(parsers, "_ocr_engine", return_value=fake):
+            text, _ = extract_text("a.jpg", make_png())
+        self.assertIn("进程是资源分配的单位", text)
+        self.assertNotIn("模糊噪声", text)
+
+    def test_no_text_in_image_says_so(self):
+        with mock.patch.object(parsers, "_ocr_engine", return_value=FakeOCR([])):
+            with self.assertRaises(ParseError) as ctx:
+                extract_text("blank.png", make_png())
+        self.assertIn("没识别出文字", str(ctx.exception))
+
+    def test_ocr_disabled_explains(self):
+        with mock.patch.dict(os.environ, {"KB_OCR": "0"}):
+            with mock.patch.object(parsers, "_OCR_ENGINE", None):
+                with self.assertRaises(ParseError) as ctx:
+                    extract_text("a.png", make_png())
+        self.assertIn("KB_OCR", str(ctx.exception))
+
+    def test_corrupt_image_reports(self):
+        with mock.patch.object(parsers, "_ocr_engine", return_value=FakeOCR([])):
+            with self.assertRaises(ParseError) as ctx:
+                extract_text("bad.png", b"\x89PNG\r\n\x1a\n" + b"0" * 100)
+        self.assertIn("打不开", str(ctx.exception))
+
+
 class RejectTest(unittest.TestCase):
-    def test_image_needs_ocr_and_is_refused(self):
-        with self.assertRaises(ParseError) as ctx:
-            extract_text("scan.png", b"\x89PNG\r\n\x1a\n" + b"0" * 100)
-        self.assertIn("OCR", str(ctx.exception))
+    def test_ocr_engine_missing_is_explained(self):
+        with mock.patch.object(parsers, "_OCR_ENGINE", None):
+            with mock.patch.dict("sys.modules", {"rapidocr_onnxruntime": None}):
+                with self.assertRaises(ParseError) as ctx:
+                    extract_text("scan.png", make_png())
+        self.assertIn("rapidocr", str(ctx.exception))
 
     def test_legacy_office_is_refused(self):
         with self.assertRaises(ParseError) as ctx:

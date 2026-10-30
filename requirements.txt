@@ -14,3 +14,15 @@ uvicorn[standard]>=0.30
 
 # 存储层：Postgres + pgvector（pgvector 扩展在数据库镜像里，Python 侧只要驱动）
 psycopg[binary]>=3.2
+
+# 知识库文件进料（kb/parsers.py）：
+#   PDF 文字层、HTML 正文、编码探测
+pypdf>=4.0
+beautifulsoup4>=4.12
+chardet>=5.0
+
+# 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU、无需系统 OCR 引擎。
+#   opencv-python 在 slim 镜像里需要 libgl1 / libglib2.0-0（见 Dockerfile）；
+#   模型随包分发（约 15MB），第一次识别时加载进内存，KB_OCR=0 可整体关闭。
+rapidocr-onnxruntime>=1.3,<2
+pillow>=10.0

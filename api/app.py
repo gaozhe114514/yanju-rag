@@ -46,7 +46,7 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
 from kb import PRESET_COLLECTION, Library, LibraryError
-from kb.parsers import IMAGE_EXT, ParseError, extension_of, extract_text
+from kb.parsers import ParseError, extension_of, extract_text
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
@@ -1564,10 +1564,6 @@ async def document_upload(cid: str, request: Request,
         return doc
 
     ext = extension_of(name)
-    if ext in IMAGE_EXT:
-        raise HTTPException(status_code=422,
-                            detail="图片解析需要 OCR，本地暂时不支持；"
-                                   "先把图片里的文字转成文本再上传")
     lib = _library()
     try:
         doc = lib.create_pending_document(

@@ -28,19 +28,24 @@ v0.48 把用户资料库整套指给 WeKnora（`WEKNORA_BASE_URL`）。实测与
 | docreader（LibreOffice / Playwright 容器） | **不借** | 太重；改用纯 Python：pypdf + 标准库 zipfile 解析 docx/pptx + bs4 解析 HTML |
 | 它的向量库、切片策略、rerank | **不借** | 本项目 512 字 / 50 重叠切片 + bge-small + RRF + Cross-Encoder 已跑通，换过去只会失去引用偏移 |
 | `/knowledge-chat` 等生成能力 | **不借** | 会绕过逐字引用校验，硬约束失守 |
-| 知识图谱、Agent、多模态（OCR） | **暂不做** | 图片 OCR 需要额外模型与内存；界面明确写「图片暂不支持 OCR」，不假装支持 |
+| 知识图谱、Agent | **暂不做** | 和「每个结论可引用」的硬规则没有直接关系，先不铺开 |
+| 图片 OCR | **v0.50 补上，自建轻量方案** | 不用 docreader 那套容器，改 `rapidocr-onnxruntime`（PP-OCRv4 ONNX，纯 CPU，模型随包分发）；长边缩到 2400px、低置信度行丢弃、识别不到字就说原因，`KB_OCR=0` 可关 |
 
 ## 3. 落地清单（本次已实现）
 
 ### 3.1 解析（`kb/parsers.py`）
 
-- 支持：`.txt .md .markdown .csv .json .html .htm .pdf .docx .pptx`。
+- 支持：`.txt .md .markdown .csv .json .html .htm .pdf .docx .pptx`，
+  以及 `.png .jpg .jpeg .webp .bmp .gif .tif .tiff`（v0.50 起走本地 OCR）。
 - 编码：`utf-8-sig / utf-8 / gb18030 / big5` 依次试，仍失败再用 chardet 猜；GBK 老讲义不乱码。
 - PDF：pypdf 逐页取文字；无文字层（扫描件）明确报「没有文字层，多半是扫描件」；加密 PDF 报「有密码保护」。
 - docx：`word/document.xml`，按 `<w:p>` 分段，段间换行。
 - pptx：按 `slide1.xml, slide2.xml…` 数字排序，每页前加「第 N 页」。
 - HTML：bs4 去掉 `script / style` 再取正文。
-- 拒绝而不是硬凑：图片（无 OCR）、旧版 `.doc/.ppt/.xls`、未知扩展名、空文件、>20MB、>50000 字（提示拆分）。
+- 图片（v0.50）：`rapidocr-onnxruntime` 跑 PP-OCRv4 的 ONNX 模型，纯 CPU、模型随包分发；
+  长边缩到 2400px、置信度 <0.5 的行丢弃、识别不到 20 字报「可能拍得太小、太糊」；
+  引擎第一次识别时加载，`KB_OCR=0` 可关闭，没装引擎时说明缺哪个包。
+- 拒绝而不是硬凑：旧版 `.doc/.ppt/.xls`、未知扩展名、空文件、>20MB、>50000 字（提示拆分）。
 - 所有错误都是给用户看的中文句子，直接显示在上传任务行里。
 
 ### 3.2 状态机与接口
@@ -56,7 +61,7 @@ v0.48 把用户资料库整套指给 WeKnora（`WEKNORA_BASE_URL`）。实测与
 ### 3.3 前端（`web/index.html`）
 
 - 加资料卡片下方是虚线拖拽区 `.lib-drop`：拖进来、点一下或键盘 Enter/空格都行；
-  副标写清支持格式、20MB、一次最多 3 个、图片不支持 OCR。
+  副标写清支持格式、20MB、一次最多 3 个；图片列入支持格式并说明会走 OCR（v0.50）。
 - 上传任务面板 `.upload-row`：文件名、大小、进度条、状态徽标（排队中 / 上传中 / 解析中 / 已索引 / 失败）、
   失败原因与「重试」。最多同时传 3 个，解析状态每 2 秒看一次、最多 10 次，不做无限轮询。
 - 完成后任务行写「已索引 · N 段可引用」，toast 同步改成已索引，不留「正在解析」的误导。

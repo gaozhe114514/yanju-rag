@@ -15,7 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# torch 的 manylinux wheel 依赖 libgomp；Debian 官方源在境内容器里常连不上，换腾讯云镜像
+# torch 的 manylinux wheel 依赖 libgomp；opencv（OCR）还需要 libGL 与 libglib。
+# Debian 官方源在境内容器里常连不上，换腾讯云镜像
 RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
       sed -i -e 's|deb.debian.org|mirrors.cloud.tencent.com|g' \
              -e 's|security.debian.org|mirrors.cloud.tencent.com|g' \
@@ -26,7 +27,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
              /etc/apt/sources.list; \
     fi \
  && apt-get update \
- && apt-get install -y --no-install-recommends libgomp1 \
+ && apt-get install -y --no-install-recommends libgomp1 libgl1 libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 # 用 CPU 版 torch：PyPI 默认 Linux wheel 会带 CUDA 依赖，镜像白白多 2GB
