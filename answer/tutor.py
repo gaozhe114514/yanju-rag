@@ -518,6 +518,38 @@ def _point_done(point) -> bool:
     return bool(point.get("done")) or engine_mastered(point)
 
 
+def gate_status(point) -> Dict:
+    """把「为什么还没掌握」讲清楚：证据量、最近一次、正确率、难度。
+
+    界面直接显示这几句，避免「我全答对了怎么还没过」的误会。
+    """
+    mastered = _point_done(point)
+    if point.get("type") in QUAL_TYPES:
+        return {"mastered": mastered, "kind": "assess",
+                "need": [] if mastered else ["用自己的话讲清一次；选择题打不开这类门槛"]}
+    quiz = _quiz_attempts(point)[-GATE_WINDOW:]
+    need = []
+    if not mastered:
+        if len(quiz) < 2:
+            need.append("至少要有 2 次选择题作答（现在 %d 次）" % len(quiz))
+        if quiz and not quiz[-1].get("ok"):
+            need.append("最近一次答错，下一次答对再看")
+        if quiz:
+            score = sum(1 for a in quiz if a.get("ok")) / float(len(quiz))
+            if score < GATE_SCORE:
+                need.append("最近 %d 次正确率 %d%%（要 ≥75%%）" % (
+                    len(quiz), int(round(score * 100))))
+            diff = max([int(a.get("diff") or 1) for a in quiz if a.get("ok")] or [0])
+            if diff < GATE_DIFF:
+                need.append("还没答对过难度 ≥2 的题")
+        if not need:
+            need.append("证据还不够，再答一道看看")
+    return {"mastered": mastered, "kind": "quiz", "need": need,
+            "window": len(quiz),
+            "correct": sum(1 for a in quiz if a.get("ok")),
+            "difficulty": max([int(a.get("diff") or 1) for a in quiz if a.get("ok")] or [0])}
+
+
 def current_point(outline) -> Optional[Dict]:
     """下一步该学的知识点：按模块顺序，第一个没掌握、也没被暂缓的。"""
     for row in _all_points(outline):
@@ -940,6 +972,7 @@ def _apply_grade(payload: dict, outline: Dict, pending: Dict, answer: Dict,
         "choice": choice, "answerText": text,
         "correctLabel": correct, "explanation": pending.get("explanation") or "",
         "mastered": bool(mastered), "judged": judged,
+        "gate": gate_status(point),
     }
     if kind == "assess" and judged is None:
         grade["explanation"] = "这次没能判定（模型没接上），先当作没通过。"

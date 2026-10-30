@@ -8,8 +8,8 @@ import json
 import unittest
 
 from answer.tutor import (clean_assess, clean_quiz, current_point,
-                          engine_mastered, grade_choice, normalize_mode,
-                          run_session_turn, run_turn)
+                          engine_mastered, gate_status, grade_choice,
+                          normalize_mode, run_session_turn, run_turn)
 
 
 def outline(points, module="第一条"):
@@ -50,6 +50,48 @@ class FakeProvider:
         if isinstance(reply, Exception):
             raise reply
         return reply
+
+
+class GateStatusTest(unittest.TestCase):
+    """界面要能解释「为什么还没掌握」，不能只给一个「没过」。"""
+
+    def test_missing_evidence_is_named(self):
+        gate = gate_status(point(attempts=[attempt(True, 3)]))
+        self.assertFalse(gate["mastered"])
+        self.assertTrue(any("至少要有 2 次" in x for x in gate["need"]))
+
+    def test_difficulty_floor_is_named(self):
+        gate = gate_status(point(attempts=[attempt(True, 1), attempt(True, 1)]))
+        self.assertTrue(any("难度 ≥2" in x for x in gate["need"]))
+
+    def test_last_wrong_is_named(self):
+        gate = gate_status(point(attempts=[attempt(True, 3), attempt(False, 2)]))
+        self.assertTrue(any("最近一次答错" in x for x in gate["need"]))
+
+    def test_low_score_is_named(self):
+        gate = gate_status(point(attempts=[attempt(True, 2), attempt(False, 2),
+                                           attempt(False, 2), attempt(False, 2)]))
+        self.assertTrue(any("正确率" in x for x in gate["need"]))
+
+    def test_concept_needs_own_words(self):
+        gate = gate_status(point(kind="concept", attempts=[attempt(True, 3)]))
+        self.assertEqual(gate["kind"], "assess")
+        self.assertTrue(any("用自己的话" in x for x in gate["need"]))
+
+    def test_mastered_has_nothing_left(self):
+        gate = gate_status(point(attempts=[attempt(True, 3), attempt(True, 2)]))
+        self.assertTrue(gate["mastered"])
+        self.assertEqual(gate["need"], [])
+
+    def test_grade_carries_the_gate(self):
+        body = {"goal": "x", "outline": outline([point()]),
+                "pending": pending(diff=1), "answer": answer("A"), "now": 1000,
+                "message": "A", "mode": "study", "messages": []}
+        result = run_session_turn(
+            FakeProvider([json.dumps({"say": "讲一段。", "quiz": None, "assess": None})]),
+            body, [], "study")
+        self.assertFalse(result["grade"]["mastered"])
+        self.assertTrue(result["grade"]["gate"]["need"])
 
 
 class NormalizeModeTest(unittest.TestCase):

@@ -2408,6 +2408,10 @@
       padding: 8px 12px; border-top: 1px solid var(--line); background: var(--ok-surface);
       color: var(--ok); font-size: 11.5px; font-weight: 600;
     }
+    .ms-quiz-gate {
+      padding: 0 12px 10px; color: var(--muted); font-size: 11.5px; line-height: 1.7;
+    }
+    .ms-quiz-gate b { color: var(--ink-2); font-weight: 600; }
     .ms-quiz-note { padding: 0 12px 10px; color: var(--muted-soft); font-size: 11px; }
     .ms-quiz-aux { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
     .ms-quiz-aux-btn {
@@ -9640,6 +9644,12 @@
         verdict.appendChild(document.createTextNode(' · 正确答案 ' + grade.correctLabel));
       }
       card.appendChild(verdict);
+      if (!grade.mastered && grade.gate && (grade.gate.need || []).length) {
+        const gate = el('div', 'ms-quiz-gate');
+        gate.appendChild(el('b', null, '离掌握还差：'));
+        gate.appendChild(document.createTextNode(grade.gate.need.join('；')));
+        card.appendChild(gate);
+      }
       if (grade.explanation) card.appendChild(el('div', 'ms-quiz-expl', grade.explanation));
       if (grade.mastered) {
         card.appendChild(el('div', 'ms-quiz-mastered', '这个知识点的门槛过了'));
