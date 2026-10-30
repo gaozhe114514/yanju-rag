@@ -39,6 +39,14 @@ RUN pip install --index-url ${PIP_INDEX_URL} -r requirements.txt
 COPY tools/preload_models.py tools/preload_models.py
 RUN if [ "$PRELOAD_MODELS" = "1" ]; then python -m tools.preload_models; fi
 
+# 文件进料与 OCR 依赖放在模型层之后：这两个文件没变时不会重下 torch 与模型。
+# opencv（OCR 用）在 slim 里需要 libGL 与 libglib，装完再删缓存。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+COPY requirements-ocr.txt .
+RUN pip install --index-url ${PIP_INDEX_URL} -r requirements-ocr.txt
+
 COPY . .
 
 # 镜像内重新生成语料：data/work 不进 git，但原始卷 + 解析产物在仓库里
