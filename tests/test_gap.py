@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from api.gap import gap_stats, reason_bucket
+from api.gap import gap_detail, gap_stats, reason_bucket
 
 
 def iso(delta: timedelta) -> str:
@@ -28,6 +28,28 @@ class ReasonBucketTest(unittest.TestCase):
         self.assertEqual(reason_bucket(""), "unknown")
         self.assertEqual(reason_bucket(None), "unknown")
         self.assertEqual(reason_bucket("  :  "), "unknown")
+
+
+class GapDetailTest(unittest.TestCase):
+    """模型说的缺口要能上台面；系统判定码不该冒充「资料缺什么」。"""
+
+    def test_model_reason_passes(self):
+        self.assertEqual(gap_detail("资料里没有 B+ 树删除的具体步骤"),
+                         "资料里没有 B+ 树删除的具体步骤")
+
+    def test_system_codes_are_silent(self):
+        for reason in ("low_score: 0.12 < 0.20", "citation_failed: 引用过短",
+                       "no_hits", "unknown", "server_not_ready"):
+            self.assertEqual(gap_detail(reason), "", reason)
+
+    def test_generic_default_is_silent(self):
+        self.assertEqual(gap_detail("模型判断资料不足"), "")
+        self.assertEqual(gap_detail(""), "")
+        self.assertEqual(gap_detail(None), "")
+
+    def test_whitespace_and_length(self):
+        self.assertEqual(gap_detail("  资料\n缺\t第 8 章  "), "资料 缺 第 8 章")
+        self.assertEqual(len(gap_detail("缺" * 400)), 160)
 
 
 class GapStatsFileTest(unittest.TestCase):

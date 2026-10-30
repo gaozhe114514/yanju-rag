@@ -1941,6 +1941,35 @@
     }
     .cite-arrow { flex: none; color: var(--muted); font-size: 11px; }
 
+    /* 引用悬停卡（v0.44）：不点开也能先看原话，点下去才是全文 */
+    .cite-pop {
+      position: fixed; z-index: 90; max-width: 360px;
+      padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+      background: var(--card); box-shadow: var(--shadow-raised);
+      pointer-events: none;
+    }
+    .cite-pop-head {
+      display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
+      font-size: 11.5px;
+    }
+    .cite-pop-kind { flex: none; color: var(--brand); font-weight: 500; }
+    .cite-pop-title {
+      color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cite-pop-quote { color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+
+    /* 拒答时说清缺什么（v0.44）：模型自己指出的缺口，不埋进系统判定码 */
+    .refuse-note {
+      display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+      width: fit-content; max-width: 100%;
+      margin-top: 12px; padding: 9px 12px; border-radius: 10px;
+      background: var(--muted-surface); color: var(--ink-2);
+      font-size: 12.5px; line-height: 1.65;
+    }
+    .refuse-note-k { flex: none; color: var(--muted); }
+    .refuse-note .link-btn { font-size: 12px; }
+
     /* 回答下面的一行元信息：核对结果、召回与过程、动作 */
     .msg-meta {
       display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap;
@@ -4096,6 +4125,8 @@
     if (data.intent === 'chitchat' || data.intent === 'clarify') return data.answer || '';
     if (!data.refused) return data.answer || '';
     if (data.answer) return data.answer;
+    // 模型已经说清缺什么时，正文只留一句总述，细节交给缺口条
+    if (data.gap_detail) return '资料里没有覆盖这个问题，按规则没有作答。';
     if (data.reason === 'provider_error' || (data.reason || '').indexOf('provider_error') === 0) {
       return '生成服务暂时不可用，请稍后再试。';
     }
@@ -4139,10 +4170,81 @@
       chip.appendChild(el('span', 'cite-name',
         c.title || c.chapter || c.chunk_id || '原文'));
       chip.appendChild(el('span', 'cite-arrow', '↗'));
-      chip.addEventListener('click', () => openSource(c, collection));
+      if (c.quote && CITE_POP_HOVER && CITE_POP_HOVER.matches) {
+        chip.addEventListener('mouseenter', () => {
+          clearTimeout(citePopTimer);
+          citePopTimer = setTimeout(() => showCitePop(chip, c), 120);
+        });
+        chip.addEventListener('mouseleave', () => {
+          citePopTimer = setTimeout(hideCitePop, 80);
+        });
+        chip.addEventListener('focus', () => showCitePop(chip, c));
+        chip.addEventListener('blur', hideCitePop);
+      }
+      chip.addEventListener('click', () => { hideCitePop(); openSource(c, collection); });
       chips.appendChild(chip);
     });
     return chips;
+  }
+
+  // 悬停先看原话（v0.44）：只在本就有 hover 的设备上开，触屏仍然只有点击
+  const CITE_POP_HOVER = window.matchMedia
+    ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+  let citePopNode = null;
+  let citePopTimer = 0;
+
+  function hideCitePop() {
+    clearTimeout(citePopTimer);
+    if (citePopNode && citePopNode.parentNode) citePopNode.parentNode.removeChild(citePopNode);
+    citePopNode = null;
+  }
+
+  function showCitePop(chip, c) {
+    hideCitePop();
+    const quote = String(c.quote || '').trim();
+    if (!quote) return;
+    const pop = el('div', 'cite-pop');
+    const head = el('div', 'cite-pop-head');
+    head.appendChild(el('span', 'cite-pop-kind',
+      isDoc(c) ? '资料' : (isKnowledge(c) ? '考点' : '真题')));
+    head.appendChild(el('span', 'cite-pop-title',
+      c.title || c.chapter || c.chunk_id || '原文'));
+    pop.appendChild(head);
+    pop.appendChild(el('div', 'cite-pop-quote',
+      '“' + (quote.length > 220 ? quote.slice(0, 220) + '…' : quote) + '”'));
+    document.body.appendChild(pop);
+    // 贴在胶囊上方；上面放不下翻到下面，左右都不越出视口
+    const r = chip.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    const left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12));
+    let top = r.top - h - 8;
+    if (top < 12) top = r.bottom + 8;
+    if (top + h > window.innerHeight - 12) top = Math.max(12, window.innerHeight - h - 12);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    citePopNode = pop;
+  }
+
+  if (window.addEventListener) {
+    window.addEventListener('scroll', hideCitePop, true);
+    window.addEventListener('resize', hideCitePop);
+  }
+
+  // 拒答卡片上补一句模型自己指出的缺口（v0.44）
+  function refuseNote(data) {
+    const box = el('div', 'refuse-note');
+    box.appendChild(el('span', 'refuse-note-k', '缺口'));
+    box.appendChild(el('span', null, data.gap_detail));
+    const act = el('button', 'link-btn', data.collection ? '去知识库补一段 →' : '换个问法 →');
+    act.type = 'button';
+    act.addEventListener('click', () => {
+      if (data.collection) { go('library'); return; }
+      const inp = $('#composer');
+      if (inp) inp.focus();
+    });
+    box.appendChild(act);
+    return box;
   }
 
   function renderBotMessage(msg, avatarText) {
@@ -4162,6 +4264,7 @@
     }
 
     body.appendChild(el('div', 'answer-text', answerText(data)));
+    if (data.refused && data.gap_detail) body.appendChild(refuseNote(data));
 
     const cites = (data.citations || []).filter(Boolean);
     if (cites.length) body.appendChild(citationChips(cites, data.collection));
@@ -4237,7 +4340,9 @@
       const tools = el('div', 'msg-tools');
       const cp = el('button', 'tool-btn', '复制');
       cp.addEventListener('click', async () => {
-        const text = data.refused ? ('（未作答：' + (data.reason || '资料不足') + '）') : data.answer;
+        const text = data.refused
+          ? answerText(data) + (data.gap_detail ? '\n缺的是：' + data.gap_detail : '')
+          : data.answer;
         try {
           await navigator.clipboard.writeText(text || '');
           cp.textContent = '已复制';
@@ -4298,6 +4403,7 @@
   }
 
   function renderMessages() {
+    hideCitePop();  // 重绘会换掉胶囊节点，悬停卡跟着收
     const box = $('#messages');
     if (!box) return;
     box.replaceChildren();

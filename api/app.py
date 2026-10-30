@@ -51,7 +51,7 @@ from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
 from .feedback import (feedback_stats as jsonl_feedback_stats,
                        log_feedback as jsonl_log_feedback, normalize_feedback)
-from .gap import gap_stats, log_gap
+from .gap import gap_detail, gap_stats, log_gap
 from .guard import AccessGuard
 from . import metrics
 from .knowledge import (filter_knowledge, know_brief, know_detail,
@@ -516,6 +516,7 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
         "answer": res.answer,
         "citations": citations,
         "reason": res.reason,
+        "gap_detail": gap_detail(res.reason) if res.refused else "",
         "hits": [_hit_payload(h) for h in res.hits],
         "attempts": res.attempts,
         "latency_ms": int((time.time() - t0) * 1000),

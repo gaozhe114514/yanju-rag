@@ -2,7 +2,9 @@
 
 以 408（计算机学科专业基础综合）真题为内置语料的知识库问答系统：**每个结论都能被引用回原文，答不出来就明说，不硬编。** 不考 408 也能用——把讲义、笔记、手册贴进自建知识库，同一套检索、引用校验与拒答直接生效。
 
-> 状态：v0.43。**改大纲先看一眼再应用**：定大纲的会话里，导师改出来的新大纲不再直接生效，先出一张预览卡，写清会新增几个、删掉几个、应用后一共几个；如果会丢掉已掌握知识点的记录，卡片用红字点名。点「应用这版」才落库，「先不改」保持原样。第一次建大纲不拦，比对没有变化也不拦。规范见 [design.md](design.md) v2.11 §6.11。
+> 状态：v0.44。**拒答说清缺什么，引用悬停先看原话**：以前拒答只有一句「资料里没有足够依据」和系统判定码，模型自己写下的缺口（例如「资料里只讲了 B 树的定义，没有删除步骤」）被埋掉了。现在问答响应多一个 `gap_detail`（系统判定码与空话不出），拒答时正文下面接一条「缺口」说明，行尾按来源给「换个问法 →」（内置语料，聚焦输入框）或「去知识库补一段 →」（自建库）；复制也会带上这句。桌面端把引用胶囊悬停 120ms 就能先看被引用的原话，点开仍是全文高亮；触屏没有悬停，行为不变。规范见 [design.md](design.md) v2.12 §6.10。
+>
+> v0.43：**改大纲先看一眼再应用**：定大纲的会话里，导师改出来的新大纲不再直接生效，先出一张预览卡，写清会新增几个、删掉几个、应用后一共几个；如果会丢掉已掌握知识点的记录，卡片用红字点名。点「应用这版」才落库，「先不改」保持原样。第一次建大纲不拦，比对没有变化也不拦。规范见 [design.md](design.md) v2.11 §6.11。
 >
 > v0.42：**一条路可以有多段对话**：详情页「对话记录」里能新开一段、切回旧的一段或删掉；换对话只换聊天记录和模式，大纲、掌握证据、复习计划全部共用，所以「换一个角度重来」不会清零进度。没有内容的空对话不占位置，回合进行中不允许切换。规范见 [design.md](design.md) v2.10 §6.11。
 >
@@ -264,7 +266,7 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | 接口 | 说明 |
 |---|---|
 | `POST /ask` | 单轮问答：`{"query": "...", "style": "可选，≤400 字", "collection": "可选，自建知识库 id"}`，返回 answer / citations / refused / reason / hits / latency_ms / cached / cache_age_s；带 `collection` 且库不存在回 404 |
-| `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}], "style": "可选，≤400 字", "collection": "可选"}`，额外返回 `intent`、`rewritten_query`、`trace.steps` |
+| `POST /chat` | 多轮问答：`{"query": "...", "history": [{"role": "user", "content": "..."}], "style": "可选，≤400 字", "collection": "可选"}`，额外返回 `intent`、`rewritten_query`、`trace.steps`；拒答时 `gap_detail` 是模型自己说出的缺口（系统判定码与空话为空串） |
 | `POST /chat/stream` | 同参数的流式问答，返回 `text/event-stream`：`status`（plan / cache / retrieve / gate / generate / verify）、`delta`（增量文字，已从 JSON 里剥出 answer 字段）、`reset`（校验失败，清空已显示文字）、`error`、`done`（最终 payload，字段同 `/chat`）。校验未过时 `reset` → 重试一次 → 仍不过则 `done` 里是拒答 |
 | `POST /bank/generate` | 用资料出题：`{"text": "≥80 字的资料", "count": 5, "title": "资料标题"}`，返回 `{"questions": [...], "requested", "skipped", "notes"}`。每道题带 `options / answer / explanation / tags / source{title, quote, offset}`；`source.quote` 去空白后必须出现在 `text` 里，否则该题被丢弃并记进 `notes`。资料不落盘；离线演示模式返回 503 |
 | `POST /mastery/turn` | 精通之路的导师会话，一轮一个请求（无状态）：`{"goal", "emoji", "subject", "materials": [{"key", "label", "kind", "detail"}], "learner": {prior/target/time/style}, "outline": {"name", "modules": [{id, name, objective, points: [{id, name, type, done}]}]}, "messages": [...], "message"}`，返回 `reply / ask / profile / outline / stage / offline / latency_ms`。`ask` 是 1–4 道带选项的提问卡（可为空），`outline` 只在模型给了合规大纲时出现（≥2 模块、≥4 知识点，最多 10 模块 / 48 知识点）。知识库与考点资料由服务端自己读，题库与对话由前端带上摘要。没有生成模型时走离线演示脚本，`offline: true` |

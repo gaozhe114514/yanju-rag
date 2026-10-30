@@ -31,6 +31,21 @@ def reason_bucket(reason: str) -> str:
     return text.split(":", 1)[0].strip() or "unknown"
 
 
+# 这些是系统判定码；之外的拒答原因才是模型说的「资料里缺什么」
+_GAP_CODES = {"no_hits", "low_score", "low_margin", "citation_failed",
+              "provider_error", "empty_collection", "unknown", "server_not_ready"}
+
+
+def gap_detail(reason: str, limit: int = 160) -> str:
+    """取出模型自己说的缺口，给前端展示；系统判定码和空话一律返回空串。"""
+    text = " ".join(str(reason or "").split())
+    if not text or text == "模型判断资料不足":
+        return ""
+    if text.split(":", 1)[0].strip() in _GAP_CODES:
+        return ""
+    return text[:limit]
+
+
 def _parse_ts(value) -> Optional[datetime]:
     text = str(value or "").strip().replace("Z", "+00:00")
     if not text:
