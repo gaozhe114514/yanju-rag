@@ -67,6 +67,7 @@ from .accounts import AccountError, AccountService
 from .feedback import (feedback_stats as jsonl_feedback_stats,
                        log_feedback as jsonl_log_feedback, normalize_feedback)
 from .gap import gap_detail, gap_stats, log_gap
+from .graph import build_graph
 from .guard import AccessGuard
 from . import metrics
 from .knowledge import (filter_knowledge, know_brief, know_detail,
@@ -1599,6 +1600,20 @@ def knowledge_detail(card_id: str, _: None = Depends(enforce_content)) -> dict:
     if card is None:
         raise HTTPException(status_code=404, detail="考点不存在")
     return know_detail(card, _state.get("questions_by_id", {}))
+
+
+@app.get("/graph")
+def knowledge_graph(subject: str = "", year: Optional[int] = None,
+                    orphans: int = 0,
+                    _: None = Depends(enforce_content)) -> dict:
+    """考点卡 ↔ 真题的关联图。边只来自卡片的 related_question_ids。"""
+    store = _state.get("store")
+    questions = (store.load_questions() if store is not None
+                 else _state.get("questions", []))
+    cards = (store.all_knowledge() if store is not None
+             else _state.get("knowledge", []))
+    return build_graph(questions, cards, subject=subject, year=year,
+                       include_orphans=bool(orphans))
 
 
 @app.get("/chunks")

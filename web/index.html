@@ -3175,6 +3175,94 @@
       .set-toolbar { padding: 10px 0 12px; }
       .set-toolbar-text span { display: none; }
     }
+
+    /* ---------- 知识图谱（v0.64，照 Obsidian 的 graph view） ---------- */
+    .graph-page {
+      flex: 1; min-height: 0; width: 100%; max-width: 900px; margin: 0 auto;
+      padding: 16px 36px 18px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .graph-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .graph-search { flex: 1 1 220px; min-width: 180px; }
+    .graph-bar .chips { gap: 5px; }
+    .graph-toggle {
+      display: inline-flex; align-items: center; gap: 6px; color: var(--muted);
+      font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap;
+    }
+    .graph-toggle input { accent-color: var(--brand); margin: 0; }
+    .graph-stage {
+      position: relative; flex: 1; min-height: 340px; overflow: hidden;
+      border: 1px solid var(--line); border-radius: 16px; background: var(--card);
+    }
+    #graph-canvas {
+      display: block; width: 100%; height: 100%;
+      touch-action: none; cursor: grab; outline: 0;
+    }
+    #graph-canvas.dragging { cursor: grabbing; }
+    #graph-canvas.hovering { cursor: pointer; }
+    .graph-status {
+      position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+      padding: 0 24px; color: var(--muted); font-size: 13px; text-align: center;
+      pointer-events: none;
+    }
+    .graph-status[hidden] { display: none; }
+    .graph-tip {
+      position: absolute; z-index: 3; max-width: 260px; padding: 8px 10px;
+      border: 1px solid var(--line-strong); border-radius: 10px;
+      background: var(--pop-bg); box-shadow: var(--shadow-raised);
+      pointer-events: none;
+    }
+    .graph-tip b { display: block; color: var(--ink); font-size: 12.5px; font-weight: 600; }
+    .graph-tip span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .graph-tip em {
+      display: block; margin-top: 4px; color: var(--ink-3); font-size: 11.5px;
+      font-style: normal; line-height: 1.55;
+    }
+    .graph-zoom {
+      position: absolute; right: 10px; bottom: 10px; display: flex;
+      flex-direction: column; gap: 4px;
+    }
+    .graph-zoom button {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; padding: 0; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--bg); color: var(--muted); cursor: pointer;
+    }
+    .graph-zoom button:hover { border-color: var(--line-strong); color: var(--brand); }
+    .graph-zoom svg {
+      width: 15px; height: 15px; fill: none; stroke: currentColor;
+      stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .graph-hint {
+      position: absolute; left: 12px; bottom: 10px; color: var(--muted-soft);
+      font-size: 11px; pointer-events: none;
+    }
+    .graph-foot {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      color: var(--muted); font-size: 11.5px; line-height: 1.6;
+    }
+    .graph-foot .g-item { display: inline-flex; align-items: center; gap: 5px; }
+    .graph-foot .g-dot {
+      width: 8px; height: 8px; border-radius: 999px; display: inline-block;
+    }
+    .graph-foot .g-count { color: var(--muted-soft); }
+    .graph-foot .g-warn { color: var(--warn); }
+    .graph-foot .g-warn:hover { text-decoration: underline dotted; cursor: help; }
+
+    @media (max-width: 860px) {
+      .graph-page { padding: 10px 14px 12px; gap: 8px; }
+      .graph-bar { gap: 6px; }
+      .graph-search { flex: 1 1 100%; }
+      /* 科目胶囊横着滚，不换成三行，把高度留给图 */
+      .graph-bar .chips {
+        flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 2px;
+        scrollbar-width: none;
+      }
+      .graph-bar .chips::-webkit-scrollbar { display: none; }
+      .graph-bar .chip { flex: none; padding: 5px 9px; font-size: 11.5px; }
+      .graph-stage { min-height: 300px; border-radius: 14px; }
+      .graph-hint { display: none; }
+      .graph-foot { gap: 10px; font-size: 11px; }
+      .graph-zoom button { width: 34px; height: 34px; }
+    }
   </style>
 </head>
 <body>
@@ -3295,6 +3383,7 @@
     <div class="subnav" id="learning-subnav" hidden>
       <button data-learn="mastery" class="active">精通之路</button>
       <button data-learn="practice">练习</button>
+      <button data-learn="graph">知识图谱</button>
     </div>
 
     <div class="subnav" id="space-subnav" hidden>
@@ -3472,6 +3561,7 @@
             <span class="search-ico">⌕</span>
           </div>
           <div class="chips" id="kn-subjects"></div>
+          <button class="ghost kn-heat-toggle" id="kn-graph">知识图谱</button>
           <button class="ghost kn-heat-toggle" id="kn-heat-toggle" aria-expanded="false">考频榜</button>
         </div>
         <div class="bank-meta" id="kn-meta"></div>
@@ -3483,6 +3573,43 @@
             <div class="center"><button class="ghost" id="kn-more" hidden>加载更多</button></div>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-graph">
+      <div class="graph-page">
+        <div class="graph-bar">
+          <div class="search graph-search">
+            <input id="graph-q" placeholder="搜索考点或真题…" autocomplete="off"
+                   aria-label="搜索图谱节点">
+            <span class="search-ico">⌕</span>
+          </div>
+          <div class="chips" id="graph-subjects"></div>
+          <select class="select" id="graph-year" aria-label="按年份筛选"></select>
+          <label class="graph-toggle">
+            <input type="checkbox" id="graph-orphans"> 未关联真题
+          </label>
+        </div>
+        <div class="graph-stage" id="graph-stage">
+          <canvas id="graph-canvas" aria-label="考点与真题关联图" role="img"></canvas>
+          <div class="graph-status" id="graph-status">正在生成图谱…</div>
+          <div class="graph-tip" id="graph-tip" hidden></div>
+          <div class="graph-zoom">
+            <button type="button" id="graph-zoom-in" aria-label="放大">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button type="button" id="graph-zoom-out" aria-label="缩小">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+            </button>
+            <button type="button" id="graph-fit" aria-label="适应视图">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9V4h5M20 15v5h-5M4 15v5h5M20 9V4h-5"/>
+              </svg>
+            </button>
+          </div>
+          <div class="graph-hint">拖动画布平移 · 滚轮缩放 · 点击节点查看</div>
+        </div>
+        <div class="graph-foot" id="graph-foot"></div>
       </div>
     </section>
 
@@ -3712,6 +3839,7 @@
     bank: {title: '题库', sub: '内置 408 真题与自建题库，标签和出处都随题保存'},
     deck: {title: '题库', sub: '题库详情 · 按标签筛选、按出处核对'},
     knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
+    graph: {title: '知识图谱', sub: '考点与真题按卡片里写明的关联连成一张图 · 可拖拽缩放'},
     practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
     space: {title: '学习空间', sub: '对话、笔记、题目与个性化设置，集中在一处'},
     history: {title: '聊天历史', sub: '回顾、重命名或继续之前的对话'},
@@ -12258,7 +12386,7 @@
   const DETAIL_PAGES = ['mastery', 'notebooks', 'deck', 'collection'];
 
   function navPageFor(page) {
-    if (page === 'practice' || page === 'mastery') return 'learning';
+    if (page === 'practice' || page === 'mastery' || page === 'graph') return 'learning';
     if (page === 'deck' || page === 'collection') return 'space';
     if (SPACE_PAGES.indexOf(page) >= 0) return 'space';
     return page;
@@ -12314,6 +12442,8 @@
     // 换页时先收起「悬停看原话」的浮层：页面只是切换显隐，胶囊节点还在，
     // 浏览器不会补发 mouseleave，不主动收就会一直挂在新页面上方。
     hideCitePop();
+    // 离开图谱页就停掉力导向动画，别在后台白烧 CPU
+    if (page !== 'graph') graphStop();
     if (page === 'learning') page = 'mastery';
     // 伙伴已下线（先删掉入口，还没决定要不要做），旧地址一律回问答
     if (!PAGE_META[page]) page = 'chat';
@@ -12339,7 +12469,7 @@
 
     const learnSub = $('#learning-subnav');
     if (learnSub) {
-      const onLearning = page === 'mastery' || page === 'practice';
+      const onLearning = page === 'mastery' || page === 'practice' || page === 'graph';
       learnSub.hidden = !onLearning;
       $$('button', learnSub).forEach(b =>
         b.classList.toggle('active', b.dataset.learn === page));
@@ -12403,6 +12533,8 @@
           renderPracticePage();
         }
       });
+    } else if (page === 'graph') {
+      renderGraphPage();
     } else if (page === 'mastery') {
       renderMastery();
       ensureMeta(true).then(m => { if (m && state.page === 'mastery' && !state.masteryId) renderMastery(); });
@@ -13281,6 +13413,800 @@
     }
   }
 
+  /* ---------- 知识图谱（v0.64，照 Obsidian 的 graph view） ---------- */
+  // 节点颜色只按科目分，四套主题各自取语义色；形状和大小区分「考点卡 / 真题」，
+  // 不只靠颜色，色弱用户也能分。
+  const GRAPH_SUBJECTS = [
+    {key: '', label: '全部'},
+    {key: 'ds', label: '数据结构'},
+    {key: 'co', label: '计算机组成原理'},
+    {key: 'os', label: '操作系统'},
+    {key: 'cn', label: '计算机网络'}
+  ];
+  const GRAPH_COLOR_VAR = {
+    ds: '--info', co: '--brand', os: '--violet', cn: '--ok', '': '--muted'
+  };
+  const GRAPH_FORCE = {
+    charge: 320, link: 0.05, rest: 34, gravity: 0.05,
+    damping: 0.6, maxV: 14
+  };
+  const graphState = {
+    active: false, bound: false, loading: false, seq: 0, data: null,
+    nodes: [], links: [], byId: new Map(),
+    subject: '', year: '', orphans: false,
+    query: '', matches: null, hoverId: '',
+    alpha: 1, raf: 0, size: {w: 0, h: 0}, dpr: 1,
+    view: {scale: 1, x: 0, y: 0},
+    pointers: new Map(), drag: null, pan: null, pinch: null
+  };
+
+  function graphPalette() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = name => (cs.getPropertyValue(name) || '').trim() || '#888888';
+    return {
+      bg: v('--bg'), card: v('--card'), line: v('--line'),
+      lineStrong: v('--line-strong'), ink: v('--ink'), ink3: v('--ink-3'),
+      muted: v('--muted'), brand: v('--brand'),
+      ds: v('--info'), co: v('--brand'), os: v('--violet'), cn: v('--ok'),
+      other: v('--muted'), font: v('--sans')
+    };
+  }
+
+  function graphNodeColor(node, pal) {
+    return pal[node.subject] || pal.other;
+  }
+
+  function graphStatus(text) {
+    const box = $('#graph-status');
+    if (!box) return;
+    box.textContent = text || '';
+    box.hidden = !text;
+  }
+
+  function graphReduceMotion() {
+    return document.documentElement.classList.contains('reduce-motion');
+  }
+
+  function graphClamp(value, low, high) {
+    return Math.max(low, Math.min(high, value));
+  }
+
+  function renderGraphPage() {
+    const g = graphState;
+    g.active = true;
+    graphBind();
+    graphResize();
+    graphRenderSubjectChips();
+    if (!g.data && !g.loading) {
+      graphFetch();
+    } else {
+      graphRenderYears();
+      graphRenderFoot();
+      graphDraw();
+      graphKick();
+    }
+  }
+
+  async function graphFetch() {
+    const g = graphState;
+    // 连续换筛选时只采用最后一次请求的结果，避免旧响应盖掉新图
+    const seq = (g.seq || 0) + 1;
+    g.seq = seq;
+    g.loading = true;
+    graphStatus('正在生成图谱…');
+    try {
+      const params = new URLSearchParams();
+      if (g.subject) params.set('subject', g.subject);
+      if (g.year) params.set('year', g.year);
+      if (g.orphans) params.set('orphans', '1');
+      const qs = params.toString();
+      const data = await api('/graph' + (qs ? '?' + qs : ''));
+      if (seq !== g.seq) return;
+      graphBuild(data);
+    } catch (e) {
+      if (seq !== g.seq) return;
+      g.data = null;
+      if (e.status === 401) {
+        graphStatus('需要访问口令才能查看知识图谱。');
+        showAuthNeeded('输入访问口令后才能查看知识图谱。');
+      } else {
+        graphStatus('图谱加载失败：' + e.message);
+      }
+      g.nodes = [];
+      g.links = [];
+      g.byId = new Map();
+      graphDraw();
+    } finally {
+      if (seq === g.seq) g.loading = false;
+    }
+  }
+
+  function graphBuild(data) {
+    const g = graphState;
+    const prev = new Map(g.nodes.map(n => [n.id, n]));
+    g.data = data;
+    g.hoverId = '';
+    g.nodes = (data.nodes || []).map((raw, i) => {
+      const node = Object.assign({}, raw);
+      node.r = node.kind === 'knowledge'
+        ? 4.4 + Math.min(node.degree || 0, 6) * 1.3
+        : 2.6 + Math.min(node.degree || 0, 4) * 0.9;
+      const old = prev.get(node.id);
+      if (old) {
+        node.x = old.x;
+        node.y = old.y;
+      } else {
+        // 新节点沿黄金角螺旋摆开，第一次打开不会全挤在原点
+        const a = i * 2.399963;
+        const r = 16 + Math.sqrt(i + 1) * 22;
+        node.x = Math.cos(a) * r;
+        node.y = Math.sin(a) * r;
+      }
+      node.vx = 0;
+      node.vy = 0;
+      return node;
+    });
+    const map = new Map(g.nodes.map(n => [n.id, n]));
+    g.byId = map;
+    g.links = (data.links || [])
+      .map(l => ({source: map.get(l.source), target: map.get(l.target)}))
+      .filter(l => l.source && l.target);
+
+    g.matches = graphMatches(g.query);
+    g.alpha = 1;
+    graphSimulate(graphReduceMotion() ? 260 : 110);
+    g.alpha = graphReduceMotion() ? 0 : 0.35;
+    graphFit();
+    graphRenderYears();
+    graphRenderFoot();
+    const canvas = $('#graph-canvas');
+    if (canvas) {
+      const stats = data.stats || {};
+      canvas.setAttribute('aria-label',
+        '考点与真题关联图：' + (stats.knowledge || 0) + ' 个考点、' +
+        (stats.questions || 0) + ' 道真题、' + (stats.links || 0) + ' 条关联');
+    }
+    if (!g.nodes.length) {
+      graphStatus('当前筛选下没有可显示的关联。');
+    } else {
+      graphStatus('');
+      graphDraw();
+      graphKick();
+    }
+  }
+
+  /* ---- 力导向布局：斥力 + 连线弹簧 + 向心引力，和 Obsidian 的手感一致 ---- */
+  function graphStep(alpha) {
+    const g = graphState;
+    const nodes = g.nodes;
+    const n = nodes.length;
+    const f = GRAPH_FORCE;
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 0.0001) {
+          dx = (Math.random() - 0.5) * 0.4;
+          dy = (Math.random() - 0.5) * 0.4;
+          d2 = dx * dx + dy * dy;
+        }
+        const d = Math.sqrt(d2);
+        let push = (f.charge * alpha) / d;
+        // 节点本身有大小，靠得太近再补一把，避免完全叠在一起
+        const minGap = a.r + b.r + 6;
+        if (d < minGap) push += (minGap - d) * 0.45 * alpha;
+        const fx = (dx / d) * push;
+        const fy = (dy / d) * push;
+        a.vx -= fx; a.vy -= fy;
+        b.vx += fx; b.vy += fy;
+      }
+    }
+    for (const link of g.links) {
+      const a = link.source;
+      const b = link.target;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const d = Math.max(0.1, Math.hypot(dx, dy));
+      const pull = (d - (f.rest + a.r + b.r)) * f.link * alpha;
+      const fx = (dx / d) * pull;
+      const fy = (dy / d) * pull;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    }
+    for (const node of nodes) {
+      node.vx += -node.x * f.gravity * alpha;
+      node.vy += -node.y * f.gravity * alpha;
+      node.vx *= f.damping;
+      node.vy *= f.damping;
+      node.x += graphClamp(node.vx, -f.maxV, f.maxV);
+      node.y += graphClamp(node.vy, -f.maxV, f.maxV);
+    }
+  }
+
+  function graphSimulate(steps) {
+    for (let i = 0; i < steps; i++) graphStep(1);
+  }
+
+  function graphKick() {
+    const g = graphState;
+    if (!g.active || g.raf || graphReduceMotion() || !g.nodes.length) return;
+    g.alpha = Math.max(g.alpha, 0.28);
+    const loop = () => {
+      g.raf = 0;
+      if (!g.active || !g.nodes.length) return;
+      if (g.alpha > 0.014) {
+        graphStep(g.alpha);
+        g.alpha *= 0.984;
+        graphDraw();
+        g.raf = requestAnimationFrame(loop);
+      } else {
+        graphDraw();
+      }
+    };
+    g.raf = requestAnimationFrame(loop);
+  }
+
+  function graphStop() {
+    const g = graphState;
+    g.active = false;
+    if (g.raf) {
+      cancelAnimationFrame(g.raf);
+      g.raf = 0;
+    }
+    const tip = $('#graph-tip');
+    if (tip) tip.hidden = true;
+  }
+
+  /* ---- 视图：缩放、平移、适应 ---- */
+  function graphFit() {
+    const g = graphState;
+    if (!g.nodes.length || !g.size.w || !g.size.h) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const node of g.nodes) {
+      minX = Math.min(minX, node.x - node.r);
+      minY = Math.min(minY, node.y - node.r);
+      maxX = Math.max(maxX, node.x + node.r);
+      maxY = Math.max(maxY, node.y + node.r);
+    }
+    const pad = 40;
+    const bw = Math.max(1, maxX - minX);
+    const bh = Math.max(1, maxY - minY);
+    const scale = graphClamp(
+      Math.min((g.size.w - pad * 2) / bw, (g.size.h - pad * 2) / bh), 0.2, 2.4);
+    g.view.scale = scale;
+    g.view.x = g.size.w / 2 - ((minX + maxX) / 2) * scale;
+    g.view.y = g.size.h / 2 - ((minY + maxY) / 2) * scale;
+  }
+
+  function graphZoomAt(x, y, nextScale) {
+    const g = graphState;
+    const scale = graphClamp(nextScale, 0.2, 4);
+    const wx = (x - g.view.x) / g.view.scale;
+    const wy = (y - g.view.y) / g.view.scale;
+    g.view.scale = scale;
+    g.view.x = x - wx * scale;
+    g.view.y = y - wy * scale;
+    graphDraw();
+  }
+
+  /* ---- 命中测试 ---- */
+  function graphLocalPoint(ev) {
+    const canvas = $('#graph-canvas');
+    const rect = canvas.getBoundingClientRect();
+    return {x: ev.clientX - rect.left, y: ev.clientY - rect.top};
+  }
+
+  function graphNodeAt(x, y) {
+    const g = graphState;
+    const scale = g.view.scale;
+    let best = null;
+    let bestDist = Infinity;
+    for (const node of g.nodes) {
+      const nx = node.x * scale + g.view.x;
+      const ny = node.y * scale + g.view.y;
+      const d = Math.hypot(x - nx, y - ny);
+      const hit = Math.max(node.r * scale, 5) + 8;
+      if (d <= hit && d < bestDist) {
+        best = node;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
+  function graphNeighbors(node) {
+    const g = graphState;
+    const set = new Set([node.id]);
+    for (const link of g.links) {
+      if (link.source === node) set.add(link.target.id);
+      if (link.target === node) set.add(link.source.id);
+    }
+    return set;
+  }
+
+  function graphMatches(query) {
+    const text = (query || '').trim().toLowerCase();
+    if (!text) return null;
+    const set = new Set();
+    for (const node of graphState.nodes) {
+      const hay = [
+        node.label, node.title, node.chapter, node.subject_label,
+        node.stem, node.summary
+      ].join(' ').toLowerCase();
+      if (hay.indexOf(text) >= 0) set.add(node.id);
+    }
+    return set;
+  }
+
+  /* ---- 绘制 ---- */
+  function graphDraw() {
+    const g = graphState;
+    const canvas = $('#graph-canvas');
+    if (!canvas || !g.size.w || !g.size.h) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pal = graphPalette();
+    const w = g.size.w;
+    const h = g.size.h;
+    const scale = g.view.scale;
+    const ox = g.view.x;
+    const oy = g.view.y;
+    const focus = g.hoverId ? g.byId.get(g.hoverId) : null;
+    const focusSet = focus ? graphNeighbors(focus) : null;
+    const matches = g.matches;
+
+    ctx.setTransform(g.dpr, 0, 0, g.dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.lineCap = 'round';
+
+    const dimLink = link => {
+      if (focusSet) return !(link.source === focus || link.target === focus);
+      if (matches) return !(matches.has(link.source.id) && matches.has(link.target.id));
+      return false;
+    };
+
+    for (const link of g.links) {
+      const sx1 = link.source.x * scale + ox;
+      const sy1 = link.source.y * scale + oy;
+      const sx2 = link.target.x * scale + ox;
+      const sy2 = link.target.y * scale + oy;
+      const hot = focus && (link.source === focus || link.target === focus);
+      ctx.beginPath();
+      ctx.moveTo(sx1, sy1);
+      ctx.lineTo(sx2, sy2);
+      ctx.strokeStyle = hot ? pal.brand : pal.line;
+      ctx.lineWidth = hot ? 1.6 : 1;
+      ctx.globalAlpha = dimLink(link) ? 0.22 : (hot ? 0.9 : 1);
+      ctx.stroke();
+    }
+
+    // 悬停时只把「不相干」的压暗，不压没：压太狠整张图会像消失了一样
+    const nodeAlpha = node => {
+      if (focusSet) return focusSet.has(node.id) ? 1 : 0.28;
+      if (matches) return matches.has(node.id) ? 1 : 0.22;
+      return 1;
+    };
+
+    const labels = [];
+    for (const node of g.nodes) {
+      const sx = node.x * scale + ox;
+      const sy = node.y * scale + oy;
+      if (sx < -60 || sy < -60 || sx > w + 60 || sy > h + 60) continue;
+      const radius = Math.max(node.kind === 'knowledge' ? 3 : 2, node.r * scale);
+      const alpha = nodeAlpha(node);
+      const color = graphNodeColor(node, pal);
+      const isKnowledge = node.kind === 'knowledge';
+
+      if (matches && matches.has(node.id) && !focusSet) {
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = pal.brand;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+
+      // 底色描一圈，节点叠在一起时也能分清边界
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius + 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = pal.card;
+      ctx.fill();
+
+      ctx.globalAlpha = alpha * (isKnowledge ? 1 : 0.78);
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      if (focus === node) {
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius + 3.4, 0, Math.PI * 2);
+        ctx.strokeStyle = pal.ink;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      const showLabel = isKnowledge || scale >= 1.25 ||
+        (focusSet && focusSet.has(node.id)) ||
+        (matches && matches.has(node.id));
+      if (showLabel) {
+        const near = focusSet && focusSet.has(node.id);
+        labels.push({
+          text: node.label, x: sx, y: sy + radius + 13,
+          // 文字比圆点留得亮一些：压暗后还能看出图上有什么
+          alpha: focusSet ? (near ? (focus === node ? 1 : 0.86) : 0.45)
+            : (matches ? (matches.has(node.id) ? 1 : 0.3) : 1),
+          strong: focus === node || (matches && matches.has(node.id)),
+          // 文字一样大，图一小就会糊成一片；按「悬停 > 搜索命中 > 关联多」排优先级，
+          // 后面的标签和已画的重叠就不画了（Obsidian 缩小时也是这么取舍的）
+          priority: (focus === node ? 1000 : 0) +
+            (matches && matches.has(node.id) ? 500 : 0) +
+            (focusSet && focusSet.has(node.id) ? 200 : 0) +
+            (isKnowledge ? 40 : 0) + (node.degree || 0) * 4
+        });
+      }
+    }
+
+    ctx.font = '11px ' + pal.font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    labels.sort((a, b) => b.priority - a.priority);
+    const placed = [];
+    for (const label of labels) {
+      const raw = label.text.length > 16
+        ? label.text.slice(0, 15) + '…' : label.text;
+      const width = ctx.measureText(raw).width;
+      const rect = {
+        x: label.x - width / 2 - 3, y: label.y - 7,
+        w: width + 6, h: 14
+      };
+      if (rect.x < 2 || rect.y < 2 || rect.x + rect.w > w - 2 || rect.y + rect.h > h - 2) {
+        continue;
+      }
+      const clash = placed.some(other =>
+        rect.x < other.x + other.w && other.x < rect.x + rect.w &&
+        rect.y < other.y + other.h && other.y < rect.y + rect.h);
+      if (clash) continue;
+      placed.push(rect);
+      ctx.globalAlpha = label.alpha * (label.strong ? 1 : 0.82);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = pal.bg;
+      ctx.strokeText(raw, label.x, label.y);
+      ctx.fillStyle = label.strong ? pal.ink : pal.ink3;
+      ctx.fillText(raw, label.x, label.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---- 页面控件 ---- */
+  function graphRenderSubjectChips() {
+    const box = $('#graph-subjects');
+    if (!box) return;
+    const g = graphState;
+    box.replaceChildren();
+    GRAPH_SUBJECTS.forEach(item => {
+      const chip = el('button', 'chip' + (g.subject === item.key ? ' active' : ''), item.label);
+      chip.type = 'button';
+      chip.addEventListener('click', () => {
+        if (g.subject === item.key) return;
+        g.subject = item.key;
+        g.hoverId = '';
+        graphRenderSubjectChips();
+        graphFetch();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function graphRenderYears() {
+    const sel = $('#graph-year');
+    if (!sel) return;
+    const g = graphState;
+    const years = (g.data && g.data.stats && g.data.stats.years) || [];
+    const keep = g.year;
+    sel.replaceChildren();
+    const all = el('option', null, '全部年份');
+    all.value = '';
+    sel.appendChild(all);
+    years.forEach(year => {
+      const opt = el('option', null, year + ' 年');
+      opt.value = String(year);
+      sel.appendChild(opt);
+    });
+    g.year = years.map(String).indexOf(keep) >= 0 ? keep : '';
+    sel.value = g.year;
+    // 只有一年可筛时下拉框没有意义，藏起来省一行
+    sel.hidden = years.length < 2;
+  }
+
+  function graphRenderFoot() {
+    const box = $('#graph-foot');
+    if (!box) return;
+    const g = graphState;
+    const stats = (g.data && g.data.stats) || null;
+    box.replaceChildren();
+    if (!stats) return;
+    const present = {};
+    (stats.subjects || []).forEach(row => { present[row.key] = row; });
+    ['ds', 'co', 'os', 'cn'].forEach(key => {
+      const row = present[key];
+      if (!row || !(row.knowledge + row.questions)) return;
+      const meta = GRAPH_SUBJECTS.filter(s => s.key === key)[0];
+      const item = el('span', 'g-item');
+      const dot = el('i', 'g-dot');
+      dot.style.background = 'var(' + GRAPH_COLOR_VAR[key] + ')';
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(meta ? meta.label : row.label));
+      box.appendChild(item);
+    });
+    box.appendChild(el('span', 'g-count',
+      stats.knowledge + ' 个考点 · ' + stats.questions + ' 道真题 · ' +
+      stats.links + ' 条关联'));
+    if (stats.hidden_orphans) {
+      const warn = el('span', 'g-warn', '还有 ' + stats.hidden_orphans + ' 道真题没有配考点');
+      warn.title = '这些题还没有任何考点卡引用它们。勾选「未关联真题」可以把它们也画出来。';
+      box.appendChild(warn);
+    }
+    if (stats.missing) {
+      const warn = el('span', 'g-warn', stats.missing + ' 条关联指向未收录的题');
+      warn.title = (g.data.missing || []).slice(0, 20)
+        .map(m => m.card + ' → ' + m.question).join('\n');
+      box.appendChild(warn);
+    }
+  }
+
+  function graphShowTip(node, x, y) {
+    const g = graphState;
+    const tip = $('#graph-tip');
+    if (!tip) return;
+    tip.replaceChildren();
+    const title = el('b', null, node.kind === 'knowledge' ? node.label : node.title);
+    const meta = el('span', null, node.kind === 'knowledge'
+      ? node.subject_label + (node.chapter ? ' · ' + node.chapter : '') +
+        ' · 关联 ' + node.degree + ' 道真题'
+      : node.subject_label + ' · 被 ' + node.degree + ' 个考点引用');
+    tip.appendChild(title);
+    tip.appendChild(meta);
+    const body = node.kind === 'knowledge' ? node.summary : node.stem;
+    if (body) tip.appendChild(el('em', null, body));
+    tip.appendChild(el('span', null, '点击查看'));
+    tip.hidden = false;
+    const rect = tip.getBoundingClientRect();
+    let left = x + 14;
+    let top = y + 14;
+    if (left + rect.width > g.size.w - 8) left = x - rect.width - 14;
+    if (top + rect.height > g.size.h - 8) top = y - rect.height - 14;
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = Math.max(8, top) + 'px';
+  }
+
+  function graphHideTip() {
+    const tip = $('#graph-tip');
+    if (tip) tip.hidden = true;
+  }
+
+  function graphOpenNode(node) {
+    if (!node) return;
+    if (node.kind === 'knowledge') openKnowledge(node.ref);
+    else openQuestion(node.ref);
+  }
+
+  function graphResize() {
+    const g = graphState;
+    const canvas = $('#graph-canvas');
+    const stage = $('#graph-stage');
+    if (!canvas || !stage) return;
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    g.size = {w: Math.round(rect.width), h: Math.round(rect.height)};
+    g.dpr = dpr;
+    canvas.width = Math.round(g.size.w * dpr);
+    canvas.height = Math.round(g.size.h * dpr);
+    canvas.style.height = g.size.h + 'px';
+    graphDraw();
+  }
+
+  function graphFocus(node) {
+    const g = graphState;
+    g.view.x = g.size.w / 2 - node.x * g.view.scale;
+    g.view.y = g.size.h / 2 - node.y * g.view.scale;
+  }
+
+  function graphBind() {
+    const g = graphState;
+    if (g.bound) return;
+    g.bound = true;
+
+    const input = $('#graph-q');
+    if (input) {
+      input.addEventListener('input', () => {
+        g.query = input.value;
+        g.matches = graphMatches(g.query);
+        graphDraw();
+      });
+      input.addEventListener('keydown', ev => {
+        if (ev.key !== 'Enter' || !g.matches || !g.matches.size) return;
+        ev.preventDefault();
+        const first = g.nodes.filter(n => g.matches.has(n.id))[0];
+        if (!first) return;
+        graphFocus(first);
+        g.hoverId = first.id;
+        graphDraw();
+        graphShowTip(first, g.size.w / 2, g.size.h / 2);
+      });
+    }
+
+    const year = $('#graph-year');
+    if (year) year.addEventListener('change', () => {
+      g.year = year.value;
+      g.hoverId = '';
+      graphFetch();
+    });
+
+    const orphans = $('#graph-orphans');
+    if (orphans) orphans.addEventListener('change', () => {
+      g.orphans = !!orphans.checked;
+      g.hoverId = '';
+      graphFetch();
+    });
+
+    const zoomIn = $('#graph-zoom-in');
+    if (zoomIn) zoomIn.addEventListener('click', () =>
+      graphZoomAt(g.size.w / 2, g.size.h / 2, g.view.scale * 1.3));
+    const zoomOut = $('#graph-zoom-out');
+    if (zoomOut) zoomOut.addEventListener('click', () =>
+      graphZoomAt(g.size.w / 2, g.size.h / 2, g.view.scale / 1.3));
+    const fit = $('#graph-fit');
+    if (fit) fit.addEventListener('click', () => { graphFit(); graphDraw(); });
+
+    const canvas = $('#graph-canvas');
+    if (!canvas) return;
+
+    canvas.addEventListener('wheel', ev => {
+      ev.preventDefault();
+      const p = graphLocalPoint(ev);
+      const factor = Math.exp(-ev.deltaY * 0.0015);
+      graphZoomAt(p.x, p.y, g.view.scale * factor);
+    }, {passive: false});
+
+    canvas.addEventListener('pointerdown', ev => {
+      const p = graphLocalPoint(ev);
+      canvas.setPointerCapture(ev.pointerId);
+      g.pointers.set(ev.pointerId, p);
+      if (g.pointers.size === 2) {
+        // 双指缩放：取消单指拖拽，记录两指距离
+        g.drag = null;
+        g.pan = null;
+        const pts = Array.from(g.pointers.values());
+        g.pinch = {
+          dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+          scale: g.view.scale
+        };
+        return;
+      }
+      const node = graphNodeAt(p.x, p.y);
+      if (node) {
+        g.drag = {node: node, x: p.x, y: p.y, moved: 0};
+      } else {
+        g.pan = {x: p.x, y: p.y, vx: g.view.x, vy: g.view.y};
+        graphHideTip();
+        g.hoverId = '';
+        graphDraw();
+      }
+      canvas.classList.add('dragging');
+    });
+
+    canvas.addEventListener('pointermove', ev => {
+      const p = graphLocalPoint(ev);
+      if (g.pointers.has(ev.pointerId)) g.pointers.set(ev.pointerId, p);
+
+      if (g.pinch && g.pointers.size >= 2) {
+        const pts = Array.from(g.pointers.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        const mid = {x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2};
+        graphZoomAt(mid.x, mid.y, g.pinch.scale * (dist / g.pinch.dist));
+        return;
+      }
+
+      if (g.drag) {
+        const scale = g.view.scale;
+        const node = g.drag.node;
+        g.drag.moved += Math.hypot(p.x - g.drag.x, p.y - g.drag.y);
+        g.drag.x = p.x;
+        g.drag.y = p.y;
+        node.x = (p.x - g.view.x) / scale;
+        node.y = (p.y - g.view.y) / scale;
+        node.vx = 0;
+        node.vy = 0;
+        g.alpha = Math.max(g.alpha, 0.4);
+        graphDraw();
+        return;
+      }
+
+      if (g.pan) {
+        g.view.x = g.pan.vx + (p.x - g.pan.x);
+        g.view.y = g.pan.vy + (p.y - g.pan.y);
+        graphDraw();
+        return;
+      }
+
+      const node = graphNodeAt(p.x, p.y);
+      const id = node ? node.id : '';
+      if (id !== g.hoverId) {
+        g.hoverId = id;
+        if (node) graphShowTip(node, p.x, p.y);
+        else graphHideTip();
+        canvas.classList.toggle('hovering', !!node);
+        graphDraw();
+      } else if (node) {
+        graphShowTip(node, p.x, p.y);
+      }
+    });
+
+    const release = ev => {
+      g.pointers.delete(ev.pointerId);
+      if (g.pointers.size < 2) g.pinch = null;
+      const drag = g.drag;
+      g.drag = null;
+      g.pan = null;
+      canvas.classList.remove('dragging');
+      if (drag && drag.moved < 7) graphOpenNode(drag.node);
+      graphKick();
+    };
+    canvas.addEventListener('pointerup', release);
+    canvas.addEventListener('pointercancel', ev => {
+      g.pointers.delete(ev.pointerId);
+      if (g.pointers.size < 2) g.pinch = null;
+      g.drag = null;
+      g.pan = null;
+      canvas.classList.remove('dragging');
+    });
+    canvas.addEventListener('pointerleave', () => {
+      if (g.drag || g.pan || g.pinch) return;
+      g.hoverId = '';
+      canvas.classList.remove('hovering');
+      graphHideTip();
+      graphDraw();
+    });
+
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => {
+        if (graphState.active) graphResize();
+      });
+      const stage = $('#graph-stage');
+      if (stage) ro.observe(stage);
+    }
+
+    // 画布上的颜色是绘制时从 CSS 变量读的，换主题要立刻重画一次
+    if (window.MutationObserver) {
+      const mo = new MutationObserver(() => {
+        if (graphState.active) graphDraw();
+      });
+      mo.observe(document.documentElement,
+        {attributes: true, attributeFilter: ['data-theme', 'class']});
+    }
+  }
+
+  // 验收脚本用：只读地报出节点在画布上的屏幕坐标，不改任何数据
+  window.__graphView = {
+    nodes: () => graphState.nodes.map(n => ({
+      id: n.id, ref: n.ref, kind: n.kind, label: n.label,
+      degree: n.degree, subject: n.subject,
+      x: n.x * graphState.view.scale + graphState.view.x,
+      y: n.y * graphState.view.scale + graphState.view.y,
+      r: Math.max(n.kind === 'knowledge' ? 3 : 2, n.r * graphState.view.scale)
+    })),
+    scale: () => graphState.view.scale,
+    hoverId: () => graphState.hoverId,
+    links: () => graphState.links.length
+  };
+
   function bind() {
     $$('#nav button, #tabbar button').forEach(b => {
       b.addEventListener('click', () => go(b.dataset.page));
@@ -13419,6 +14345,7 @@
     });
     $('#kn-more').addEventListener('click', () => fetchKnowledge(false));
     $('#kn-heat-toggle').addEventListener('click', toggleHeat);
+    $('#kn-graph').addEventListener('click', () => go('graph'));
 
     $('#quality-days').addEventListener('change', e => {
       state.quality.days = parseInt(e.target.value, 10) || 30;
