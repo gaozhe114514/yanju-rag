@@ -95,6 +95,24 @@ class XlsxTableTest(unittest.TestCase):
         self.assertEqual(check_counts("男生18人，女生12人。", stats), [])
         self.assertTrue(check_counts("男生17人，女生12人。", stats))
 
+    def test_merged_title_row_is_a_title_not_a_header(self):
+        rows = [["2023 级智能科学与技术专业班级名单"],
+                ["学号", "姓名", "性别"]] + roster_rows()
+        chunks = doc_chunks("这是一份智能科学与技术 23-01 班的完整名单，见下表。")
+        tables = {"doc-1": extract_tables("名单.xlsx", make_xlsx(rows))}
+        stats = table_stats(chunks, "男生有多少女生有多少", tables=tables)
+        self.assertIn("有效数据 30 行", stats.text)
+        self.assertIn("男 18 行", stats.text)
+        self.assertIn("标题：", stats.text)
+
+    def test_title_row_on_a_headerless_table_is_not_data(self):
+        rows = [["2023 级智能科学与技术专业班级名单"]] + roster_rows()
+        chunks = doc_chunks("这是一份智能科学与技术 23-01 班的完整名单，见下表。")
+        tables = {"doc-1": extract_tables("名单.xlsx", make_xlsx(rows))}
+        stats = table_stats(chunks, "男生有多少女生有多少", tables=tables)
+        self.assertIn("有效数据 30 行", stats.text)
+        self.assertIn("男 18 行", stats.text)
+
     def test_headerless_table_without_ids_is_still_data(self):
         rows = [["张三", "男"], ["李四", "女"], ["王五", "男"]]
         chunks = doc_chunks("这是班里三人的名单，见下面的表格。")

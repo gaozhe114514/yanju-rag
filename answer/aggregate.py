@@ -266,11 +266,26 @@ def table_stats(chunks: Sequence[Chunk], query: str,
             sheets = _tables(lines)
         for sheet in sheets[:MAX_TABLES]:
             rows = sheet["rows"]
+            width = max(len(r) for r in rows)
+            # 合并单元格的标题行：整行只有一个长格子（「2023 级…名单」），
+            # 表却有 3 列以上。它不是表头，也不是数据，单独拿出来当标签；
+            # 条件卡得紧（只有一个格子、至少 6 个字），普通一行缺数据的不会被误删。
+            caption = ""
+            if width >= 3 and len(rows) >= 3:
+                filled = [c for c in rows[0] if c.strip()]
+                if len(filled) == 1 and len(filled[0]) >= 6:
+                    caption = filled[0]
+                    rows = rows[1:]
+                    width = max(len(r) for r in rows)
             has_header = _has_header(rows)
             if has_header:
-                header, data = rows[0], rows[1:]
+                header = list(rows[0])
+                data = rows[1:]
+                # 表头比数据窄（标题行占了一格、后面列没写标题）：补上列名，
+                # 否则后面的列根本不会被统计到
+                header += ["第 %d 列" % (i + 1)
+                           for i in range(len(header), width)]
             else:
-                width = max(len(r) for r in rows)
                 header = ["第 %d 列" % (i + 1) for i in range(width)]
                 data = rows
             if not data:
@@ -278,6 +293,8 @@ def table_stats(chunks: Sequence[Chunk], query: str,
             label = "《%s》" % (title or "资料")
             if sheet["name"]:
                 label += "（工作表：%s）" % sheet["name"]
+            if caption:
+                label += "（标题：%s）" % caption
             suffix = "（不含表头）" if has_header else ""
             lines_out = ["%s：有效数据 %d 行%s"
                          % (label, len(data), suffix)]
