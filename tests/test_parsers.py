@@ -33,6 +33,44 @@ def make_docx(*paras):
     return make_zip({"word/document.xml": xml})
 
 
+def make_xlsx(rows, shared, sheet_name="就业表"):
+    """最小可用的 .xlsx：工作表 + 共享字符串 + 单元格坐标。
+
+    rows 是 [(单元格地址, 值, 类型)] 的列表，按行给；类型 s=共享字符串，n=数字。
+    """
+    sst = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+           + "".join("<si><t>%s</t></si>" % s for s in shared) + "</sst>")
+    body = []
+    for i, cells in enumerate(rows, 1):
+        parts = []
+        for ref, value, kind in cells:
+            if kind == "s":
+                parts.append('<c r="%s" t="s"><v>%d</v></c>'
+                             % (ref, shared.index(value)))
+            else:
+                parts.append('<c r="%s"><v>%s</v></c>' % (ref, value))
+        body.append('<row r="%d">%s</row>' % (i, "".join(parts)))
+    sheet = ('<?xml version="1.0" encoding="UTF-8"?>'
+             '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+             "<sheetData>%s</sheetData></worksheet>" % "".join(body))
+    workbook = ('<?xml version="1.0" encoding="UTF-8"?>'
+                '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+                ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                '<sheets><sheet name="%s" sheetId="1" r:id="rId1"/></sheets></workbook>'
+                % sheet_name)
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/'
+            '2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
+    return make_zip({
+        "xl/workbook.xml": workbook,
+        "xl/_rels/workbook.xml.rels": rels,
+        "xl/sharedStrings.xml": sst,
+        "xl/worksheets/sheet1.xml": sheet,
+    })
+
+
 def make_pptx(*slides):
     entries = {}
     for i, lines in enumerate(slides, 1):
@@ -88,6 +126,48 @@ class OfficeTest(unittest.TestCase):
         self.assertIn("第 1 页", text)
         self.assertIn("第 2 页", text)
         self.assertLess(text.index("第 1 页"), text.index("第 2 页"))
+
+    def test_xlsx_keeps_name_and_status_on_the_same_line(self):
+        # 表格必须按行还原：把表导出成 PDF 再解析会把每一列拆成独立文字块，
+        # 姓名和就业进度就挨不到一起了。
+        data = make_xlsx([
+            [("A1", "学号", "s"), ("B1", "姓名", "s"), ("C1", "就业进度", "s")],
+            [("A2", "542313310101", "n"), ("B2", "陈畅", "s"), ("C2", "求职中", "s")],
+            [("A3", "542313310102", "n"), ("B3", "陈冬阳", "s"), ("C3", "实习中", "s")],
+        ], ["学号", "姓名", "就业进度", "陈畅", "求职中", "陈冬阳", "实习中"])
+        text, meta = extract_text("就业进度表.xlsx", data)
+        self.assertEqual(meta["ext"], ".xlsx")
+        self.assertIn("工作表：就业表", text)
+        self.assertIn("542313310101 | 陈畅 | 求职中", text)
+        self.assertIn("542313310102 | 陈冬阳 | 实习中", text)
+
+    def test_xlsx_keeps_empty_columns_in_place(self):
+        data = make_xlsx([
+            [("A1", "姓名", "s"), ("C1", "就业进度", "s")],
+            [("A2", "陈畅", "s"), ("C2", "求职中", "s")],
+        ], ["姓名", "就业进度", "陈畅", "求职中"])
+        text, _ = extract_text("a.xlsx", data)
+        self.assertIn("陈畅 | | 求职中", text)
+
+    def test_xlsx_numbers_lose_the_decimal_tail(self):
+        data = make_xlsx([
+            [("A1", "班级编号与在校状态说明", "s")],
+            [("A2", "1901.0", "n")],
+        ], ["班级编号与在校状态说明"])
+        text, _ = extract_text("a.xlsx", data)
+        self.assertIn("1901", text)
+        self.assertNotIn("1901.0", text)
+
+    def test_broken_xlsx_reports_why(self):
+        with self.assertRaises(ParseError) as ctx:
+            extract_text("bad.xlsx", b"not a zip")
+        self.assertIn("打不开", str(ctx.exception))
+
+    def test_zip_that_is_not_xlsx_is_refused(self):
+        data = make_zip({"word/document.xml": "<w:document/>"})
+        with self.assertRaises(ParseError) as ctx:
+            extract_text("fake.xlsx", data)
+        self.assertIn("不是标准的 .xlsx", str(ctx.exception))
 
     def test_broken_docx_reports_why(self):
         with self.assertRaises(ParseError) as ctx:

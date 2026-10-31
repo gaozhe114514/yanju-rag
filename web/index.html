@@ -3376,7 +3376,7 @@
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
             <button class="composer-chip" id="collection-chip" type="button"
-                    aria-haspopup="dialog" title="选择回答依据的知识库">全部资料</button>
+                    aria-haspopup="dialog" title="只用内置 408 真题与考点；要查自己导入的资料，就在这里切换">408 内置</button>
             <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
@@ -3469,9 +3469,9 @@
           <div class="lib-drop" id="lib-drop" role="button" tabindex="0"
                aria-label="上传文件：拖进来，或点击选择">
             <span class="lib-drop-main">把文件拖到这里，或点击选择</span>
-            <span class="lib-drop-sub">PDF / Word(.docx) / PPT(.pptx) / 图片(PNG / JPG) / Markdown / TXT / HTML，单个不超过 20MB，一次最多 3 个；图片会走本地 OCR，太糊可能识别不出</span>
+            <span class="lib-drop-sub">PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx) / 图片(PNG / JPG) / Markdown / TXT / HTML，单个不超过 20MB，一次最多 3 个；图片会走本地 OCR，太糊可能识别不出</span>
             <input type="file" id="lib-file-input" hidden multiple
-                   accept=".pdf,.docx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff">
+                   accept=".pdf,.docx,.xlsx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff">
           </div>
           <div class="upload-list" id="lib-uploads"></div>
         </div>
@@ -4784,7 +4784,34 @@
     return box;
   }
 
-  function renderBotMessage(msg, avatarText) {
+  // 「资料未覆盖」多半不是模型不行，而是提问时还停在「408 内置」范围：
+  // 用户导入过的资料在别的库里，这里直接给一条换库重问的退路。
+  function libraryFallbackHint(msg) {
+    const box = el('div', 'refuse-note');
+    box.appendChild(el('span', 'refuse-note-k', '资料范围'));
+    const text = el('span', null, '刚才只查了内置 408 语料。');
+    box.appendChild(text);
+    fetchCollections().then(items => {
+      const libs = (items || []).filter(c => c && !c.builtin);
+      if (!libs.length || !box.isConnected) { box.remove(); return; }
+      const lib = libs.slice().sort((a, b) =>
+        String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
+      text.appendChild(document.createTextNode('你导入的资料在「' + lib.name + '」里。'));
+      const ask = el('button', 'link-btn', '切过去再问 →');
+      ask.type = 'button';
+      ask.addEventListener('click', () => {
+        setChatCollection(lib.id);
+        const inp = $('#composer');
+        if (!msg.query) { if (inp) inp.focus(); return; }
+        if (inp) inp.value = msg.query;
+        send();
+      });
+      box.appendChild(ask);
+    });
+    return box;
+  }
+
+  function renderBotMessage(msg, avatarText, withLibraryHint) {
     const row = el('div', 'msg bot');
     // 问答页不带头像（DeepTutor 也没有）；avatarText 留给以后带人物的场景
     if (avatarText) row.appendChild(el('div', 'avatar', avatarText));
@@ -4801,6 +4828,9 @@
     }
 
     body.appendChild(el('div', 'answer-text', answerText(data)));
+    if (withLibraryHint && data.mode === 'general' && !data.refused) {
+      body.appendChild(libraryFallbackHint(msg));
+    }
     if (data.refused && refusalHasWayOut(data)) body.appendChild(refuseNote(data, msg.query));
 
     const cites = (data.citations || []).filter(Boolean);
@@ -4969,9 +4999,15 @@
       box.appendChild(emptyState());
       return;
     }
-    conv.messages.forEach(m => {
+    // 只有最后一条「资料未覆盖」的通用回答挂换库提示：老消息不重复提醒
+    let lastGeneral = -1;
+    conv.messages.forEach((m, i) => {
+      const d = m.data || {};
+      if (m.role !== 'user' && d.mode === 'general' && !d.collection) lastGeneral = i;
+    });
+    conv.messages.forEach((m, i) => {
       if (m.role === 'user') box.appendChild(userMessage(m));
-      else box.appendChild(renderBotMessage(m));
+      else box.appendChild(renderBotMessage(m, undefined, i === lastGeneral));
     });
     if (state.sending && !state.streaming) box.appendChild(loadingBubble());
     requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
@@ -8280,7 +8316,7 @@
     const chip = $('#collection-chip');
     if (!chip) return;
     const c = activeCollection();
-    chip.textContent = c ? c.name : '全部资料';
+    chip.textContent = c ? c.name : '408 内置';
     chip.classList.toggle('on', !!c);
     chip.title = c ? '当前只用「' + c.name + '」里的资料回答'
       : '选择回答依据的知识库';
@@ -8778,7 +8814,7 @@
   /* ---------- 上传队列：拖进来或点选，最多 3 个同时传 ---------- */
   const LIB_UPLOAD_MAX = 3;
   const LIB_UPLOAD_LIMIT = 20 * 1024 * 1024;
-  const LIB_UPLOAD_EXT = /\.(pdf|docx|pptx|md|markdown|txt|html?|csv|json|png|jpe?g|webp|bmp|gif|tiff?)$/i;
+  const LIB_UPLOAD_EXT = /\.(pdf|docx|xlsx|pptx|md|markdown|txt|html?|csv|json|png|jpe?g|webp|bmp|gif|tiff?)$/i;
   const libUploadTasks = [];
 
   function libFileSize(n) {
@@ -8806,7 +8842,7 @@
       };
       if (!LIB_UPLOAD_EXT.test(name)) {
         task.status = 'failed';
-        task.error = '不支持这种文件；支持 PDF / Word(.docx) / PPT(.pptx) / 图片(PNG / JPG / WebP) / Markdown / TXT / HTML';
+        task.error = '不支持这种文件；支持 PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx) / 图片(PNG / JPG / WebP) / Markdown / TXT / HTML';
       } else if (file.size > LIB_UPLOAD_LIMIT) {
         task.status = 'failed';
         task.error = '超过 20MB，先压缩或拆成几份再传';

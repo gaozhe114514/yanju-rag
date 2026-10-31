@@ -29,10 +29,12 @@ HTML_EXT = {".html", ".htm", ".xhtml"}
 PDF_EXT = {".pdf"}
 DOCX_EXT = {".docx"}
 PPTX_EXT = {".pptx"}
+XLSX_EXT = {".xlsx"}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 LEGACY_EXT = {".doc", ".ppt", ".xls"}
 
-SUPPORTED_EXT = TEXT_EXT | HTML_EXT | PDF_EXT | DOCX_EXT | PPTX_EXT | IMAGE_EXT
+SUPPORTED_EXT = (TEXT_EXT | HTML_EXT | PDF_EXT | DOCX_EXT | PPTX_EXT
+                 | XLSX_EXT | IMAGE_EXT)
 
 # 解析失败时给用户看的原因；不写 Python 异常类型，写得能照着处理
 _EMPTY_HINTS = {
@@ -40,6 +42,7 @@ _EMPTY_HINTS = {
             "可以把它导出成图片再上传，这边会走 OCR",
     ".docx": "文档里没有可提取的文字，检查是不是只有图片",
     ".pptx": "幻灯片里没有可提取的文字，检查是不是只有图片",
+    ".xlsx": "表格里没有可提取的文字（只有格式或空表），至少要有 20 字",
     ".html": "网页里没有正文文字",
 }
 
@@ -254,6 +257,138 @@ def _pptx_text(data: bytes) -> str:
     return "\n\n".join(slides)
 
 
+def _local(tag: str) -> str:
+    """去掉命名空间前缀，只留本地名（Excel 的 XML 到处都是命名空间）。"""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _col_index(ref: str) -> int:
+    """把 A1 / BC12 这样的单元格地址换算成从 0 开始的列号。"""
+    letters = re.match(r"([A-Za-z]+)", ref or "")
+    if not letters:
+        return 0
+    n = 0
+    for ch in letters.group(1).upper():
+        n = n * 26 + (ord(ch) - 64)
+    return n - 1
+
+
+def _xlsx_value(cell, shared) -> str:
+    """取一个单元格的文字：共享字符串 / 内联字符串 / 数字 / 布尔。"""
+    t = (cell.get("t") or "").strip()
+    if t == "inlineStr":
+        return "".join((n.text or "") for n in cell.iter() if _local(n.tag) == "t")
+    raw = None
+    for node in cell:
+        if _local(node.tag) == "v":
+            raw = node.text
+            break
+    if raw is None:
+        return ""
+    if t == "s":  # 共享字符串表里的下标
+        try:
+            return shared[int(raw)]
+        except (ValueError, IndexError):
+            return ""
+    if t == "b":
+        return "是" if raw.strip() == "1" else "否"
+    if t == "e":  # #REF! 之类的错误值，不往正文里塞
+        return ""
+    text = raw.strip()
+    if re.match(r"^-?\d+\.0+$", text):  # 1901.0 → 1901，别把学号写成小数
+        return text.split(".")[0]
+    return text
+
+
+def _xlsx_text(data: bytes) -> str:
+    """把 Excel 表格读成「一行一条记录」，列与列之间用 | 隔开。
+
+    按单元格坐标还原列位置，所以同一行的姓名和就业进度始终挨在一起——
+    这正是把表格导出成 PDF 再解析做不到的（PDF 里每列是独立文字块，
+    姓名与状态会被拆进不同段落，引用与「谁在求职」这类问题都会跑偏）。
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise ParseError("Excel 文件打不开（可能是老的 .xls 改了后缀，或者文件损坏）")
+    with zf:
+        names = set(zf.namelist())
+        if "xl/workbook.xml" not in names:
+            raise ParseError("这不是标准的 .xlsx 文件")
+        import xml.etree.ElementTree as ET
+        try:
+            wb = ET.fromstring(zf.read("xl/workbook.xml"))
+        except ET.ParseError:
+            raise ParseError("Excel 工作簿解析失败")
+
+        # r:id → 工作表路径
+        rels = {}
+        if "xl/_rels/workbook.xml.rels" in names:
+            try:
+                rel_root = ET.fromstring(zf.read("xl/_rels/workbook.xml.rels"))
+            except ET.ParseError:
+                rel_root = None
+            for rel in (rel_root if rel_root is not None else []):
+                target = rel.get("Target") or ""
+                if not target:
+                    continue
+                rels[rel.get("Id")] = (target[1:] if target.startswith("/")
+                                       else "xl/" + target.lstrip("./"))
+
+        shared = []
+        if "xl/sharedStrings.xml" in names:
+            try:
+                sst = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            except ET.ParseError:
+                sst = None
+            for si in (sst.iter() if sst is not None else []):
+                if _local(si.tag) == "si":
+                    shared.append("".join((n.text or "") for n in si.iter()
+                                          if _local(n.tag) == "t"))
+
+        sheets = []
+        for node in wb.iter():
+            if _local(node.tag) != "sheet":
+                continue
+            rid = ""
+            for key, val in node.attrib.items():
+                if _local(key) == "id":
+                    rid = val
+            path = rels.get(rid, "")
+            if path and path in names:
+                sheets.append((node.get("name") or "工作表", path))
+        if not sheets:  # 关系文件缺失时退一步：按文件名顺序读
+            for path in sorted(n for n in names
+                               if re.match(r"xl/worksheets/sheet\d+\.xml$", n)):
+                sheets.append((path.rsplit("/", 1)[-1], path))
+
+        out = []
+        for sheet_name, path in sheets:
+            try:
+                root = ET.fromstring(zf.read(path))
+            except ET.ParseError:
+                continue
+            lines = []
+            for row in root.iter():
+                if _local(row.tag) != "row":
+                    continue
+                cells = []
+                for cell in row:
+                    if _local(cell.tag) != "c":
+                        continue
+                    idx = _col_index(cell.get("r"))
+                    while len(cells) <= idx:
+                        cells.append("")
+                    cells[idx] = _xlsx_value(cell, shared)
+                while cells and not cells[-1]:
+                    cells.pop()
+                if any(c.strip() for c in cells):
+                    lines.append(" | ".join(c.strip() for c in cells))
+            if lines:
+                out.append("工作表：%s\n%s" % (sheet_name, "\n".join(lines)))
+    return "\n\n".join(out)
+
+
 def extract_text(name: str, data: bytes) -> Tuple[str, dict]:
     """返回 (正文, 元信息)。失败抛 ParseError，message 直接展示给用户。"""
     if not data:
@@ -262,10 +397,11 @@ def extract_text(name: str, data: bytes) -> Tuple[str, dict]:
         raise ParseError("文件太大，单篇最多 %d MB" % (MAX_BYTES // 1024 // 1024))
     ext = extension_of(name)
     if ext in LEGACY_EXT:
-        raise ParseError("不支持老的 %s 格式，请另存为 .docx / .pptx 再上传" % ext)
+        raise ParseError("不支持老的 %s 格式，请另存为 .docx / .pptx / .xlsx 再上传" % ext)
     if ext not in SUPPORTED_EXT:
         raise ParseError("不支持这种文件（%s）。支持 PDF / Word(.docx) / "
-                         "PPT(.pptx) / 图片(PNG / JPG / WebP) / Markdown / TXT / HTML / CSV / JSON"
+                         "PPT(.pptx) / Excel(.xlsx) / 图片(PNG / JPG / WebP) / "
+                         "Markdown / TXT / HTML / CSV / JSON"
                          % (ext or "没有扩展名"))
 
     meta = {"ext": ext, "bytes": len(data)}
@@ -275,6 +411,8 @@ def extract_text(name: str, data: bytes) -> Tuple[str, dict]:
         text = _docx_text(data)
     elif ext in PPTX_EXT:
         text = _pptx_text(data)
+    elif ext in XLSX_EXT:
+        text = _xlsx_text(data)
     elif ext in HTML_EXT:
         text = _html_text(data, name)
     elif ext in IMAGE_EXT:
