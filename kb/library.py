@@ -62,7 +62,8 @@ class Library:
         self.k_fuse = k_fuse
         self.reranker_model = reranker_model
         self._searchers: Dict[str, tuple] = {}
-        self._mem = {"collections": [], "documents": [], "chunks": []}
+        self._mem = {"collections": [], "documents": [], "chunks": [],
+                     "members": []}
         self._state_path = Path(state_path) if (state_path and store is None) else None
         if self._state_path is not None:
             self._load_state()
@@ -78,7 +79,7 @@ class Library:
             data = json.loads(raw)
         except ValueError:
             return
-        for key in ("collections", "documents", "chunks"):
+        for key in ("collections", "documents", "chunks", "members"):
             if isinstance(data.get(key), list):
                 self._mem[key] = data[key]
 
@@ -116,6 +117,10 @@ class Library:
                 "id": r["id"],
                 "name": r["name"],
                 "description": r.get("description") or "",
+                "owner_id": r.get("owner_id") or "",
+                "created_by": r.get("created_by") or "",
+                # 老库没有这两列时按「公司库、无主」处理，只有管理员能改。
+                "visibility": r.get("visibility") or "shared",
                 "created_at": str(r.get("created_at") or ""),
                 "updated_at": str(r.get("updated_at") or ""),
                 "documents": int(r.get("doc_count") or 0),
@@ -135,32 +140,62 @@ class Library:
             "id": row["id"],
             "name": row["name"],
             "description": row.get("description") or "",
+            "owner_id": row.get("owner_id") or "",
+            "created_by": row.get("created_by") or "",
+            "visibility": row.get("visibility") or "shared",
             "created_at": str(row.get("created_at") or ""),
             "updated_at": str(row.get("updated_at") or ""),
             "documents": docs,
         }
 
-    def create_collection(self, name: str, description: str = "") -> Dict:
+    def _name_taken(self, name: str, owner_id: str, visibility: str) -> bool:
+        """同名判断按空间范围：个人库只跟自己比，公司库跟公司库比。
+
+        这样两个成员可以各自有一个「机器学习笔记」，但公司库里不能重复。
+        """
+        rows = (self.store.list_collections() if self.store is not None
+                else self._mem["collections"])
+        for c in rows:
+            if c.get("name") != name:
+                continue
+            if visibility == "private":
+                if (c.get("visibility") or "shared") == "private" \
+                        and (c.get("owner_id") or "") == (owner_id or ""):
+                    return True
+            elif (c.get("visibility") or "shared") == "shared":
+                return True
+        return False
+
+    def create_collection(self, name: str, description: str = "",
+                          owner_id: str = "", visibility: str = "shared",
+                          created_by: str = "") -> Dict:
         name = _clean(name, MAX_NAME)
         if not name:
             raise LibraryError("资料库名称不能为空")
+        if visibility not in ("shared", "private"):
+            raise LibraryError("资料库类型不对")
+        if visibility == "private" and not owner_id:
+            raise LibraryError("个人知识库需要登录后创建")
         description = _clean(description, MAX_DESC)
-        if self.store is not None:
-            if any(c["name"] == name for c in self.store.list_collections()):
-                raise LibraryError("已经有同名资料库：%s" % name)
-        else:
-            if any(c["name"] == name for c in self._mem["collections"]):
-                raise LibraryError("已经有同名资料库：%s" % name)
+        if self._name_taken(name, owner_id, visibility):
+            raise LibraryError("已经有同名资料库：%s" % name)
         cid = _new_id("lib")
         now = _now()
         if self.store is not None:
-            self.store.create_collection(cid, name, description)
+            self.store.create_collection(cid, name, description,
+                                         owner_id=owner_id or None,
+                                         visibility=visibility,
+                                         created_by=created_by or owner_id or None)
         else:
             self._mem["collections"].append({
                 "id": cid, "name": name, "description": description,
+                "owner_id": owner_id or "", "visibility": visibility,
+                "created_by": created_by or owner_id or "",
                 "created_at": now, "updated_at": now})
             self._save_state()
         return {"id": cid, "name": name, "description": description,
+                "owner_id": owner_id or "", "visibility": visibility,
+                "created_by": created_by or owner_id or "",
                 "created_at": now, "updated_at": now,
                 "documents": [], "chunks": 0}
 
@@ -177,10 +212,64 @@ class Library:
                 d for d in self._mem["documents"] if d["collection_id"] != cid]
             self._mem["chunks"] = [
                 k for k in self._mem["chunks"] if k["collection_id"] != cid]
+            self._mem["members"] = [
+                m for m in self._mem["members"] if m["collection_id"] != cid]
             ok = len(self._mem["collections"]) != before
             if ok:
                 self._save_state()
         self._searchers.pop(cid, None)
+        return ok
+
+    # ---------- 成员 ----------
+    # owner 记在 collections.owner_id 上，这里只存 editor / viewer。
+
+    def collection_member_role(self, cid: str, user_id: str) -> str:
+        if not user_id:
+            return ""
+        if self.store is not None:
+            return self.store.get_collection_member(cid, user_id) or ""
+        for m in self._mem["members"]:
+            if m["collection_id"] == cid and m["user_id"] == user_id:
+                return str(m.get("role") or "")
+        return ""
+
+    def list_collection_members(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            return self.store.list_collection_members(cid)
+        rows = [dict(m) for m in self._mem["members"]
+                if m["collection_id"] == cid]
+        return sorted(rows, key=lambda m: (m.get("created_at") or "",
+                                           m.get("user_id") or ""))
+
+    def set_collection_member(self, cid: str, user_id: str, role: str) -> None:
+        if role not in ("editor", "viewer"):
+            raise LibraryError("成员角色只能是可编辑或只读")
+        if not user_id:
+            raise LibraryError("成员不能为空")
+        if self.store is not None:
+            self.store.set_collection_member(cid, user_id, role)
+            return
+        now = _now()
+        for m in self._mem["members"]:
+            if m["collection_id"] == cid and m["user_id"] == user_id:
+                m["role"] = role
+                self._save_state()
+                return
+        self._mem["members"].append({
+            "collection_id": cid, "user_id": user_id, "role": role,
+            "created_at": now})
+        self._save_state()
+
+    def remove_collection_member(self, cid: str, user_id: str) -> bool:
+        if self.store is not None:
+            return self.store.remove_collection_member(cid, user_id)
+        before = len(self._mem["members"])
+        self._mem["members"] = [
+            m for m in self._mem["members"]
+            if not (m["collection_id"] == cid and m["user_id"] == user_id)]
+        ok = len(self._mem["members"]) != before
+        if ok:
+            self._save_state()
         return ok
 
     # ---------- 文档 ----------

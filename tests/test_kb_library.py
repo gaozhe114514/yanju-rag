@@ -97,6 +97,81 @@ class CollectionTest(unittest.TestCase):
         self.assertIsNone(lib.searcher(coll["id"]))
 
 
+class OwnershipTest(unittest.TestCase):
+    def test_private_collection_keeps_owner_and_visibility(self):
+        lib = make_library()
+        coll = lib.create_collection("我的笔记", owner_id="u-1",
+                                     visibility="private")
+        self.assertEqual(coll["owner_id"], "u-1")
+        self.assertEqual(coll["visibility"], "private")
+        listed = lib.list_collections()[0]
+        self.assertEqual(listed["owner_id"], "u-1")
+        self.assertEqual(lib.get_collection(coll["id"])["visibility"], "private")
+
+    def test_private_requires_owner(self):
+        with self.assertRaises(LibraryError):
+            make_library().create_collection("无主个人库", visibility="private")
+
+    def test_same_name_allowed_across_private_owners(self):
+        lib = make_library()
+        lib.create_collection("笔记", owner_id="u-1", visibility="private")
+        lib.create_collection("笔记", owner_id="u-2", visibility="private")
+        with self.assertRaises(LibraryError):
+            lib.create_collection("笔记", owner_id="u-1", visibility="private")
+        # 个人库和公司库可以同名，两者不在一个命名空间
+        lib.create_collection("笔记", visibility="shared")
+        with self.assertRaises(LibraryError):
+            lib.create_collection("笔记", visibility="shared")
+
+    def test_bad_visibility_rejected(self):
+        with self.assertRaises(LibraryError):
+            make_library().create_collection("怪库", visibility="public")
+
+
+class CollectionMemberTest(unittest.TestCase):
+    def setUp(self):
+        self.lib = make_library()
+        self.coll = self.lib.create_collection("公司库", visibility="shared")
+        self.cid = self.coll["id"]
+
+    def test_set_get_list_remove(self):
+        self.assertEqual(self.lib.collection_member_role(self.cid, "u-2"), "")
+        self.lib.set_collection_member(self.cid, "u-2", "editor")
+        self.assertEqual(self.lib.collection_member_role(self.cid, "u-2"),
+                         "editor")
+        self.lib.set_collection_member(self.cid, "u-3", "viewer")
+        self.lib.set_collection_member(self.cid, "u-2", "viewer")
+        rows = self.lib.list_collection_members(self.cid)
+        self.assertEqual({r["user_id"]: r["role"] for r in rows},
+                         {"u-2": "viewer", "u-3": "viewer"})
+        self.assertTrue(self.lib.remove_collection_member(self.cid, "u-2"))
+        self.assertFalse(self.lib.remove_collection_member(self.cid, "u-2"))
+        self.assertEqual(len(self.lib.list_collection_members(self.cid)), 1)
+
+    def test_role_must_be_editor_or_viewer(self):
+        for bad in ("owner", "admin", ""):
+            with self.assertRaises(LibraryError):
+                self.lib.set_collection_member(self.cid, "u-2", bad)
+
+    def test_delete_collection_drops_members(self):
+        self.lib.set_collection_member(self.cid, "u-2", "editor")
+        self.assertTrue(self.lib.delete_collection(self.cid))
+        self.assertEqual(self.lib.collection_member_role(self.cid, "u-2"), "")
+
+    def test_members_persist_to_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "library.json")
+            lib = make_library(state_path=path)
+            cid = lib.create_collection("会保存的库", owner_id="u-1",
+                                        visibility="private")["id"]
+            lib.set_collection_member(cid, "u-2", "editor")
+            again = make_library(state_path=path)
+            row = again.get_collection(cid)
+            self.assertEqual(row["owner_id"], "u-1")
+            self.assertEqual(row["visibility"], "private")
+            self.assertEqual(again.collection_member_role(cid, "u-2"), "editor")
+
+
 class DocumentTest(unittest.TestCase):
     def setUp(self):
         self.lib = make_library()

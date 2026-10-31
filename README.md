@@ -2,7 +2,9 @@
 
 以 408（计算机学科专业基础综合）真题为内置语料的知识库问答系统：**每个结论都能被引用回原文，答不出来就明说，不硬编。** 不考 408 也能用——把讲义、笔记、手册贴进自建知识库，同一套检索、引用校验与拒答直接生效。
 
-> 状态：v0.51。**账号有了**：设置页「个人 · 账号」可以注册 / 登录，口令用 PBKDF2-HMAC-SHA256（每用户独立盐，21 万次迭代）存哈希，服务端不保存明文；登录发随机 token，数据库只存它的 SHA-256，会话 30 天过期。登录后把浏览器里的个人内容（对话、学习进度、笔记本、日志、自建题库、精通之路、任务清单、偏好）按「最后写入时间」合并到账号，换设备登录同一账号就能拉回来；删除也写墓碑，别的设备下次同步会把本地那份一起删掉。访问口令、账号 token、当前打开的那段对话和知识库资料不同步；换另一个账号登录时，本机属于上个账号的内容会先清掉，避免串号。没有 `DATABASE_URL` 时账号退到进程内存，进程重启即丢，README 下文写明。规范见 [design.md](design.md) v2.19 §6.16。测试 435 条通过（skip 13），新增 23 条账号用例；Edge 在 1440×900 与 390×844 各走了一遍注册 → 同步 → 新上下文拉回 → 退出登录，无脚本报错、无横向溢出。
+> 状态：v0.52。**知识库有权限了**：全局角色只有 `admin` / `member` 两种，第一个注册的账号自动成为管理员，也可以用 `KB_ADMIN_USERS`（逗号分隔用户名）指定。知识库分三层：内置 408 只读；公司库（`shared`）登录后可读，管理员或建库人 / 被指定的 `editor` 可写；个人库（`private`）只有建库人自己能读能写，管理员也看不到。公司库详情页的「成员」可以按用户名加 `editor`（可编辑）或 `viewer`（只读），随时改角色或移除；个人库没有成员概念。服务端在每个资料、片段、成员和问答接口上重新判权，未登录回 401，登录但无权回 404（不暴露库是否存在）。存量自建库迁移为无主公司库，只有管理员可写。前端按「公司知识库 / 我的知识库」分区，只读库隐藏上传、删除与成员入口，片段仍能看但改不了；登录、退出或换号会重新拉取可见库。测试 461 条通过（skip 13），新增 26 条权限与成员用例；Edge 在 1440×900 与 390×844 走完「管理员建公司库 → 成员只读 → 改为编辑 → 成员建个人库 → 管理员看不到」，无脚本报错、无横向溢出。规范见 [design.md](design.md) v2.20 §6.15。
+>
+> v0.51：**账号有了**：设置页「个人 · 账号」可以注册 / 登录，口令用 PBKDF2-HMAC-SHA256（每用户独立盐，21 万次迭代）存哈希，服务端不保存明文；登录发随机 token，数据库只存它的 SHA-256，会话 30 天过期。登录后把浏览器里的个人内容（对话、学习进度、笔记本、日志、自建题库、精通之路、任务清单、偏好）按「最后写入时间」合并到账号，换设备登录同一账号就能拉回来；删除也写墓碑，别的设备下次同步会把本地那份一起删掉。访问口令、账号 token、当前打开的那段对话和知识库资料不同步；换另一个账号登录时，本机属于上个账号的内容会先清掉，避免串号。没有 `DATABASE_URL` 时账号退到进程内存，进程重启即丢，README 下文写明。规范见 [design.md](design.md) v2.19 §6.16。测试 435 条通过（skip 13），新增 23 条账号用例；Edge 在 1440×900 与 390×844 各走了一遍注册 → 同步 → 新上下文拉回 → 退出登录，无脚本报错、无横向溢出。
 >
 > v0.50：**图片能识别了**：自建知识库现在支持上传 PNG / JPG / WebP / BMP / GIF / TIFF，走本地 OCR（RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU，不依赖外部服务）。图片先按长边缩到 2400px 再识别，置信度低于 0.5 的行直接丢掉；识别不到 20 个字会说「可能拍得太小、太糊，或者图里本来就没有字」，不硬凑。扫描件 PDF 也可以导出成图片再传。OCR 引擎第一次识别时才加载进内存，`KB_OCR=0` 可整体关闭；关掉或没装时上传图片会明确提示，而不是假装成功。实测一张 1000×260 的中文截图 2.3 秒出结果（含首次加载模型），三行文字全部识别正确。规范见 [design.md](design.md) v2.18 §6.15。
 >
@@ -268,6 +270,15 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 - **不串库**：应答缓存键额外拼上 collection id（内置库沿用原命名空间），断拒答日志带 `|collection:<cid>`，甲的答案不会喂给乙的资料。
 - **边界**：单篇 20–50000 字、同库最多 200 篇、同名文档按 sha256 去重；空知识库提问直接回「这个知识库里还没有资料」，不硬编答案。
 
+#### 权限与可见性（v0.52，B-lite）
+
+- **全局角色**：`users.role` 只有 `admin` / `member`。第一个注册的账号自动成为管理员；也可以用环境变量 `KB_ADMIN_USERS`（逗号分隔用户名，大小写不敏感）指定，登录或启动时提升。
+- **库的可见性**：`builtin`（内置 408，全员可读、谁都不能写）/ `shared`（公司库，登录后可读）/ `private`（个人库，只有建库人可读可写）。个人库对管理员也不可见。
+- **公司库写权限**：管理员、建库人（`owner_id`）始终可写；`collection_members` 里角色为 `editor` 的成员可以加删资料、改片段，`viewer` 只能读和提问。删库与增删成员比改资料更严，只有管理员和建库人能做（`can_manage`），editor 不能给自己或别人发权限。成员按用户名添加，可随时改角色或移除；建库人不能被移除。
+- **服务端判权**：资料、片段、成员、`/ask`、`/chat`、`/chat/stream` 每个入口都重新判权。未登录回 401；已登录但无权回 404，避免用 id 探测别人的库是否存在；内置库写操作回 403。
+- **迁移**：存量自建库统一视为 `shared` 且无 owner，只有管理员可写；`collection_members` 为空。个人库与公司库各自去重名称，不同成员的「笔记」可以同名。
+- **WeKnora 后端**：它的 ACL 不归本项目管，因此 WeKnora 模式下知识库只有管理员可见可写，也不支持个人库。
+
 ### 文件进料与片段管理（v0.49 起自己解析，v0.50 加图片 OCR）
 
 自建知识库不再依赖外部服务：文件上传到本地后由 `kb/parsers.py` 解析，切分、向量、检索、引用校验全在本项目。
@@ -313,15 +324,18 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `POST /chat/stream` | 同参数的流式问答，返回 `text/event-stream`：`status`（plan / cache / retrieve / gate / generate / verify）、`delta`（增量文字，已从 JSON 里剥出 answer 字段）、`reset`（校验失败，清空已显示文字）、`error`、`done`（最终 payload，字段同 `/chat`）。校验未过时 `reset` → 重试一次 → 仍不过则 `done` 里是拒答 |
 | `POST /bank/generate` | 用资料出题：`{"text": "≥80 字的资料", "count": 5, "title": "资料标题"}`，返回 `{"questions": [...], "requested", "skipped", "notes"}`。每道题带 `options / answer / explanation / tags / source{title, quote, offset}`；`source.quote` 去空白后必须出现在 `text` 里，否则该题被丢弃并记进 `notes`。资料不落盘；离线演示模式返回 503 |
 | `POST /mastery/turn` | 精通之路的导师会话，一轮一个请求（无状态）：`{"goal", "emoji", "subject", "materials": [{"key", "label", "kind", "detail"}], "learner": {prior/target/time/style}, "outline": {"name", "modules": [{id, name, objective, points: [{id, name, type, done}]}]}, "messages": [...], "message"}`，返回 `reply / ask / profile / outline / stage / offline / latency_ms`。`ask` 是 1–4 道带选项的提问卡（可为空），`outline` 只在模型给了合规大纲时出现（≥2 模块、≥4 知识点，最多 10 模块 / 48 知识点）。知识库与考点资料由服务端自己读，题库与对话由前端带上摘要。没有生成模型时走离线演示脚本，`offline: true` |
-| `GET /collections` | 知识库列表：内置 408（`builtin: true`）+ 自建库，各带 `documents` / `chunks` 计数 |
-| `POST /collections` | 新建知识库：`{"name": "≤40 字", "description": "≤200 字"}`，重名回 409 |
-| `GET /collections/{cid}` | 知识库详情（含文档列表） |
-| `DELETE /collections/{cid}` | 删除知识库：连文档和片段一起删，内置库拒绝（400） |
+| `GET /collections` | 当前账号可见的知识库：内置 408（`builtin: true`）+ 公司库 + 自己的个人库；除 `documents` / `chunks` 外带 `visibility` / `my_role` / `can_write`，另有 `need_login` 与 `can_create_shared`（是否管理员）。未登录只返回内置库 |
+| `POST /collections` | 新建知识库：`{"name": "≤40 字", "description": "≤200 字", "visibility": "private|shared"}`，默认 `private`；建公司库要求管理员（403）；重名回 409 |
+| `GET /collections/{cid}` | 知识库详情（含文档列表与权限字段）；无权回 404 |
+| `DELETE /collections/{cid}` | 删除知识库：连文档、片段和成员一起删；只有管理员 / 建库人（`can_manage`）能做，editor 也不能删库；内置库 403，无权 404 |
+| `GET /collections/{cid}/members` | 公司库成员：`{owner, items: [{user_id, username, role}]}`；个人库回 400，editor / viewer 无权（404） |
+| `POST /collections/{cid}/members` | 添加或改角色：`{"username": "对方用户名", "role": "editor|viewer"}`；建库人 / 自己 / 不存在的用户分别回 400 / 400 / 404 |
+| `DELETE /collections/{cid}/members/{user_id}` | 移除成员；不能移除建库人（400） |
 | `POST /collections/{cid}/documents` | 加资料：`{"text": "20–50000 字", "title": "可选，≤80 字"}`，返回切出的片段数；同一份资料重复添加回 409 |
 | `GET /collections/{cid}/documents/{doc_id}` | 资料原文（前端用来高亮引用原句）；解析中的文档回 409，失败的回 404 并带原因 |
 | `DELETE /collections/{cid}/documents/{doc_id}` | 删除一篇资料，删完该库的检索索引随之失效重建 |
 | `POST /collections/{cid}/files` | 上传原始文件：请求体是文件本身，`X-Filename` 放 URI 编码后的文件名，单个 ≤20MB；本地解析，立即返回 `processing` 文档，失败原因写进 `status: failed` |
-| `GET /collections/{cid}/documents/{doc_id}/chunks` | 资料切出的片段（含 `seq` / `text` / `revision`），供片段管理弹窗读取 |
+| `GET /collections/{cid}/documents/{doc_id}/chunks` | 资料切出的片段（含 `seq` / `text` / `revision`），附 `editable`：只读成员能看片段但不能改 |
 | `PUT /collections/{cid}/documents/{doc_id}/chunks/{chunk_id}` | 改片段正文：`{"content": "...", "revision": 3}`（10–4000 字）；`revision` 是乐观锁，冲突回 409 |
 | `DELETE /collections/{cid}/documents/{doc_id}/chunks/{chunk_id}` | 删片段，删完该库检索缓存失效 |
 | `POST /collections/{cid}/documents/{doc_id}/reparse` | 用已存原文重新切分；没有可切分的原文时回 400 并提示重新上传 |
@@ -341,7 +355,7 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `POST /auth/register` | 注册并登录：`{"username": "2–24 字", "password": "≥8 位"}`；重名回 409，用户名大小写不敏感 |
 | `POST /auth/login` | 登录：同上，返回 `{"user", "token", "expires_at"}`；连续 5 次密码错误后同 IP + 用户名锁 10 分钟（429） |
 | `POST /auth/logout` | 退出登录，作废当前 `Authorization: Bearer <token>` |
-| `GET /auth/me` | 当前账号：`{"user": {id, username, created_at, last_login_at}}`；token 无效回 401 |
+| `GET /auth/me` | 当前账号：`{"user": {id, username, role, created_at, last_login_at}}`；`role` 为 `admin` / `member`；token 无效回 401 |
 | `GET /me/data` | 拉取账号下的个人数据：`{"items": {key: {value, updated_at}}}`；`value` 是 localStorage 里的原字符串 |
 | `PUT /me/data` | 按时间戳合并：`{"items": {key: {value, updated_at}}}`，比服务器旧的不覆盖，返回被拒键的服务器时间 |
 | `DELETE /me/data` | 删除同步副本：`{"all": true}` 或 `{"keys": ["408-..."]}`；写墓碑，别的设备下次同步会删本地那份 |
@@ -484,6 +498,7 @@ answer/
   cli.py       命令行问答
 api/app.py     FastAPI 服务（/ask、/chat、/chat/stream、/bank/generate、/collections、/auth、/me/data、/feedback、/chunks、/knowledge、/stats、/meta、/health、/）
 api/accounts.py 账号：注册 / 登录 / 会话（PBKDF2 + token 哈希）与个人数据按时间戳同步
+api/access.py  知识库权限（B-lite）：内置 / 公司 / 个人库的读写判据（纯函数）
 api/catalog.py 题库筛选、列表/详情序列化（纯函数）
 api/metrics.py 进程内问答计数（质量看板用，重启归零）
 api/knowledge.py 考点卡片加载、校验、筛选、题目双向关联、章节考频树
@@ -495,7 +510,7 @@ kb/
   parsers.py   本地文件解析：PDF / docx / pptx / md / txt / html / 图片 OCR，编码探测与拒绝理由
   library.py   知识库管理：建库、加资料（切分 + 向量）、删文档、片段改删与重新切分、按库惰性建 searcher
 db/
-  schema.sql   chunks / collections / documents / doc_chunks / users / user_sessions / user_data / meta / gap_logs / answer_cache / answer_feedback 表与索引
+  schema.sql   chunks / collections / collection_members / documents / doc_chunks / users / user_sessions / user_data / meta / gap_logs / answer_cache / answer_feedback 表与索引
   store.py     语料同步、向量召回、SQL 筛选、账号与会话、个人数据同步、拒答与反馈日志、统计聚合
   load.py      手工重建语料（python -m db.load）
   wait.py      容器启动前等 Postgres 就绪

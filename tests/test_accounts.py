@@ -127,6 +127,42 @@ class LoginTest(unittest.TestCase):
         self.assertIsNone(self.svc.authenticate(""))
 
 
+class RoleTest(unittest.TestCase):
+    def test_first_user_is_admin_second_is_member(self):
+        svc, _ = make_service()
+        first = svc.register("Alice", "password123")
+        second = svc.register("Bob", "password123")
+        self.assertEqual(first["user"]["role"], "admin")
+        self.assertEqual(second["user"]["role"], "member")
+        # 公开信息里不能出现口令哈希
+        self.assertNotIn("password_hash", first["user"])
+
+    def test_admin_names_are_case_insensitive(self):
+        svc = AccountService(admin_names=["Boss"])
+        svc.register("Alice", "password123")   # 第一个兜底管理员
+        out = svc.register("boss", "password123")
+        self.assertEqual(out["user"]["role"], "admin")
+
+    def test_find_and_get_user(self):
+        svc, _ = make_service()
+        out = svc.register("Alice", "password123")
+        found = svc.find_user("alice")
+        self.assertEqual(found["id"], out["user"]["id"])
+        self.assertEqual(found["role"], "admin")
+        self.assertEqual(svc.get_user(found["id"])["username"], "Alice")
+        self.assertIsNone(svc.find_user("nobody"))
+        self.assertIsNone(svc.get_user("u-nope"))
+
+    def test_ensure_admin_promotes_configured_user(self):
+        svc, _ = make_service()
+        svc.register("Alice", "password123")
+        svc.register("Bob", "password123")
+        self.assertEqual(svc.find_user("bob")["role"], "member")
+        svc.admin_names = frozenset({"bob"})
+        self.assertEqual(svc.ensure_admin(), ["Bob"])
+        self.assertEqual(svc.find_user("bob")["role"], "admin")
+
+
 class DataSyncTest(unittest.TestCase):
     def setUp(self):
         self.svc, self.clock = make_service()

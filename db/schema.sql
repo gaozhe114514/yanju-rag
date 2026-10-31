@@ -204,3 +204,27 @@ CREATE TABLE IF NOT EXISTS user_data (
 
 CREATE INDEX IF NOT EXISTS user_data_user_idx
     ON user_data (user_id, updated_at DESC);
+
+-- 知识库权限（v0.52，B-lite）：全局角色只有 admin / member；
+-- 库的可见性 shared（公司） / private（个人）；成员表只给公司库做「谁能改」。
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member';
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS owner_id text REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS created_by text REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'shared';
+CREATE INDEX IF NOT EXISTS collections_owner_idx
+    ON collections (owner_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS collections_visibility_idx
+    ON collections (visibility, created_at DESC);
+
+-- 成员角色：owner 只在 collections.owner_id 上体现，这里只存 editor / viewer，
+-- 避免同一份所有权记两处。管理员天然可管所有公司库，不需要逐库加人。
+CREATE TABLE IF NOT EXISTS collection_members (
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    user_id       text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role          text NOT NULL DEFAULT 'viewer',
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (collection_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS collection_members_user_idx
+    ON collection_members (user_id, collection_id);

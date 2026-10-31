@@ -142,11 +142,17 @@ def _ms(value) -> int:
 
 
 class AccountService:
-    """账号服务。store 为 None 时用进程内存（重启即丢）。"""
+    """账号服务。store 为 None 时用进程内存（重启即丢）。
 
-    def __init__(self, store=None, clock=None):
+    admin_names 来自环境变量 KB_ADMIN_USERS，逗号分隔；没有环境变量时
+    第一个注册的账号自动成为管理员。
+    """
+
+    def __init__(self, store=None, clock=None, admin_names=None):
         self.store = store
         self.clock = clock or time.time
+        self.admin_names = frozenset(
+            username_key(n) for n in (admin_names or []) if str(n or "").strip())
         self._lock = threading.Lock()
         self._users: Dict[str, Dict] = {}
         self._by_key: Dict[str, str] = {}
@@ -165,17 +171,26 @@ class AccountService:
         now = self._now()
 
         if self.store is not None:
+            # KB_ADMIN_USERS 指定的人直接是管理员；否则第一个注册的人兜底。
+            role = "admin" if (key in self.admin_names
+                               or not self.store.has_admin()) else "member"
             try:
-                row = self.store.create_user(user_id, name, key, pw_hash)
+                row = self.store.create_user(user_id, name, key, pw_hash,
+                                             role=role)
             except DuplicateUser:
                 raise AccountError(409, "这个用户名已经被注册了")
         else:
             with self._lock:
                 if key in self._by_key:
                     raise AccountError(409, "这个用户名已经被注册了")
+                has_admin = any(u.get("role") == "admin"
+                                for u in self._users.values())
+                role = "admin" if (key in self.admin_names or not has_admin) \
+                    else "member"
                 row = {
                     "id": user_id,
                     "username": name,
+                    "role": role,
                     "created_at": now,
                     "last_login_at": now,
                 }
@@ -199,10 +214,15 @@ class AccountService:
         if self.store is not None:
             self._store_clear_fails(ip, key)
             user = self.store.touch_login(user["id"]) or user
+            if key in self.admin_names and user.get("role") != "admin":
+                self.store.set_user_role(user["id"], "admin")
+                user = dict(user, role="admin")
         else:
             with self._lock:
                 user = dict(user)
                 user["last_login_at"] = self._now()
+                if key in self.admin_names:
+                    user["role"] = "admin"
                 self._users[user["id"]] = dict(
                     user, password_hash=self._users[user["id"]]["password_hash"],
                     username_key=key)
@@ -238,6 +258,48 @@ class AccountService:
             return
         with self._lock:
             self._sessions.pop(hashed, None)
+
+    def find_user(self, username: str) -> Optional[Dict]:
+        key = username_key(username)
+        if not key:
+            return None
+        row = (self.store.get_user_by_key(key) if self.store is not None
+               else self._memory_user_by_key(key))
+        return self._public(row) if row else None
+
+    def get_user(self, user_id: str) -> Optional[Dict]:
+        if not user_id:
+            return None
+        if self.store is not None:
+            row = self.store.get_user_by_id(user_id)
+        else:
+            with self._lock:
+                row = dict(self._users[user_id]) if user_id in self._users else None
+        return self._public(row) if row else None
+
+    def ensure_admin(self) -> List[str]:
+        """启动时补管理员：一个都没有就把最早注册的提上来。"""
+        promoted: List[str] = []
+        if self.store is not None:
+            if not self.store.has_admin():
+                name = self.store.promote_first_admin()
+                if name:
+                    promoted.append(name)
+            self.store.promote_admins(sorted(self.admin_names))
+        else:
+            with self._lock:
+                if not any(u.get("role") == "admin"
+                           for u in self._users.values()):
+                    first = next(iter(self._users.values()), None)
+                    if first is not None:
+                        first["role"] = "admin"
+                        promoted.append(first["username"])
+                for key in self.admin_names:
+                    uid = self._by_key.get(key)
+                    if uid and self._users[uid].get("role") != "admin":
+                        self._users[uid]["role"] = "admin"
+                        promoted.append(self._users[uid]["username"])
+        return promoted
 
     def _issue(self, user: Dict) -> Dict:
         token = new_token()
@@ -347,6 +409,7 @@ class AccountService:
         return {
             "id": user.get("id", ""),
             "username": user.get("username", ""),
+            "role": user.get("role") or "member",
             "created_at": _iso(user.get("created_at")),
             "last_login_at": _iso(user.get("last_login_at")) or None,
         }

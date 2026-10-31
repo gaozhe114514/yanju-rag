@@ -1896,6 +1896,37 @@
       font-size: 11.5px; line-height: 1.6;
     }
     .lib-add-hint.err { color: var(--danger); }
+    /* v0.52 知识库权限：分区标题、未登录提示、只读说明 */
+    .lib-section-title {
+      grid-column: 1 / -1; margin: 6px 0 -2px;
+      color: var(--muted); font: 600 11.5px/1.6 var(--display);
+      letter-spacing: .08em;
+    }
+    .lib-login { grid-column: 1 / -1; text-align: left; }
+    .lib-login-title { color: var(--ink); font: 600 14px/1.6 var(--display); }
+    .lib-login-text {
+      margin: 6px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.7;
+    }
+    .lib-login .primary { width: auto; }
+    .lib-readonly {
+      margin-bottom: 16px; padding: 10px 13px;
+      border-left: 2px solid var(--line-strong); border-radius: 0 10px 10px 0;
+      background: var(--surface-2); color: var(--muted); font-size: 12px; line-height: 1.7;
+    }
+    .member-add {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+      background: var(--surface-2);
+    }
+    .member-add input {
+      flex: 1; min-width: 160px; padding: 9px 12px; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 13px;
+    }
+    .member-add input:focus {
+      border-color: rgba(176, 80, 30, .4);
+      box-shadow: 0 0 0 3px rgba(176, 80, 30, .09); outline: 0;
+    }
+    .member-add .select { width: auto; min-width: 108px; }
     /* 上传区：虚线框，拖入时整块变色；上传任务在下面一行一条 */
     .lib-drop {
       display: flex; flex-direction: column; align-items: center; gap: 5px;
@@ -3307,9 +3338,13 @@
           </div>
           <button class="ghost" id="lib-back">返回知识库</button>
           <button class="ghost" id="lib-ask">用它提问</button>
+          <button class="ghost" id="lib-members" hidden>成员</button>
           <button class="ghost" id="lib-del">删除知识库</button>
         </div>
-        <div class="lib-add">
+        <div class="lib-readonly" id="lib-readonly" hidden>
+          这个知识库对你只读。公司库的写权限由管理员或被指定的成员维护；个人库只有建库人自己能改。
+        </div>
+        <div class="lib-add" id="lib-add">
           <input id="lib-doc-title" maxlength="80" placeholder="资料标题（可选，默认取正文第一行）">
           <textarea id="lib-doc-text" class="import-box" maxlength="50000"
                     placeholder="把资料正文粘贴进来，至少 20 字。切分后每一段都能逐字引用回原文。"></textarea>
@@ -3843,6 +3878,8 @@
     collections: [],
     collectionsLoaded: false,
     collectionsUnavailable: false,
+    collectionsNeedLogin: false,
+    collectionsCanCreateShared: false,
     collectionId: '',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatMode: loadJSON(CHAT_MODE_KEY, 'kb') === 'chat' ? 'chat' : 'kb',
@@ -4080,6 +4117,10 @@
     const headers = Object.assign({}, options.headers || {});
     const token = tokenOverride !== undefined ? tokenOverride : state.token;
     if (token) headers['X-Access-Token'] = token;
+    // 知识库权限按账号判断：所有请求都带上登录 token，服务端才是判据。
+    if (state.account.token && !headers['Authorization']) {
+      headers['Authorization'] = 'Bearer ' + state.account.token;
+    }
     const raw = !!options.raw;
     delete options.raw;
     if (!raw && options.body && typeof options.body !== 'string') {
@@ -4103,6 +4144,7 @@
   async function streamChat(body, onEvent, signal) {
     const headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'};
     if (state.token) headers['X-Access-Token'] = state.token;
+    if (state.account.token) headers['Authorization'] = 'Bearer ' + state.account.token;
     const resp = await fetch('/chat/stream', {
       method: 'POST', headers, body: JSON.stringify(body), signal
     });
@@ -8126,6 +8168,8 @@
     try {
       const data = await api('/collections');
       state.collections = (data && data.items) || [];
+      state.collectionsNeedLogin = !!(data && data.need_login);
+      state.collectionsCanCreateShared = !!(data && data.can_create_shared);
       state.collectionsLoaded = true;
       state.collectionsUnavailable = false;
     } catch (e) {
@@ -8183,26 +8227,71 @@
       : '选择回答依据的知识库';
   }
 
+  function openAccountSettings() {
+    state.settingsSection = 'account';
+    go('settings');
+  }
+
   function renderLibrary() {
     const grid = clearNode('#lib-grid');
     if (!grid) return;
     fetchCollections(true).then(items => {
       if (state.page !== 'library') return;
       grid.replaceChildren();
-      items.forEach(c => grid.appendChild(collectionCardNode(c)));
-      if (!items.length) {
-        grid.appendChild(el('div', 'empty-panel', state.collectionsUnavailable
-          ? '知识库列表没拉到。输入访问口令后再看。'
-          : '还没有知识库，先建一个。'));
+      const preset = items.filter(c => c.builtin);
+      const shared = items.filter(c => !c.builtin && c.visibility === 'shared');
+      const mine = items.filter(c => !c.builtin && c.visibility === 'private');
+      const logged = !!state.account.user;
+
+      preset.forEach(c => grid.appendChild(collectionCardNode(c)));
+
+      if (!logged) {
+        const panel = el('div', 'empty-panel lib-login');
+        panel.appendChild(el('div', 'lib-login-title',
+          '登录后使用公司知识库和个人知识库'));
+        panel.appendChild(el('div', 'lib-login-text',
+          '内置 408 语料不用登录也能用；公司知识库由管理员维护，个人知识库只有你自己能看。'));
+        const btn = el('button', 'primary', '去登录账号');
+        btn.addEventListener('click', openAccountSettings);
+        panel.appendChild(btn);
+        grid.appendChild(panel);
+        setLibraryMeta('登录后查看公司库');
+        return;
       }
-      const meta = $('#lib-meta');
-      if (meta) {
-        // items 为空时是没拉到列表，不是「负一个」自建库
-        meta.textContent = items.length
-          ? (items.length - 1) + ' 个自建知识库'
-          : (state.collectionsUnavailable ? '知识库未加载' : '0 个自建知识库');
+
+      if (shared.length) {
+        grid.appendChild(el('div', 'lib-section-title', '公司知识库'));
+        shared.forEach(c => grid.appendChild(collectionCardNode(c)));
       }
+      grid.appendChild(el('div', 'lib-section-title', '我的知识库'));
+      if (mine.length) {
+        mine.forEach(c => grid.appendChild(collectionCardNode(c)));
+      } else {
+        grid.appendChild(el('div', 'empty-panel',
+          '还没有个人知识库。个人库只有你自己能看，点上面的「新建知识库」建一个。'));
+      }
+      const bits = [];
+      if (shared.length) bits.push(shared.length + ' 个公司库');
+      bits.push(mine.length + ' 个个人库');
+      setLibraryMeta(state.collectionsUnavailable ? '知识库未加载' : bits.join(' · '));
     });
+  }
+
+  // 登录/换号/退出后，能看到的库可能全变了：丢掉缓存重新拉一次。
+  function refreshCollectionsForAccount() {
+    state.collectionsLoaded = false;
+    state.collectionsUnavailable = false;
+    fetchCollections(true).then(() => {
+      if (state.page === 'library') renderLibrary();
+      if (state.page === 'collection' && state.collectionId &&
+          !collectionById(state.collectionId)) go('library');
+      else if (state.page === 'collection') renderCollectionPage(state.collectionId);
+    });
+  }
+
+  function setLibraryMeta(text) {
+    const meta = $('#lib-meta');
+    if (meta) meta.textContent = text;
   }
 
   function collectionCardNode(c) {
@@ -8220,8 +8309,10 @@
 
     const top = el('div', 'deck-top');
     top.appendChild(el('span', 'deck-title', c.name));
-    top.appendChild(el('span', 'deck-kind' + (c.builtin ? ' preset' : ''),
-      c.builtin ? '内置' : '自建'));
+    const kind = c.builtin ? 'preset'
+      : (c.visibility === 'private' ? 'private' : 'shared');
+    top.appendChild(el('span', 'deck-kind ' + kind, c.builtin ? '内置'
+      : (c.visibility === 'private' ? '个人' : '公司')));
     card.appendChild(top);
     card.appendChild(el('div', 'deck-desc',
       c.description || '还没有说明。'));
@@ -8229,14 +8320,15 @@
     foot.appendChild(el('span', null, c.builtin
       ? (c.questions || 0) + ' 题 · ' + (c.knowledge || 0) + ' 考点'
       : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段'));
-    foot.appendChild(el('span', null, '服务端'));
+    foot.appendChild(el('span', null, c.builtin ? '只读'
+      : (c.can_write ? '可编辑' : '只读')));
     card.appendChild(foot);
 
     const acts = el('div', 'deck-actions');
     const ask = el('button', 'mini-btn', '用它提问');
     ask.addEventListener('click', e => { e.stopPropagation(); useCollection(c); });
     acts.appendChild(ask);
-    if (!c.builtin) {
+    if (!c.builtin && c.can_manage) {
       const del = el('button', 'mini-btn danger', '删除');
       del.addEventListener('click', e => { e.stopPropagation(); deleteCollection(c); });
       acts.appendChild(del);
@@ -8272,6 +8364,11 @@
   }
 
   function openCollectionEditor() {
+    if (!state.account.user) {
+      toast('先登录账号再建知识库');
+      openAccountSettings();
+      return;
+    }
     const wrap = el('div', 'form-grid');
     const name = el('input');
     name.placeholder = '例如：机器学习讲义';
@@ -8279,8 +8376,22 @@
     const desc = el('input');
     desc.placeholder = '一句话说明这个库装什么（可选）';
     desc.maxLength = 200;
+    const vis = el('select', 'select');
+    const isAdmin = state.account.user.role === 'admin';
+    const personal = el('option', null, '个人知识库 · 只有我能看');
+    personal.value = 'private';
+    vis.appendChild(personal);
+    if (isAdmin) {
+      const shared = el('option', null, '公司知识库 · 登录后全员可读');
+      shared.value = 'shared';
+      vis.appendChild(shared);
+    }
+    vis.value = 'private';
     wrap.appendChild(field('名称', name));
-    wrap.appendChild(field('说明', desc, '只给你自己看，不进入问答提示词。'));
+    wrap.appendChild(field('说明', desc, '说明只显示在知识库卡片上，不进入问答提示词。'));
+    wrap.appendChild(field('类型', vis, isAdmin
+      ? '公司库登录后全员可读，写权限由管理员或被指定的成员维护；个人库只有你自己能看。'
+      : '个人知识库只有你自己能看；公司知识库由管理员创建。'));
     const acts = el('div', 'form-actions');
     const cancel = el('button', 'ghost', '取消');
     cancel.addEventListener('click', closeModal);
@@ -8290,11 +8401,11 @@
       if (!n) { name.focus(); return; }
       save.disabled = true;
       api('/collections', {method: 'POST',
-        body: {name: n, description: desc.value.trim()}})
+        body: {name: n, description: desc.value.trim(), visibility: vis.value}})
         .then(c => {
           closeModal();
           state.collectionsLoaded = false;
-          toast('知识库已创建，接着添加资料');
+          toast(c.visibility === 'shared' ? '公司知识库已创建' : '个人知识库已创建');
           go('collection', c.id);
         })
         .catch(e => {
@@ -8307,6 +8418,131 @@
     wrap.appendChild(acts);
     openModal('新建知识库', wrap);
     name.focus();
+  }
+
+  function openCollectionMembers(c) {
+    if (!c || c.visibility !== 'shared' || c.weknora) return;
+    const wrap = el('div', 'form-grid');
+    wrap.appendChild(el('div', 'chunk-note',
+      '公司知识库登录后全员可读；这里指定谁能改资料。建库人和管理员始终可改，个人库没有成员。'));
+    const list = el('div', 'stack member-list');
+    wrap.appendChild(list);
+
+    const form = el('div', 'member-add');
+    const nameInput = el('input');
+    nameInput.placeholder = '对方的用户名';
+    nameInput.maxLength = 24;
+    const roleSel = el('select', 'select');
+    const editorOpt = el('option', null, '可编辑');
+    editorOpt.value = 'editor';
+    const viewerOpt = el('option', null, '只读');
+    viewerOpt.value = 'viewer';
+    roleSel.appendChild(editorOpt);
+    roleSel.appendChild(viewerOpt);
+    const addBtn = el('button', 'primary', '添加成员');
+    form.appendChild(nameInput);
+    form.appendChild(roleSel);
+    form.appendChild(addBtn);
+    wrap.appendChild(form);
+    const hint = el('div', 'lib-add-hint',
+      '成员可以是编辑（能加删资料、改片段）或只读（只能看和提问）。');
+    wrap.appendChild(hint);
+
+    const setHint = (msg, bad) => {
+      hint.textContent = msg;
+      hint.classList.toggle('err', !!bad);
+    };
+
+    const render = () => {
+      list.replaceChildren();
+      list.appendChild(el('div', 'chunk-note', '正在读取成员…'));
+      api('/collections/' + encodeURIComponent(c.id) + '/members')
+        .then(data => {
+          list.replaceChildren();
+          if (data.owner) {
+            const row = el('div', 'list-row');
+            const main = el('div', 'list-main');
+            main.appendChild(el('div', 'list-title',
+              data.owner.username || '（建库人已注销）'));
+            main.appendChild(el('div', 'list-meta', '建库人 · 始终可编辑'));
+            row.appendChild(main);
+            list.appendChild(row);
+          }
+          const items = (data && data.items) || [];
+          if (!items.length) {
+            list.appendChild(el('div', 'empty-panel',
+              '还没有指定成员。公司库登录后都能看，添加成员后他们才能改资料。'));
+          }
+          items.forEach(m => {
+            const row = el('div', 'list-row');
+            const main = el('div', 'list-main');
+            main.appendChild(el('div', 'list-title', m.username || m.user_id));
+            main.appendChild(el('div', 'list-meta',
+              m.role === 'editor' ? '可编辑 · 能加删资料、改片段' : '只读 · 只能看和提问'));
+            row.appendChild(main);
+            const acts = el('div', 'list-actions');
+            const toggle = el('button', 'row-btn',
+              m.role === 'editor' ? '设为只读' : '设为可编辑');
+            toggle.addEventListener('click', () => {
+              toggle.disabled = true;
+              api('/collections/' + encodeURIComponent(c.id) + '/members', {
+                method: 'POST',
+                body: {username: m.username, role: m.role === 'editor' ? 'viewer' : 'editor'}
+              }).then(() => { toast('成员权限已更新'); render(); })
+                .catch(e => {
+                  toggle.disabled = false;
+                  toast(e.message || '更新失败', 'err');
+                });
+            });
+            acts.appendChild(toggle);
+            const del = el('button', 'row-btn danger', '移除');
+            del.addEventListener('click', () => {
+              if (!window.confirm('把「' + (m.username || m.user_id) +
+                '」移出这个知识库？之后他只能看，不能改。')) return;
+              del.disabled = true;
+              api('/collections/' + encodeURIComponent(c.id) + '/members/' +
+                encodeURIComponent(m.user_id), {method: 'DELETE'})
+                .then(() => { toast('成员已移除'); render(); })
+                .catch(e => {
+                  del.disabled = false;
+                  toast(e.message || '移除失败', 'err');
+                });
+            });
+            acts.appendChild(del);
+            row.appendChild(acts);
+            list.appendChild(row);
+          });
+        })
+        .catch(e => {
+          list.replaceChildren();
+          list.appendChild(el('div', 'warn-box', '读取成员失败：' + e.message));
+        });
+    };
+
+    addBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      addBtn.disabled = true;
+      setHint('正在添加…', false);
+      api('/collections/' + encodeURIComponent(c.id) + '/members', {
+        method: 'POST', body: {username: name, role: roleSel.value}
+      }).then(() => {
+        addBtn.disabled = false;
+        nameInput.value = '';
+        setHint('已添加。对方下次刷新就能看到这个库。', false);
+        toast('成员已添加');
+        render();
+      }).catch(e => {
+        addBtn.disabled = false;
+        setHint(e.message || '添加失败', true);
+      });
+    });
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addBtn.click(); }
+    });
+
+    openModal('成员 · ' + c.name, wrap);
+    render();
   }
 
   function renderCollectionPage(id) {
@@ -8331,16 +8567,33 @@
       if (i >= 0) {
         state.collections[i] = Object.assign({}, state.collections[i], {
           name: c.name, description: c.description, chunks: c.chunks,
-          documents: (c.documents || []).length
+          documents: (c.documents || []).length,
+          visibility: c.visibility, can_write: c.can_write,
+          can_manage: c.can_manage, my_role: c.my_role
         });
       }
       if (title) title.textContent = c.name;
       if (desc) desc.textContent = c.description || '还没有说明。';
       if (askBtn) askBtn.hidden = false;
+      const canWrite = !!c.can_write;
+      const canManage = !!c.can_manage;
+      const addBox = $('#lib-add');
+      if (addBox) addBox.hidden = !canWrite;
+      const readonly = $('#lib-readonly');
+      if (readonly) readonly.hidden = canWrite;
+      const delBtn = $('#lib-del');
+      if (delBtn) delBtn.hidden = !canManage;
+      const membersBtn = $('#lib-members');
+      if (membersBtn) {
+        membersBtn.hidden = !(canManage && c.visibility === 'shared' && !c.weknora);
+      }
       const sub = $('#page-sub');
       if (sub) {
-        sub.textContent = (c.documents || []).length + ' 篇资料 · ' +
-          (c.chunks || 0) + ' 段可引用片段';
+        const type = c.visibility === 'private' ? '个人库'
+          : (c.visibility === 'shared' ? '公司库' : '');
+        sub.textContent = (type ? type + ' · ' : '') +
+          (c.documents || []).length + ' 篇资料 · ' +
+          (c.chunks || 0) + ' 段可引用片段' + (canWrite ? '' : ' · 只读');
       }
       renderCollectionDocs(c);
     }).catch(e => {
@@ -8358,11 +8611,13 @@
     const box = clearNode('#lib-docs');
     if (!box) return;
     const list = c.documents || [];
+    const canWrite = !!c.can_write;
     const meta = $('#lib-doc-meta');
     if (meta) meta.textContent = list.length ? list.length + ' 篇资料' : '';
     if (!list.length) {
-      box.appendChild(el('div', 'empty-panel',
-        '这个库还没有资料。把一段正文粘贴到上面，或把文件拖进上传区，切分后就能开始提问。'));
+      box.appendChild(el('div', 'empty-panel', canWrite
+        ? '这个库还没有资料。把一段正文粘贴到上面，或把文件拖进上传区，切分后就能开始提问。'
+        : '这个库还没有资料。写权限在公司库管理员或被指定的成员手里。'));
       return;
     }
     list.forEach(d => {
@@ -8387,14 +8642,16 @@
       const chunks = el('button', 'row-btn', '片段');
       chunks.addEventListener('click', () => openChunkManager(c, d));
       acts.appendChild(chunks);
-      if (status === 'failed' || status === 'pending' || status === 'processing') {
-        const again = el('button', 'row-btn', '重切分');
-        again.addEventListener('click', () => reparseLibraryDoc(c, d));
-        acts.appendChild(again);
+      if (canWrite) {
+        if (status === 'failed' || status === 'pending' || status === 'processing') {
+          const again = el('button', 'row-btn', '重切分');
+          again.addEventListener('click', () => reparseLibraryDoc(c, d));
+          acts.appendChild(again);
+        }
+        const del = el('button', 'row-btn danger', '删除');
+        del.addEventListener('click', () => deleteLibraryDoc(c, d));
+        acts.appendChild(del);
       }
-      const del = el('button', 'row-btn danger', '删除');
-      del.addEventListener('click', () => deleteLibraryDoc(c, d));
-      acts.appendChild(del);
       row.appendChild(acts);
       box.appendChild(row);
     });
@@ -8566,6 +8823,9 @@
     xhr.setRequestHeader('X-Filename', encodeURIComponent(task.name));
     xhr.setRequestHeader('Content-Type', task.file.type || 'application/octet-stream');
     if (state.token) xhr.setRequestHeader('X-Access-Token', state.token);
+    if (state.account.token) {
+      xhr.setRequestHeader('Authorization', 'Bearer ' + state.account.token);
+    }
     xhr.upload.onprogress = e => {
       if (!e.lengthComputable) return;
       task.progress = Math.min(0.99, e.loaded / e.total);
@@ -8683,7 +8943,9 @@
             '这篇资料还没有片段。解析失败时点「重切分」，成功后片段会出现在这里。'));
           return;
         }
-        items.forEach((ch, i) => box.appendChild(chunkCard(c, d, ch, i)));
+        const editable = !data || data.editable !== false;
+        items.forEach((ch, i) =>
+          box.appendChild(chunkCard(c, d, ch, i, editable)));
       }).catch(e => {
         box.replaceChildren();
         box.appendChild(el('div', 'warn-box', '读取片段失败：' + e.message));
@@ -8693,7 +8955,7 @@
     render();
   }
 
-  function chunkCard(c, d, ch, index) {
+  function chunkCard(c, d, ch, index, editable) {
     const card = el('div', 'chunk-card');
     const bar = el('div', 'chunk-card-head');
     bar.appendChild(el('span', 'chunk-index',
@@ -8704,6 +8966,12 @@
     const area = el('textarea', 'chunk-text');
     area.value = ch.text || '';
     area.rows = Math.min(14, Math.max(4, Math.ceil((ch.text || '').length / 48)));
+    if (editable === false) {
+      area.readOnly = true;
+      card.appendChild(area);
+      card.appendChild(el('div', 'chunk-note', '只读：这个库的写权限不在你这里。'));
+      return card;
+    }
     card.appendChild(area);
     const acts = el('div', 'chunk-actions');
     const status = el('span', 'chunk-note');
@@ -12448,6 +12716,7 @@
           state.account.mode = 'login';
           toast(mode === 'register' ? '账号已创建' : '已登录');
           renderSettings();
+          refreshCollectionsForAccount();
           await syncNow({reload: true, toast: true});
         } catch (e) {
           state.account.busy = false;
@@ -12499,6 +12768,7 @@
         outBtn.disabled = true;
         try { await accountApi('/auth/logout', {method: 'POST'}); } catch (e) {}
         clearAccountToken();
+        refreshCollectionsForAccount();
         renderSettings();
         toast('已退出登录');
       });
@@ -13190,6 +13460,10 @@
     $('#lib-del').addEventListener('click', () => {
       const c = collectionById(state.collectionId);
       if (c) deleteCollection(c);
+    });
+    $('#lib-members').addEventListener('click', () => {
+      const c = collectionById(state.collectionId);
+      if (c) openCollectionMembers(c);
     });
 
     $('#deck-new').addEventListener('click', openNewDeckModal);

@@ -19,6 +19,7 @@
   KB_TRUST_PROXY    设为 1 时从 X-Forwarded-For 取客户端 IP（放在 Nginx 后面时打开）
   KB_CACHE_TTL      应答缓存有效期（秒），默认 86400；0 表示关闭，拒答不缓存
   KB_FEEDBACK_LOG   没有数据库时反馈写到哪里，默认 data/work/feedback.jsonl
+  KB_ADMIN_USERS    知识库管理员用户名，逗号分隔；不配时第一个注册的账号兜底
 """
 import hashlib
 import json
@@ -55,6 +56,9 @@ from db.store import Store
 
 from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
+from .access import (ASSIGNABLE_ROLES, VISIBILITY_PRIVATE,
+                     VISIBILITY_SHARED, can_manage, can_read, can_write,
+                     describe, is_admin)
 from .accounts import AccountError, AccountService
 from .feedback import (feedback_stats as jsonl_feedback_stats,
                        log_feedback as jsonl_log_feedback, normalize_feedback)
@@ -191,6 +195,14 @@ class MasteryTurnRequest(BaseModel):
 class CollectionRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     description: str = Field("", max_length=200)
+    # 个人库是更安全的默认；建公司库只有管理员可以。
+    visibility: str = Field(VISIBILITY_PRIVATE,
+                            pattern="^(private|shared)$")
+
+
+class CollectionMemberRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64)
+    role: str = Field("viewer", pattern="^(editor|viewer)$")
 
 
 class DocumentRequest(BaseModel):
@@ -398,6 +410,14 @@ def _load() -> None:
     if weknora.configured:
         print("知识库后端：WeKnora %s" % weknora.base_url)
 
+    accounts = AccountService(
+        store, admin_names=[n.strip() for n in
+                            os.environ.get("KB_ADMIN_USERS", "").split(",")
+                            if n.strip()])
+    promoted = accounts.ensure_admin()
+    if promoted:
+        print("知识库管理员：%s" % "、".join(promoted))
+
     _state.update({
         "pipeline": AnswerPipeline(searcher, provider, gate=gate),
         "library": library,
@@ -416,7 +436,7 @@ def _load() -> None:
         "provider_impl": provider,
         "storage": "postgres" if store is not None else "memory",
         "store": store,
-        "accounts": AccountService(store),
+        "accounts": accounts,
         "gap_log": str(gap_path),
         "feedback_log": str(feedback_path),
         "agent": agent,
@@ -881,7 +901,9 @@ def me_data_delete(req: DeleteDataRequest,
 
 
 @app.post("/ask")
-def ask(req: AskRequest, _: None = Depends(enforce_guard)) -> dict:
+def ask(req: AskRequest, request: Request,
+        _: None = Depends(enforce_guard)) -> dict:
+    _guard_chat_collection(req.collection, request)
     pipeline = _pipeline_for(req.collection)
     if pipeline is None:
         if _is_preset(req.collection):
@@ -958,9 +980,11 @@ def _daily_events(req: ChatRequest):
 
 
 @app.post("/chat")
-def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
+def chat(req: ChatRequest, request: Request,
+         _: None = Depends(enforce_guard)) -> dict:
     if req.mode == "chat":
         return _daily_chat(req)
+    _guard_chat_collection(req.collection, request)
     agent = _state.get("agent")
     pipeline = _pipeline_for(req.collection)
     if agent is None or pipeline is None:
@@ -1005,13 +1029,16 @@ def chat(req: ChatRequest, _: None = Depends(enforce_guard)) -> dict:
 
 
 @app.post("/chat/stream")
-def chat_stream(req: ChatRequest, _: None = Depends(enforce_guard)):
+def chat_stream(req: ChatRequest, request: Request,
+                _: None = Depends(enforce_guard)):
     """流式问答：先按 SSE 吐 answer 文本，收完再校验引用。
 
     事件顺序：status(plan) → status(retrieve/gate) → delta* →
     status(verify) → done。校验失败会先发 reset 让前端清空，再重试一次；
     最终结果只认 done 里的 payload——引用校验和拒答规则与非流式完全一致。
     """
+    if req.mode != "chat":
+        _guard_chat_collection(req.collection, request)
     agent = _state.get("agent")
     # 日常对话不碰检索库，连管线都不取，免得一个过期的库 id 把闲聊挡在 404
     pipeline = None if req.mode == "chat" else _pipeline_for(req.collection)
@@ -1464,64 +1491,207 @@ def _lib_error(e: LibraryError) -> HTTPException:
     return HTTPException(status_code=status, detail=msg)
 
 
-@app.get("/collections")
-def collections_list(_: None = Depends(enforce_content)) -> dict:
-    """所有知识库；内置 408 语料排在第一位，只读。"""
-    wk = _weknora()
-    if wk is not None:
-        try:
-            items = wk.list_collections()
-        except WeKnoraError as e:
-            raise _wk_error(e)
-        return {"items": [_preset_collection()] + items,
-                "storage": "weknora", "backend": "weknora"}
-    return {"items": [_preset_collection()] + _library().list_collections(),
-            "storage": _state.get("storage", "memory"), "backend": "local"}
+# ---------- 知识库权限闸门（B-lite） ----------
+
+def _optional_user(request: Request) -> Optional[Dict]:
+    return _accounts().authenticate(_bearer(request))
 
 
-@app.post("/collections")
-def collection_create(req: CollectionRequest,
-                      _: None = Depends(enforce_content)) -> dict:
-    wk = _weknora()
-    if wk is not None:
-        try:
-            return wk.create_collection(req.name, req.description)
-        except WeKnoraError as e:
-            raise _wk_error(e)
-    try:
-        return _library().create_collection(req.name, req.description)
-    except LibraryError as e:
-        raise _lib_error(e)
+def _require_user(request: Request) -> Dict:
+    user = _optional_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="请先登录账号")
+    return user
 
 
-@app.get("/collections/{cid}")
-def collection_detail(cid: str, _: None = Depends(enforce_content)) -> dict:
+def _collection_view(cid: str) -> Dict:
+    """统一的库对象：内置 / 本地库 / WeKnora 库都能拿到权限字段。"""
     if cid == PRESET_COLLECTION:
         return _preset_collection()
     wk = _weknora()
     if wk is not None:
         try:
             coll = wk.get_collection(cid)
-            if coll is None:
-                raise HTTPException(status_code=404, detail="资料库不存在")
-            docs = wk.list_documents(cid)
         except WeKnoraError as e:
             raise _wk_error(e)
-        coll["documents"] = docs
-        coll["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
-        return coll
+        if coll is None:
+            raise HTTPException(status_code=404, detail="资料库不存在")
+        # WeKnora 没有归属概念：一律当管理员维护的公司库，普通成员只读不碰。
+        return dict(coll, weknora=True, visibility=VISIBILITY_SHARED,
+                    owner_id="", builtin=False)
     coll = _library().get_collection(cid)
     if coll is None:
         raise HTTPException(status_code=404, detail="资料库不存在")
-    docs = coll.get("documents") or []
     coll["builtin"] = False
-    coll["documents"] = docs
-    coll["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
     return coll
 
 
+def _member_role(coll: Dict, user: Optional[Dict]) -> str:
+    if not user or coll.get("builtin") or coll.get("weknora"):
+        return ""
+    return _library().collection_member_role(coll.get("id") or "",
+                                             user.get("id") or "")
+
+
+def _guard_collection(cid: str, request: Request, write: bool = False,
+                      manage: bool = False):
+    """没权限时：未登录回 401，登录了回 404（不让人拿 id 探库是否存在）。
+
+    write 管资料与片段；manage 管删库与成员，比 write 更严。
+    """
+    user = _optional_user(request)
+    coll = _collection_view(cid)
+    if coll.get("builtin"):
+        if write or manage:
+            raise HTTPException(status_code=403, detail="内置资料库不能修改")
+        return user, coll, ""
+    role = _member_role(coll, user)
+    if manage:
+        allowed = can_manage(user, coll)
+    elif write:
+        allowed = can_write(user, coll, role)
+    else:
+        allowed = can_read(user, coll, role)
+    if not allowed:
+        if user is None:
+            raise HTTPException(status_code=401, detail="请先登录账号")
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    return user, coll, role
+
+
+def _guard_chat_collection(collection: str, request: Request) -> None:
+    """问答也要过同一道闸门：拿到 id 不等于能读这个库。"""
+    if _is_preset(collection):
+        return
+    _guard_collection(collection, request, write=False)
+
+
+def _require_shared(coll: Dict) -> None:
+    if coll.get("weknora"):
+        raise HTTPException(status_code=400,
+                            detail="当前知识库后端不支持成员管理")
+    if coll.get("visibility") != VISIBILITY_SHARED:
+        raise HTTPException(status_code=400, detail="个人知识库没有成员")
+
+
+def _members_payload(cid: str, coll: Dict) -> Dict:
+    rows = _library().list_collection_members(cid)
+    items = []
+    for row in rows:
+        uid = str(row.get("user_id") or "")
+        account = _accounts().get_user(uid) or {}
+        items.append({
+            "user_id": uid,
+            "username": row.get("username") or account.get("username") or uid,
+            "role": row.get("role") or "viewer",
+        })
+    owner_id = str(coll.get("owner_id") or "")
+    owner = _accounts().get_user(owner_id) or {}
+    return {
+        "owner": {
+            "user_id": owner_id,
+            "username": owner.get("username") or "",
+            "role": "owner",
+        } if owner_id else None,
+        "items": items,
+    }
+
+
+@app.get("/collections")
+def collections_list(request: Request,
+                     _: None = Depends(enforce_content)) -> dict:
+    """当前账号能看到的库；内置 408 语料永远排在第一，只读。
+
+    未登录只返回内置库，前端据此提示登录，而不是把公司库藏起来装不存在。
+    """
+    user = _optional_user(request)
+    wk = _weknora()
+    if wk is not None:
+        try:
+            raw = wk.list_collections() if is_admin(user) else []
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        items = [describe(user, dict(c, weknora=True, builtin=False,
+                                     visibility=VISIBILITY_SHARED,
+                                     owner_id=""), "")
+                 for c in raw]
+        return {"items": [_preset_collection()] + items,
+                "storage": "weknora", "backend": "weknora",
+                "need_login": user is None,
+                "can_create_shared": is_admin(user)}
+    lib = _library()
+    items = []
+    for coll in lib.list_collections():
+        if not user:
+            continue
+        if coll.get("visibility") == VISIBILITY_PRIVATE \
+                and coll.get("owner_id") != user["id"]:
+            continue
+        role = _member_role(coll, user)
+        if not can_read(user, coll, role):
+            continue
+        items.append(describe(user, coll, role))
+    return {"items": [_preset_collection()] + items,
+            "storage": _state.get("storage", "memory"), "backend": "local",
+            "need_login": user is None,
+            "can_create_shared": is_admin(user)}
+
+
+@app.post("/collections")
+def collection_create(req: CollectionRequest, request: Request,
+                      _: None = Depends(enforce_content)) -> dict:
+    user = _require_user(request)
+    if req.visibility == VISIBILITY_SHARED and not is_admin(user):
+        raise HTTPException(status_code=403,
+                            detail="只有管理员能建公司知识库")
+    wk = _weknora()
+    if wk is not None:
+        if not is_admin(user):
+            raise HTTPException(status_code=403,
+                                detail="当前知识库后端只有管理员能操作")
+        if req.visibility == VISIBILITY_PRIVATE:
+            raise HTTPException(status_code=400,
+                                detail="当前知识库后端不支持个人知识库")
+        try:
+            return wk.create_collection(req.name, req.description)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+    try:
+        coll = _library().create_collection(
+            req.name, req.description, owner_id=user["id"],
+            visibility=req.visibility, created_by=user["id"])
+    except LibraryError as e:
+        raise _lib_error(e)
+    return describe(user, coll, "")
+
+
+@app.get("/collections/{cid}")
+def collection_detail(cid: str, request: Request,
+                      _: None = Depends(enforce_content)) -> dict:
+    if cid == PRESET_COLLECTION:
+        return _preset_collection()
+    user, coll, role = _guard_collection(cid, request, write=False)
+    wk = _weknora()
+    if wk is not None:
+        try:
+            docs = wk.list_documents(cid)
+        except WeKnoraError as e:
+            raise _wk_error(e)
+        out = describe(user, coll, role)
+        out["documents"] = docs
+        out["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
+        return out
+    docs = coll.get("documents") or []
+    out = describe(user, coll, role)
+    out["documents"] = docs
+    out["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
+    return out
+
+
 @app.delete("/collections/{cid}")
-def collection_delete(cid: str, _: None = Depends(enforce_content)) -> dict:
+def collection_delete(cid: str, request: Request,
+                      _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, manage=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1543,13 +1713,56 @@ def collection_delete(cid: str, _: None = Depends(enforce_content)) -> dict:
     return {"ok": True, "id": cid}
 
 
+@app.get("/collections/{cid}/members")
+def collection_members(cid: str, request: Request,
+                       _: None = Depends(enforce_content)) -> dict:
+    """公司库成员：owner + 被授权的 editor / viewer。个人库没有成员概念。"""
+    _, coll, _role = _guard_collection(cid, request, manage=True)
+    _require_shared(coll)
+    return _members_payload(cid, coll)
+
+
+@app.post("/collections/{cid}/members")
+def collection_member_add(cid: str, req: CollectionMemberRequest,
+                          request: Request,
+                          _: None = Depends(enforce_content)) -> dict:
+    user, coll, _role = _guard_collection(cid, request, manage=True)
+    _require_shared(coll)
+    target = _accounts().find_user(req.username)
+    if target is None:
+        raise HTTPException(status_code=404, detail="没有这个用户名")
+    if target["id"] == coll.get("owner_id"):
+        raise HTTPException(status_code=400, detail="建库人已经是 owner")
+    if target["id"] == user.get("id"):
+        raise HTTPException(status_code=400, detail="不用把自己加进成员")
+    if req.role not in ASSIGNABLE_ROLES:
+        raise HTTPException(status_code=400, detail="成员角色不对")
+    try:
+        _library().set_collection_member(cid, target["id"], req.role)
+    except LibraryError as e:
+        raise _lib_error(e)
+    return _members_payload(cid, coll)
+
+
+@app.delete("/collections/{cid}/members/{user_id}")
+def collection_member_remove(cid: str, user_id: str, request: Request,
+                             _: None = Depends(enforce_content)) -> dict:
+    _, coll, _role = _guard_collection(cid, request, manage=True)
+    _require_shared(coll)
+    if user_id == coll.get("owner_id"):
+        raise HTTPException(status_code=400, detail="不能移除建库人")
+    removed = _library().remove_collection_member(cid, user_id)
+    return {"ok": removed, "removed": 1 if removed else 0}
+
+
 @app.post("/collections/{cid}/documents")
-def document_add(cid: str, req: DocumentRequest,
+def document_add(cid: str, req: DocumentRequest, request: Request,
                  _: None = Depends(enforce_guard)) -> dict:
     """把一段资料加进知识库：切分、算向量、入库，立即可问答。
 
     出题接口不落盘；这里是反向的——用户明确要把资料存成可检索的库。
     """
+    _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1568,8 +1781,9 @@ def document_add(cid: str, req: DocumentRequest,
 
 
 @app.get("/collections/{cid}/documents/{doc_id}")
-def document_detail(cid: str, doc_id: str,
+def document_detail(cid: str, doc_id: str, request: Request,
                     _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1589,8 +1803,9 @@ def document_detail(cid: str, doc_id: str,
 
 
 @app.delete("/collections/{cid}/documents/{doc_id}")
-def document_delete(cid: str, doc_id: str,
+def document_delete(cid: str, doc_id: str, request: Request,
                     _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1653,6 +1868,7 @@ async def document_upload(cid: str, request: Request,
     不依赖 python-multipart，也不把文件内容读进模型上下文。
     配了 WeKnora 时仍然交给它解析（可选后端）。
     """
+    _guard_collection(cid, request, write=True)
     body = await request.body()
     if not body:
         raise HTTPException(status_code=400, detail="空文件")
@@ -1682,27 +1898,27 @@ async def document_upload(cid: str, request: Request,
 
 
 @app.get("/collections/{cid}/documents/{doc_id}/chunks")
-def document_chunks(cid: str, doc_id: str,
+def document_chunks(cid: str, doc_id: str, request: Request,
                     _: None = Depends(enforce_content)) -> dict:
     """一篇资料切出来的片段；片段是引用校验的最小单位。"""
+    user, coll, role = _guard_collection(cid, request, write=False)
+    editable = can_write(user, coll, role)
     wk = _weknora()
     if wk is not None:
         try:
             items = wk.list_chunks(doc_id)
         except WeKnoraError as e:
             raise _wk_error(e)
-        return {"items": items, "total": len(items), "editable": True}
-    lib = _library()
-    if lib.get_collection(cid) is None:
-        raise HTTPException(status_code=404, detail="资料库不存在")
-    items = lib.document_chunks(cid, doc_id)
-    return {"items": items, "total": len(items), "editable": True}
+        return {"items": items, "total": len(items), "editable": editable}
+    items = _library().document_chunks(cid, doc_id)
+    return {"items": items, "total": len(items), "editable": editable}
 
 
 @app.put("/collections/{cid}/documents/{doc_id}/chunks/{chunk_id}")
 def chunk_update(cid: str, doc_id: str, chunk_id: str,
-                 req: ChunkUpdateRequest,
+                 req: ChunkUpdateRequest, request: Request,
                  _: None = Depends(enforce_guard)) -> dict:
+    _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1721,8 +1937,9 @@ def chunk_update(cid: str, doc_id: str, chunk_id: str,
 
 
 @app.delete("/collections/{cid}/documents/{doc_id}/chunks/{chunk_id}")
-def chunk_delete(cid: str, doc_id: str, chunk_id: str,
+def chunk_delete(cid: str, doc_id: str, chunk_id: str, request: Request,
                  _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1738,8 +1955,9 @@ def chunk_delete(cid: str, doc_id: str, chunk_id: str,
 
 
 @app.post("/collections/{cid}/documents/{doc_id}/reparse")
-def document_reparse(cid: str, doc_id: str,
+def document_reparse(cid: str, doc_id: str, request: Request,
                      _: None = Depends(enforce_guard)) -> dict:
+    _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:

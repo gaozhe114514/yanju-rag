@@ -236,17 +236,23 @@ class Store:
 
     # ---------- 用户知识库 ----------
 
-    def create_collection(self, cid: str, name: str, description: str = "") -> None:
+    def create_collection(self, cid: str, name: str, description: str = "",
+                          owner_id: Optional[str] = None,
+                          visibility: str = "shared",
+                          created_by: Optional[str] = None) -> None:
         with self.connect() as conn:
             conn.execute(
-                "INSERT INTO collections (id, name, description)"
-                " VALUES (%s, %s, %s)", (cid, name, description))
+                "INSERT INTO collections (id, name, description, owner_id,"
+                " visibility, created_by) VALUES (%s, %s, %s, %s, %s, %s)",
+                (cid, name, description, owner_id or None, visibility,
+                 created_by or None))
             conn.commit()
 
     def list_collections(self) -> List[Dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT c.id, c.name, c.description, c.created_at, c.updated_at,"
+                "SELECT c.id, c.name, c.description, c.owner_id,"
+                " c.created_by, c.visibility, c.created_at, c.updated_at,"
                 " (SELECT count(*)::int FROM documents d"
                 "   WHERE d.collection_id = c.id) AS doc_count,"
                 " (SELECT count(*)::int FROM doc_chunks k"
@@ -257,9 +263,48 @@ class Store:
     def get_collection(self, cid: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, name, description, created_at, updated_at"
-                " FROM collections WHERE id = %s", (cid,)).fetchone()
+                "SELECT id, name, description, owner_id, created_by, visibility,"
+                " created_at, updated_at FROM collections WHERE id = %s",
+                (cid,)).fetchone()
         return dict(row) if row else None
+
+    # ---------- 知识库成员 ----------
+
+    def get_collection_member(self, cid: str, user_id: str) -> Optional[str]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT role FROM collection_members"
+                " WHERE collection_id = %s AND user_id = %s",
+                (cid, user_id)).fetchone()
+        return str(row["role"]) if row else None
+
+    def list_collection_members(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT m.user_id, m.role, m.created_at, u.username"
+                " FROM collection_members m JOIN users u ON u.id = m.user_id"
+                " WHERE m.collection_id = %s ORDER BY m.created_at, u.username",
+                (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_collection_member(self, cid: str, user_id: str, role: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO collection_members (collection_id, user_id, role)"
+                " VALUES (%s, %s, %s)"
+                " ON CONFLICT (collection_id, user_id)"
+                " DO UPDATE SET role = EXCLUDED.role",
+                (cid, user_id, role))
+            conn.commit()
+
+    def remove_collection_member(self, cid: str, user_id: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "DELETE FROM collection_members"
+                " WHERE collection_id = %s AND user_id = %s",
+                (cid, user_id))
+            conn.commit()
+            return row.rowcount > 0
 
     def delete_collection(self, cid: str) -> bool:
         with self.connect() as conn:
@@ -790,16 +835,16 @@ class Store:
     # ---------- 账号 ----------
 
     def create_user(self, user_id: str, username: str, username_key: str,
-                    password_hash: str) -> Dict:
+                    password_hash: str, role: str = "member") -> Dict:
         psycopg, _ = _psycopg()
         try:
             with self.connect() as conn:
                 row = conn.execute(
                     "INSERT INTO users (id, username, username_key, password_hash,"
-                    " last_login_at) VALUES (%s, %s, %s, %s, now())"
-                    " RETURNING id, username, created_at, last_login_at",
+                    " role, last_login_at) VALUES (%s, %s, %s, %s, %s, now())"
+                    " RETURNING id, username, role, created_at, last_login_at",
                     (user_id, username, username_key,
-                     password_hash)).fetchone()
+                     password_hash, role)).fetchone()
                 conn.commit()
         except psycopg.errors.UniqueViolation:
             raise DuplicateUser("username taken")
@@ -808,19 +853,66 @@ class Store:
     def get_user_by_key(self, username_key: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, username, password_hash, created_at, last_login_at"
-                " FROM users WHERE username_key = %s",
+                "SELECT id, username, password_hash, role, created_at,"
+                " last_login_at FROM users WHERE username_key = %s",
                 (username_key,)).fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, username, role, created_at, last_login_at"
+                " FROM users WHERE id = %s", (user_id,)).fetchone()
         return dict(row) if row else None
 
     def touch_login(self, user_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
                 "UPDATE users SET last_login_at = now() WHERE id = %s"
-                " RETURNING id, username, created_at, last_login_at",
+                " RETURNING id, username, role, created_at, last_login_at",
                 (user_id,)).fetchone()
             conn.commit()
         return dict(row) if row else None
+
+    def has_admin(self) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+        return row is not None
+
+    def set_user_role(self, user_id: str, role: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET role = %s WHERE id = %s",
+                (role, user_id))
+            conn.commit()
+            return row.rowcount > 0
+
+    def promote_first_admin(self) -> Optional[str]:
+        """没有任何管理员时，把最早注册的账号提升为 admin。
+
+        老部署升级后管理员是空的；不自动提一个人，公司知识库就没人能管。
+        返回被提升的用户名，调用方可以写一行启动日志。
+        """
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET role = 'admin'"
+                " WHERE id = (SELECT id FROM users ORDER BY created_at, id LIMIT 1)"
+                " AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')"
+                " RETURNING username").fetchone()
+            conn.commit()
+        return str(row["username"]) if row else None
+
+    def promote_admins(self, username_keys: Sequence[str]) -> int:
+        keys = [str(k) for k in username_keys if k]
+        if not keys:
+            return 0
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET role = 'admin'"
+                " WHERE username_key = ANY(%s) AND role <> 'admin'", (keys,))
+            conn.commit()
+            return int(row.rowcount or 0)
 
     def create_session(self, token_hash: str, user_id: str,
                        expires_at: datetime) -> None:
@@ -834,7 +926,7 @@ class Store:
     def get_session(self, token_hash: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT u.id, u.username, u.created_at, u.last_login_at"
+                "SELECT u.id, u.username, u.role, u.created_at, u.last_login_at"
                 " FROM user_sessions s JOIN users u ON u.id = s.user_id"
                 " WHERE s.token_hash = %s AND s.expires_at > now()",
                 (token_hash,)).fetchone()
