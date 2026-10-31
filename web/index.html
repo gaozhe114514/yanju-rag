@@ -26,7 +26,7 @@
   </script>
   <style>
     :root {
-      --bg: #fdfcf9; --card: #ffffff; --ink: #1c1816; --muted: #6d645a;
+      --bg: #fdfcf9; --card: #ffffff; --pop-bg: #ffffff; --ink: #1c1816; --muted: #6d645a;
       --line: #e6decc; --brand: #b0501e; --brand-dark: #8f3d16;
       --brand-soft: #f7e9e1; --cream: #f5f2ea; --muted-surface: #f1ede2;
       --wash: #ece7d8;
@@ -57,7 +57,7 @@
        只换色板（画布、文字、边框、主色、状态色），不动字号、间距和组件规则。 */
     html[data-theme="snow"] {
       color-scheme: light;
-      --bg: #ffffff; --card: #ffffff; --ink: #0d0d0d; --muted: #6e6e6e;
+      --bg: #ffffff; --card: #ffffff; --pop-bg: #ffffff; --ink: #0d0d0d; --muted: #6e6e6e;
       --line: #e5e5e5; --brand: #2563eb; --brand-dark: #1d4ed8;
       --brand-soft: #e9f1fe; --brand-light: #6f9cf5;
       --on-brand: #ffffff; --on-ink: #ffffff;
@@ -75,7 +75,7 @@
     }
     html[data-theme="dark"] {
       color-scheme: dark;
-      --bg: #1a1918; --card: #242220; --ink: #e8e4de; --muted: #9b9590;
+      --bg: #1a1918; --card: #242220; --pop-bg: #242220; --ink: #e8e4de; --muted: #9b9590;
       --line: #3a3634; --brand: #d4734b; --brand-dark: #e8a483;
       --brand-soft: rgba(212, 115, 75, .16); --brand-light: #e08a64;
       --on-brand: #1a1918; --on-ink: #1a1918;
@@ -93,7 +93,10 @@
     }
     html[data-theme="glass"] {
       color-scheme: dark;
-      --bg: #0e0d1a; --card: rgba(255, 255, 255, .06); --ink: #ffffff; --muted: #b5b5c7;
+      /* 琉璃的 --card 是半透明毛玻璃，悬停卡这类浮层必须用不透明的 --pop-bg，
+         否则压在答案文字上几乎看不见（v0.63.2） */
+      --bg: #0e0d1a; --card: rgba(255, 255, 255, .06); --pop-bg: #1b1a2e;
+      --ink: #ffffff; --muted: #b5b5c7;
       --line: rgba(255, 255, 255, .12); --brand: #a855f7; --brand-dark: #d8b4fe;
       --brand-soft: rgba(168, 85, 247, .18); --brand-light: #c084fc;
       --on-brand: #ffffff; --on-ink: #0e0d1a;
@@ -2057,8 +2060,8 @@
     /* 引用悬停卡（v0.44）：不点开也能先看原话，点下去才是全文 */
     .cite-pop {
       position: fixed; z-index: 90; max-width: 360px;
-      padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
-      background: var(--card); box-shadow: var(--shadow-raised);
+      padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px;
+      background: var(--pop-bg); box-shadow: var(--shadow-raised);
       pointer-events: none;
     }
     .cite-pop-head {
@@ -8283,10 +8286,8 @@
   function useCollection(c) {
     const id = c && !c.builtin ? c.id : '';
     setChatCollection(id);
-    // 换库等于换事实来源，旧对话不再继续追问，避免上下文串味
-    const cur = activeConv();
-    if (cur && cur.messages.length) newConversation();
-    else if (state.page !== 'chat') go('chat');
+    // v0.63.2：换库只换之后的回答依据，不另开新对话（用户明确要求）
+    if (state.page !== 'chat') go('chat');
     toast(id ? '之后的提问只用「' + c.name + '」里的资料'
       : '之后的提问使用内置 408 语料');
   }
