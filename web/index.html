@@ -1216,13 +1216,8 @@
       width: 100%; max-width: 100%; min-height: 100%;
       margin: 0 auto; padding: 24px 6px 6vh;
     }
-    .welcome-mark {
-      display: grid; place-items: center; width: 44px; height: 44px; flex: none;
-      border-radius: 13px; color: var(--bg); font-size: 20px; font-weight: 700;
-      background: linear-gradient(135deg, var(--brand-light), var(--brand-dark));
-    }
     .home h2 {
-      margin: 15px 0 0; font-family: var(--display);
+      margin: 0; font-family: var(--display);
       font-size: 32px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em;
     }
     .home-prompts {
@@ -2134,21 +2129,30 @@
     .msg-tools .tool-btn:hover { background: var(--muted-surface); color: var(--brand); }
     .msg-tools .tool-btn.copy-ok { color: var(--ok); }
 
-    /* 输入条：问题在上，模式 / 库 / 人物在下，像 DeepTutor 那样只有一张卡 */
-    #page-chat .composer-wrap { padding: 10px 40px 22px; }
+    /* 输入条学 WorkBuddy：输入框单独一张卡，模式 / 库 / 人格与发送键都挪到框外一行 */
+    #page-chat .composer-wrap { padding: 10px 40px 18px; }
     #page-chat .composer {
-      flex-direction: column; align-items: stretch; gap: 0;
-      padding: 12px 12px 10px 16px; border-radius: 26px; border-color: var(--line);
-      box-shadow: 0 1px 2px rgba(28, 24, 22, .03), 0 10px 28px -12px rgba(69, 49, 31, .16);
+      flex-direction: column; align-items: stretch; gap: 0; padding: 0;
+      border: 0; border-radius: 0; background: transparent; box-shadow: none;
     }
+    #page-chat .composer:focus-within { border-color: transparent; box-shadow: none; }
     #page-chat .composer textarea {
-      min-height: 26px; max-height: 180px; padding: 2px 4px 10px 0;
+      width: 100%; min-height: 54px; max-height: 180px; padding: 15px 17px;
+      border: 1px solid var(--line); border-radius: 18px; background: var(--card);
       font-size: 15px; line-height: 1.6;
+      box-shadow: 0 1px 2px rgba(28, 24, 22, .03), 0 10px 28px -12px rgba(69, 49, 31, .16);
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    #page-chat .composer textarea:focus {
+      border-color: color-mix(in srgb, var(--brand) 45%, transparent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent),
+                  0 10px 28px -12px rgba(69, 49, 31, .16);
     }
     .composer-bar {
       display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     }
-    .composer-bar .composer-chip { margin-bottom: 0; background: var(--bg); }
+    #page-chat .composer-bar { margin-top: 8px; padding: 0 2px; }
+    #page-chat .composer-bar .composer-chip { margin-bottom: 0; background: transparent; }
     .composer-bar .send { margin-left: auto; }
     #page-chat .composer-hint { display: none; }
 
@@ -2163,8 +2167,9 @@
       #page-chat .msg { margin-bottom: 26px; }
       #page-chat .composer-wrap { padding: 8px 16px 14px; }
       #page-chat .empty.home { padding: 20px 4px 4px; }
-      #page-chat .welcome-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 18px; }
       #page-chat .home h2 { font-size: 26px; }
+      #page-chat .composer textarea { min-height: 50px; padding: 13px 15px; font-size: 14.5px; }
+      #page-chat .composer-bar { margin-top: 7px; }
       #page-chat .home-prompts { gap: 7px; margin-top: 22px; max-width: 320px; }
       #page-chat .home-chip { padding: 7px 13px; font-size: 12.5px; }
       #page-chat .answer-text { font-size: 14.5px; }
@@ -4489,7 +4494,6 @@
   function emptyState() {
     const daily = state.chatMode === 'chat';
     const wrap = el('div', 'empty home');
-    wrap.appendChild(el('div', 'welcome-mark', '引'));
     wrap.appendChild(el('h2', null, salutation() + (daily ? '，聊点什么？' : '，想查点什么？')));
 
     // 短标签只负责好看，点下去发的是完整问句
