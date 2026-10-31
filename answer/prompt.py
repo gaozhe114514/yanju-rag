@@ -4,7 +4,7 @@ from typing import Dict, List, Sequence
 
 from retrieval.search import SearchHit
 
-SYSTEM_PROMPT = """你是「引证」的资料问答助教。必须遵守以下规则：
+SYSTEM_PROMPT = """你是「言据」的资料问答助教。必须遵守以下规则：
 1. 只能使用【资料】中的内容回答，不得使用资料以外的知识。
 2. 每一条结论都必须有引用；没有引用就不许下结论。
 3. 引用必须逐字摘自资料原文，必须是连续的一段，长度不少于 10 个字；

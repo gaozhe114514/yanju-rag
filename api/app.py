@@ -454,7 +454,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="引证 · 可引用知识库", version="0.15", lifespan=lifespan)
+app = FastAPI(title="言据 · 可引用知识库", version="0.15", lifespan=lifespan)
 
 
 # ---------- 请求日志 ----------

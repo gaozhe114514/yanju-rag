@@ -1,4 +1,4 @@
--- 引证 RAG 存储层：题目、考点、向量、拒答日志
+-- 言据 RAG 存储层：题目、考点、向量、拒答日志
 -- 由 db.store.Store.init_schema() 执行，{dim} 是 embedding 维度
 
 CREATE EXTENSION IF NOT EXISTS vector;
