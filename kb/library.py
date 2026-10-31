@@ -348,7 +348,7 @@ class Library:
                 "id": doc_id, "collection_id": cid, "title": title,
                 "text": text, "sha256": sha, "created_at": now,
                 "updated_at": now, "status": "completed", "error": "",
-                "source": source, "bytes": int(nbytes or 0)})
+                "source": source, "bytes": int(nbytes or 0), "tables": []})
             for c in chunks:
                 self._mem["chunks"].append({**c, "collection_id": cid,
                                             "document_id": doc_id})
@@ -416,8 +416,13 @@ class Library:
         return {"id": doc_id, "title": title, "status": "processing", "chars": 0,
                 "chunks": 0, "source": source, "bytes": int(nbytes or 0)}
 
-    def finish_document(self, cid: str, doc_id: str, text: str) -> Optional[Dict]:
-        """解析出的正文：查重 → 切分 → 向量化 → 替换片段，状态转 completed。"""
+    def finish_document(self, cid: str, doc_id: str, text: str,
+                        tables: Optional[List[Dict]] = None) -> Optional[Dict]:
+        """解析出的正文：查重 → 切分 → 向量化 → 替换片段，状态转 completed。
+
+        tables 是进料时抽出的结构化表格，随文档一起存；统计类问题直接数它。
+        重新切分（reparse）不传，保留原有表格。
+        """
         doc = self.get_document(cid, doc_id)
         if doc is None:
             return None
@@ -451,12 +456,15 @@ class Library:
         now = _now()
         if self.store is not None:
             self.store.replace_doc_chunks(cid, doc_id, chunks, vectors,
-                                          text=text, status="completed")
+                                          text=text, status="completed",
+                                          tables=tables)
         else:
             for d in self._mem["documents"]:
                 if d["id"] == doc_id and d["collection_id"] == cid:
                     d.update({"text": text, "sha256": sha, "status": "completed",
                               "error": "", "updated_at": now})
+                    if tables is not None:
+                        d["tables"] = list(tables)
             self._mem["chunks"] = [
                 k for k in self._mem["chunks"] if k["document_id"] != doc_id]
             for c in chunks:
@@ -575,6 +583,17 @@ class Library:
                  "end_off": int(k.get("end_off", k.get("end", 0)))}
                 for k in self._mem["chunks"] if k["collection_id"] == cid]
 
+    def _doc_tables(self, cid: str) -> Dict[str, List[Dict]]:
+        """每篇文档的结构化表格：{文档 id: [表格, …]}。没有表格的文档不出现。"""
+        if self.store is not None:
+            rows = self.store.doc_tables(cid)
+        else:
+            rows = [{"id": d["id"], "tables": d.get("tables") or []}
+                    for d in self._mem["documents"]
+                    if d["collection_id"] == cid
+                    and d.get("status") == "completed"]
+        return {r["id"]: r["tables"] for r in rows if r.get("tables")}
+
     def searcher(self, cid: str) -> Optional[HybridSearcher]:
         """按库惰性建检索器；库变了就重建。"""
         rows = self._chunks(cid)
@@ -618,6 +637,8 @@ class Library:
             chunks, mode=self.mode, k_fuse=self.k_fuse, k_final=5,
             embedder=self.embedder, vector_search=vector_search,
             reranker=reranker, exact_refs=False)
+        # 结构化表格跟着检索器走：统计类问题不用再从正文里反推行列
+        searcher.doc_tables = self._doc_tables(cid)
         self._searchers[cid] = (version, searcher)
         return searcher
 

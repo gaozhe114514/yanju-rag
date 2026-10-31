@@ -430,3 +430,20 @@ def extract_text(name: str, data: bytes) -> Tuple[str, dict]:
         raise ParseError("提取到 %d 字，超过单篇 %d 字上限，请拆分后再上传"
                          % (len(text), MAX_CHARS))
     return text, meta
+
+
+def extract_document(name: str, data: bytes) -> Tuple[str, dict, list]:
+    """正文 + 元信息 + 结构化表格。
+
+    正文仍走 extract_text（引用校验只认这段文字）；表格另走 tables.extract_tables，
+    由成熟的解析库按行列取。表格抽不出来不影响正文入库，只是这一篇没有结构化
+    统计，退回按正文逐行数。
+    """
+    text, meta = extract_text(name, data)
+    html_text = None
+    if extension_of(name) in HTML_EXT:
+        html_text = _decode(data, name)
+    from .tables import extract_tables
+    tables = extract_tables(name, data, html_text=html_text)
+    meta["tables"] = len(tables)
+    return text, meta, tables

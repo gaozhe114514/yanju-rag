@@ -10,6 +10,12 @@ pypdf>=4.0
 beautifulsoup4>=4.12
 chardet>=5.0
 
+# 表格结构化抽取（kb/tables.py）：xlsx / docx / pdf 的行列在进料时定下来，
+# 线上那份没有表头的名单就是靠它按行数清楚的。
+openpyxl>=3.1
+python-docx>=1.1
+pdfplumber>=0.11
+
 # 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU，模型随包分发（约 15MB）。
 # 第一次识别时加载进内存，KB_OCR=0 可整体关闭。
 rapidocr-onnxruntime>=1.3,<2

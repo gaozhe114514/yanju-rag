@@ -15,7 +15,7 @@
 import re
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from retrieval.chunk import Chunk
 
@@ -84,12 +84,14 @@ class TableStats:
     partial: bool = False
 
 
-def merge_docs(chunks: Sequence[Chunk]) -> List[Tuple[str, List[str]]]:
+def _merge_docs(chunks: Sequence[Chunk]) -> List[Tuple[str, str, List[str]]]:
     """把同一文档的片段按原文位置接回成行，重叠部分只留一份。
 
     片段 text 恰好等于原文 [start:end]，所以行首的绝对偏移可以精确算出；
     重叠片段里的同一行偏移相同，用偏移去重，不会多算，也不会把表格里
     两行内容相同的合法数据合掉。片段没带位置信息时按 seq 顺序排列，不合并。
+
+    返回 (文档键, 标题, 行)；文档键用来找这篇文档的结构化表格。
     """
     docs = OrderedDict()
     unknown_base = 10 ** 8
@@ -108,11 +110,16 @@ def merge_docs(chunks: Sequence[Chunk]) -> List[Tuple[str, List[str]]]:
             entry["lines"].setdefault(pos, raw.rstrip("\r\n"))
             pos += len(raw)
 
-    out: List[Tuple[str, List[str]]] = []
-    for entry in docs.values():
+    out: List[Tuple[str, str, List[str]]] = []
+    for key, entry in docs.items():
         lines = [entry["lines"][k] for k in sorted(entry["lines"])]
-        out.append((entry["title"], lines))
+        out.append((key, entry["title"], lines))
     return out
+
+
+def merge_docs(chunks: Sequence[Chunk]) -> List[Tuple[str, List[str]]]:
+    """(标题, 行)；需要文档键的内部调用用 _merge_docs。"""
+    return [(title, lines) for _, title, lines in _merge_docs(chunks)]
 
 
 _SEP = re.compile(r"\s*\|\s*")
@@ -224,13 +231,40 @@ def _aggregate_line(name: str, values) -> str:
     return "- " + line
 
 
-def table_stats(chunks: Sequence[Chunk], query: str) -> Optional[TableStats]:
-    """按原文逐行数出表格分布；资料里没有表格时返回 None。"""
+def _structured_sheets(tables: Optional[Sequence[dict]]) -> List[dict]:
+    """进料时抽好的结构化表格 → 与 _tables() 相同的 {name, rows} 形状。
+
+    有结构化表格就优先数它：行列在解析那一刻就定好了，不用再从正文里
+    反推「哪一行是表头、哪里少了一列」。
+    """
+    out: List[dict] = []
+    for table in tables or []:
+        rows = [[("" if cell is None else str(cell)).strip() for cell in row]
+                for row in (table.get("rows") or [])]
+        rows = [row for row in rows if any(row)]
+        if len(rows) >= 2:
+            out.append({"name": table.get("sheet") or "", "rows": rows})
+    return out
+
+
+def table_stats(chunks: Sequence[Chunk], query: str,
+                tables: Optional[Dict[str, List[dict]]] = None
+                ) -> Optional[TableStats]:
+    """按原文逐行数出表格分布；资料里没有表格时返回 None。
+
+    tables 是 {文档 id: 结构化表格}。给了就按结构化表格数（进料时用
+    openpyxl / python-docx / pdfplumber 抽出来的行列），没给或这篇没有，
+    才退回从正文里按「工作表：」分段再拆竖线——老资料走的是后一条路。
+    """
     q = query or ""
     blocks: List[str] = []
     numbers: List[int] = []
-    for title, lines in merge_docs(chunks):
-        for sheet in _tables(lines)[:MAX_TABLES]:
+    tables = tables or {}
+    for key, title, lines in _merge_docs(chunks):
+        sheets = _structured_sheets(tables.get(key))
+        if not sheets:
+            sheets = _tables(lines)
+        for sheet in sheets[:MAX_TABLES]:
             rows = sheet["rows"]
             has_header = _has_header(rows)
             if has_header:

@@ -322,15 +322,20 @@ class Store:
                      sha: str, chunks: Sequence[Dict],
                      vectors: Optional[Dict[str, str]] = None,
                      status: str = "completed", error: str = "",
-                     source: str = "", nbytes: int = 0) -> None:
-        """写入一篇文档及其片段；vectors 是 {chunk_id: pgvector 文本}。"""
+                     source: str = "", nbytes: int = 0,
+                     tables: Optional[Sequence[Dict]] = None) -> None:
+        """写入一篇文档及其片段；vectors 是 {chunk_id: pgvector 文本}。
+
+        tables 是进料时抽出的结构化表格；粘贴正文进来的文档没有，存 '[]'。
+        """
         vectors = vectors or {}
         with self.connect() as conn:
             conn.execute(
                 "INSERT INTO documents (id, collection_id, title, text, sha256,"
-                " status, error, bytes, source)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (doc_id, cid, title, text, sha, status, error, nbytes, source))
+                " status, error, bytes, source, tables)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)",
+                (doc_id, cid, title, text, sha, status, error, nbytes, source,
+                 json.dumps(list(tables or []), ensure_ascii=False)))
             for c in chunks:
                 conn.execute(
                     "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
@@ -358,10 +363,22 @@ class Store:
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, collection_id, title, text, sha256, created_at,"
-                " updated_at, status, error, bytes, source"
+                " updated_at, status, error, bytes, source, tables"
                 " FROM documents WHERE collection_id = %s AND id = %s",
                 (cid, doc_id)).fetchone()
         return dict(row) if row else None
+
+    def doc_tables(self, cid: str) -> List[Dict]:
+        """整个资料库里每篇文档的结构化表格：{文档 id: [表格, …]}。
+
+        检索器建好时一并带上，统计类问题直接用，不用再从正文里反推。
+        """
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, tables FROM documents"
+                " WHERE collection_id = %s AND status = 'completed'",
+                (cid,)).fetchall()
+        return [{"id": r["id"], "tables": r["tables"] or []} for r in rows]
 
     def set_document_status(self, cid: str, doc_id: str, status: str,
                             error: str = "", text: Optional[str] = None,
@@ -458,8 +475,12 @@ class Store:
     def replace_doc_chunks(self, cid: str, doc_id: str, chunks: Sequence[Dict],
                            vectors: Optional[Dict[str, str]] = None,
                            text: Optional[str] = None,
-                           status: str = "completed", error: str = "") -> None:
-        """重新切分：整篇片段换掉、正文与状态一起更新，一步提交。"""
+                           status: str = "completed", error: str = "",
+                           tables: Optional[Sequence[Dict]] = None) -> None:
+        """重新切分：整篇片段换掉、正文与状态一起更新，一步提交。
+
+        tables 只在重新解析原始文件时传；从已有正文重切分时保持原值不动。
+        """
         vectors = vectors or {}
         with self.connect() as conn:
             conn.execute("DELETE FROM doc_chunks WHERE document_id = %s", (doc_id,))
@@ -475,6 +496,9 @@ class Store:
             if text is not None:
                 sets.append("text = %s")
                 args.append(text)
+            if tables is not None:
+                sets.append("tables = %s::jsonb")
+                args.append(json.dumps(list(tables), ensure_ascii=False))
             args.extend([cid, doc_id])
             conn.execute("UPDATE documents SET " + ", ".join(sets) +
                          " WHERE collection_id = %s AND id = %s", tuple(args))

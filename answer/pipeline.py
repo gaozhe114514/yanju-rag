@@ -72,7 +72,9 @@ class AnswerPipeline:
             hit_docs = {doc_key(h.chunk) for h in hits}
             focus = [h.chunk for h in context if doc_key(h.chunk) in hit_docs]
             focus = focus or [h.chunk for h in context]
-            return context, table_stats(focus, query)
+            # 进料时抽好的结构化表格跟着检索器走；没有就退回从正文数
+            return context, table_stats(
+                focus, query, tables=getattr(self.searcher, "doc_tables", None))
         return self._with_neighbors(hits, chunks), None
 
     # 普通问答补前后片段的上限：top-k 之外不再无限加

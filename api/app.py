@@ -51,7 +51,7 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
 from kb import PRESET_COLLECTION, Library, LibraryError
-from kb.parsers import ParseError, extension_of, extract_text
+from kb.parsers import ParseError, extension_of, extract_document
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
 from retrieval.search import build_searcher
@@ -2016,7 +2016,7 @@ def _start_parse_job(cid: str, doc_id: str, name: str, data: bytes) -> None:
         if lib is None:
             return
         try:
-            text, _ = extract_text(name, data)
+            text, _, tables = extract_document(name, data)
         except ParseError as e:
             lib.fail_document(cid, doc_id, str(e))
             return
@@ -2024,7 +2024,7 @@ def _start_parse_job(cid: str, doc_id: str, name: str, data: bytes) -> None:
             lib.fail_document(cid, doc_id, "解析失败：%s" % e)
             return
         try:
-            lib.finish_document(cid, doc_id, text)
+            lib.finish_document(cid, doc_id, text, tables=tables)
         except Exception as e:
             lib.fail_document(cid, doc_id, "入库失败：%s" % e)
 
