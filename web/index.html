@@ -4756,6 +4756,14 @@
   if (window.addEventListener) {
     window.addEventListener('scroll', hideCitePop, true);
     window.addEventListener('resize', hideCitePop);
+    window.addEventListener('hashchange', hideCitePop);
+    // 任何一次按下或键盘焦点变化都先收掉：胶囊被换掉时它自己收不了尾
+    document.addEventListener('pointerdown', hideCitePop, true);
+    document.addEventListener('focusin', e => {
+      if (citePopNode && !(e.target && e.target.closest && e.target.closest('.cite-chip'))) {
+        hideCitePop();
+      }
+    }, true);
   }
 
   // 生成服务和后端没起来时，换问法也没用，别给这种建议
@@ -12472,6 +12480,9 @@
   }
 
   function renderPage(page, id) {
+    // 换页时先收起「悬停看原话」的浮层：页面只是切换显隐，胶囊节点还在，
+    // 浏览器不会补发 mouseleave，不主动收就会一直挂在新页面上方。
+    hideCitePop();
     if (page === 'learning') page = 'mastery';
     // 伙伴已下线（先删掉入口，还没决定要不要做），旧地址一律回问答
     if (!PAGE_META[page]) page = 'chat';
