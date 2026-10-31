@@ -23,6 +23,12 @@ from retrieval.chunk import Chunk
 _COUNT_RE = re.compile(
     r"多少|几个|几人|几男|几女|几位|几名|几门|几所|几条|几段"
     r"|共有|一共|总共|合计|总计|统计|分别|人数|数量|比例|占比")
+# 列举类问法：要的不是一个数字，而是完整的名单。只给 top-5 片段同样会漏人。
+_LIST_RE = re.compile(r"谁|哪些|列出|罗列|名单|清单|都有|分别是|各是|逐个")
+# 汇总类问法：平均、极值、求和。模型心算同样不可靠。
+_AGG_RE = re.compile(r"平均|均值|最高|最低|最大|最小|合计|总和|求和|总计")
+# 概括类问法：总结、目录、章节。只读几段就总结，结论必然缺一块。
+_SUMMARY_RE = re.compile(r"总结|概括|摘要|讲了什么|讲什么|主要内容|大意|目录|章节|大纲")
 
 # 一次把所有片段读进上下文的上限。超过就退回 top-5，并声明「没有读全」。
 MAX_SCAN_CHARS = 30000
@@ -32,15 +38,37 @@ MAX_VALUE_LEN = 20
 # 一张表最多报几列、整个库最多报几张表，避免统计块喧宾夺主
 MAX_COLUMNS = 4
 MAX_TABLES = 5
+# 列举类问题最多把多少行原样列给模型；再多就说明「只列前 N 行」
+MAX_LIST_ROWS = 30
 
 PARTIAL_NOTE = (
-    "这份资料一共 %d 字，超过一次能通读的 %d 字上限，本次只检索到其中一部分片段。"
-    "涉及统计、合计、总数的问题不要给出精确数字，先说明只看了一部分，并请用户缩小范围。"
+    "这份资料一共 %d 字，超过一次能通读的 %d 字上限，本次没有读全，只拿到其中一部分。"
+    "涉及统计、合计、总数、完整名单或全文总结的问题不要给出精确数字或完整清单，"
+    "先说明只看到一部分，并请用户缩小范围。"
 )
 
 
 def is_count_question(query: str) -> bool:
     return bool(_COUNT_RE.search(query or ""))
+
+
+def is_list_question(query: str) -> bool:
+    return bool(_LIST_RE.search(query or ""))
+
+
+def is_agg_question(query: str) -> bool:
+    return bool(_AGG_RE.search(query or ""))
+
+
+def needs_full_doc(query: str) -> bool:
+    """这个问题是不是必须读全整份资料才能答对。
+
+    数量、名单、平均/极值、全文总结都算：只给 top-5 片段，答案会缺行或缺段，
+    而且看起来仍然像模像样。普通问答不需要读全，交给检索与精排即可。
+    """
+    q = query or ""
+    return bool(_COUNT_RE.search(q) or _LIST_RE.search(q)
+                or _AGG_RE.search(q) or _SUMMARY_RE.search(q))
 
 
 @dataclass
@@ -133,6 +161,45 @@ def _column_text(name: str, values) -> str:
     return "「%s」列：%s" % (name, pairs)
 
 
+# 编号类列不做平均/求和：学号、床位、宿舍号加起来没有意义
+_ID_NAME_RE = re.compile(r"学号|编号|号码|电话|手机|身份证|id$|宿舍号|床位|年份|年级",
+                         re.I)
+
+
+def _to_num(value: str) -> Optional[float]:
+    text = (value or "").strip().replace(",", "").rstrip("%")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _fmt_num(value: float) -> str:
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return ("%.1f" % value).rstrip("0").rstrip(".")
+
+
+def _name_in_query(name: str, query: str) -> bool:
+    if not name:
+        return False
+    if name in query:
+        return True
+    # 「平均分」对不上「分数」这种整名包含，退到两字片段
+    return any(name[i:i + 2] in query for i in range(len(name) - 1))
+
+
+def _aggregate_line(name: str, values) -> str:
+    total = sum(values)
+    line = ("「%s」列（%d 个数值）：合计 %s、平均 %s、最高 %s、最低 %s"
+            % (name or "未命名列", len(values), _fmt_num(total),
+               _fmt_num(total / len(values)), _fmt_num(max(values)),
+               _fmt_num(min(values))))
+    return "- " + line
+
+
 def table_stats(chunks: Sequence[Chunk], query: str) -> Optional[TableStats]:
     """按原文逐行数出表格分布；资料里没有表格时返回 None。"""
     q = query or ""
@@ -150,6 +217,7 @@ def table_stats(chunks: Sequence[Chunk], query: str) -> Optional[TableStats]:
             numbers.append(len(data))
 
             reported = 0
+            matched_values = set()
             for i, name in enumerate(header):
                 if reported >= MAX_COLUMNS:
                     break
@@ -169,7 +237,41 @@ def table_stats(chunks: Sequence[Chunk], query: str) -> Optional[TableStats]:
                                     key=lambda p: -p[1])
                 lines_out.append("- " + _column_text(name, chosen))
                 numbers.extend(n for _, n in chosen)
+                matched_values.update(matched)
                 reported += 1
+
+            # 问「谁 / 哪些 / 列出」时，只给列的分布仍然要模型自己回表找人。
+            # 把命中的行原样列出来，名字与列值始终挨在一起。
+            if matched_values and _LIST_RE.search(q):
+                rows = [row for row in data
+                        if any(cell in matched_values for cell in row)]
+                if rows:
+                    lines_out.append("- 匹配「%s」的行（共 %d 行）"
+                                     % ("、".join(sorted(matched_values)),
+                                        len(rows)))
+                    numbers.append(len(rows))
+                    for row in rows[:MAX_LIST_ROWS]:
+                        lines_out.append("  - " + " | ".join(row))
+                    if len(rows) > MAX_LIST_ROWS:
+                        lines_out.append("  - 只列前 %d 行；完整清单请缩小范围再问。"
+                                         % MAX_LIST_ROWS)
+
+            # 问平均 / 最高 / 最低 / 合计时，由服务端算，不让模型心算。
+            if _AGG_RE.search(q):
+                numeric = []
+                for i, name in enumerate(header):
+                    if _ID_NAME_RE.search(name or ""):
+                        continue
+                    values = [_to_num(row[i]) for row in data if i < len(row)]
+                    values = [v for v in values if v is not None]
+                    filled = sum(1 for row in data if i < len(row) and row[i])
+                    if len(values) >= 3 and filled and len(values) >= filled * 0.8:
+                        numeric.append((name, values))
+                picked = [c for c in numeric if _name_in_query(c[0], q)]
+                if not picked and len(numeric) == 1:
+                    picked = numeric
+                for name, values in picked[:1]:
+                    lines_out.append(_aggregate_line(name, values))
 
             blocks.append("\n".join(lines_out))
     if not blocks:

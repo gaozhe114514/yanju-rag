@@ -726,7 +726,10 @@ def _steps(res, plan=None, collection: str = "") -> list:
 
 
 def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
-    by_id = {h.chunk.id: h.chunk for h in res.hits}
+    # 引用可能来自补进来的相邻片段或整表片段，按「实际交给模型的上下文」解析；
+    # 召回条数仍按检索结果 res.hits 显示。
+    pool = res.context or res.hits
+    by_id = {h.chunk.id: h.chunk for h in pool}
     citations = []
     for c in res.citations:
         cid = c.get("chunk_id")

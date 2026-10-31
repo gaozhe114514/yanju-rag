@@ -9,7 +9,7 @@ import os
 import re
 from typing import Dict
 
-from .aggregate import is_count_question
+from .aggregate import needs_full_doc
 
 DEFAULT_TTL_S = 86400
 _WS = re.compile(r"\s+")
@@ -58,12 +58,13 @@ def is_fresh(age_s: float, ttl_s: int) -> bool:
 
 
 def cacheable(query: str, preset: bool) -> bool:
-    """统计类问题不缓存：自建库里的表格随时会更新，数字必须现算。
+    """要读全资料才答对的问题不缓存：自建库随时会更新，数字必须现算。
 
-    内置 408 语料是静态的，照常缓存；用户库里问「有多少人」这类问题
-    每次都要重新读全表、服务端重新数，命中旧缓存就会把过期的数字端出来。
+    内置 408 语料是静态的，照常缓存；用户库里问「有多少人 / 都有谁 /
+    平均分多少 / 总结一下」这类问题，每次都要重新读全、重新数，命中旧缓存
+    就会把过期的数字或名单端出来。
     """
-    return preset or not is_count_question(query)
+    return preset or not needs_full_doc(query)
 
 
 def storable_payload(payload: Dict) -> Dict:

@@ -4,8 +4,9 @@ import json
 import random
 import unittest
 
-from answer.aggregate import (TableStats, check_counts, is_count_question,
-                              merge_docs, table_stats)
+from answer.aggregate import (TableStats, check_counts, is_agg_question,
+                              is_count_question, is_list_question, merge_docs,
+                              needs_full_doc, table_stats)
 from answer.cache import cacheable
 from answer.pipeline import AnswerPipeline
 from kb.chunking import split_text
@@ -56,6 +57,20 @@ class CountQuestionTest(unittest.TestCase):
     def test_normal_phrases(self):
         for q in ("进程和线程的区别", "二叉树的遍历方式", "什么是虚拟内存"):
             self.assertFalse(is_count_question(q), q)
+
+    def test_other_full_doc_intents(self):
+        for q in ("谁在求职", "名单里都有哪些人", "列出所有住在 3 号楼的",
+                  "平均分是多少", "最高分是谁", "总结一下这份讲义",
+                  "这份资料讲了什么"):
+            self.assertTrue(needs_full_doc(q), q)
+        for q in ("进程和线程的区别", "陈畅的性别", "什么是虚拟内存"):
+            self.assertFalse(needs_full_doc(q), q)
+
+    def test_intent_families_do_not_overlap_too_much(self):
+        self.assertTrue(is_list_question("谁在求职"))
+        self.assertFalse(is_list_question("平均分是多少"))
+        self.assertTrue(is_agg_question("平均分是多少"))
+        self.assertFalse(is_agg_question("进程和线程的区别"))
 
 
 class MergeTest(unittest.TestCase):
@@ -111,6 +126,35 @@ class TableStatsTest(unittest.TestCase):
         self.assertTrue(bad)
         self.assertIn("25人", bad[0].replace(" ", ""))
 
+    def test_list_question_gets_the_matching_rows_not_just_counts(self):
+        lines = ["工作表：就业登记", "学号 | 姓名 | 就业状态"]
+        for i in range(1, 31):
+            status = "求职" if i <= 3 else ("升学" if i <= 10 else "已就业")
+            lines.append("5423133311%02d | 同学%02d | %s" % (i, i, status))
+        stats = table_stats(doc_chunks("\n".join(lines), title="就业台账"),
+                            "谁在求职")
+        self.assertIn("匹配「求职」的行（共 3 行）", stats.text)
+        self.assertIn("同学01 | 求职", stats.text)
+        self.assertIn("同学03 | 求职", stats.text)
+        self.assertNotIn("同学04 | 求职", stats.text)
+        self.assertIn(3, stats.numbers)
+
+    def test_numeric_columns_are_summed_and_averaged_on_the_server(self):
+        lines = ["工作表：成绩", "姓名 | 分数",
+                 "张三 | 90", "李四 | 80", "王五 | 100"]
+        stats = table_stats(doc_chunks("\n".join(lines), title="成绩单"),
+                            "平均分是多少")
+        self.assertIn("「分数」列（3 个数值）", stats.text)
+        self.assertIn("合计 270", stats.text)
+        self.assertIn("平均 90", stats.text)
+        self.assertIn("最高 100", stats.text)
+        self.assertIn("最低 80", stats.text)
+
+    def test_id_columns_are_not_averaged(self):
+        stats = table_stats(roster_chunks(), "平均分是多少")
+        # 名单里只有学号、年级这类编号列，不能拿来算平均
+        self.assertNotIn("平均", stats.text)
+
     def test_count_check_is_off_without_table_stats(self):
         self.assertEqual(check_counts("共 25 人。", None), [])
         self.assertEqual(check_counts("共 25 人。", TableStats(text="只看了一部分")), [])
@@ -152,17 +196,68 @@ def payload(answer, quote="542313331101 | 陈畅 | 男"):
 class PipelineTest(unittest.TestCase):
     def test_count_question_reads_the_whole_table(self):
         chunks = roster_chunks(shuffle=True)
-        # 片段顺序打乱后 top-5 可能漏行；展开后应把 30 行都交给模型
+        # top-2 必然漏行；展开后应把 30 行都交给模型，召回条数仍按 2 显示
         provider = FakeProvider([payload("共列出 30 人，其中男生 18 人、女生 12 人。")])
-        pipe = AnswerPipeline(FakeSearcher(chunks), provider, prompt_mode="doc")
+        pipe = AnswerPipeline(FakeSearcher(chunks, top=2), provider,
+                              prompt_mode="doc")
         res = pipe.answer("智科2301班男生有多少女生有多少")
         self.assertFalse(res.refused, res.reason)
-        self.assertEqual(len(res.hits), len(chunks))
+        self.assertEqual(len(res.hits), 2)
+        self.assertEqual(len(res.context), len(chunks))
         prompt = provider.calls[0][-1]["content"]
         self.assertIn("【表格统计】", prompt)
         self.assertIn("男 18 行", prompt)
         # 30 行全在 prompt 里
         self.assertIn(FEMALES[-1], prompt)
+
+    def test_list_question_also_reads_the_whole_table(self):
+        lines = ["工作表：就业登记", "学号 | 姓名 | 就业状态"]
+        for i in range(1, 31):
+            status = "求职" if i <= 3 else ("升学" if i <= 10 else "已就业")
+            lines.append("5423133311%02d | 同学%02d | %s" % (i, i, status))
+        chunks = doc_chunks("\n".join(lines), title="就业台账")
+        quote = "542313331101 | 同学01 | 求职"
+        provider = FakeProvider([payload(
+            "目前有 3 人在求职：同学01、同学02、同学03。", quote=quote)])
+        pipe = AnswerPipeline(FakeSearcher(chunks, top=1), provider,
+                              prompt_mode="doc")
+        res = pipe.answer("谁在求职")
+        self.assertFalse(res.refused, res.reason)
+        self.assertEqual(len(res.hits), 1)
+        self.assertEqual(len(res.context), len(chunks))
+        prompt = provider.calls[0][-1]["content"]
+        self.assertIn("匹配「求职」的行（共 3 行）", prompt)
+        self.assertIn("同学03", prompt)
+        self.assertIn("同学30", prompt)
+
+    def test_ordinary_question_gets_neighbor_chunks_only(self):
+        chunks = []
+        for i in range(4):
+            text = "第 %d 段：" % (i + 1) + "讲" * 100
+            chunks.append(Chunk(
+                id="doc-1-%03d" % (i + 1), seq=i + 1, text=text, kind="doc",
+                title="讲义",
+                source_ref={"document_id": "doc-1", "document_title": "讲义",
+                            "start": i * 120, "end": i * 120 + len(text)}))
+        hits = [SearchHit(chunks[1], 1.0)]
+        pipe = AnswerPipeline(FakeSearcher(chunks, top=1), FakeProvider([]),
+                              prompt_mode="doc")
+        context = pipe._with_neighbors(hits, chunks)
+        self.assertEqual([h.chunk.id for h in context],
+                         ["doc-1-002", "doc-1-001", "doc-1-003"])
+        self.assertNotIn("doc-1-004", [h.chunk.id for h in context])
+
+    def test_ordinary_question_does_not_read_the_whole_doc(self):
+        chunks = roster_chunks()
+        provider = FakeProvider([payload("陈畅是男生。")])
+        pipe = AnswerPipeline(FakeSearcher(chunks, top=1), provider,
+                              prompt_mode="doc")
+        res = pipe.answer("陈畅的性别")
+        self.assertFalse(res.refused, res.reason)
+        self.assertEqual(len(res.hits), 1)
+        # 补邻居不等于读全库；问题里没有说话要读全表
+        self.assertLess(len(res.context), len(chunks))
+        self.assertNotIn("【表格统计】", provider.calls[0][-1]["content"])
 
     def test_wrong_numbers_are_retried_then_refused(self):
         chunks = roster_chunks()
@@ -195,11 +290,12 @@ class PipelineTest(unittest.TestCase):
         # 只让名单本身被召回；另一张表在库里，但这一问没有命中它
         searcher = FakeSearcher(roster + other, top=len(roster))
         pipe = AnswerPipeline(searcher, FakeProvider([]), prompt_mode="doc")
-        hits, stats = pipe._prepare("男生有多少女生有多少", searcher.search("q"))
+        context, stats = pipe._prepare("男生有多少女生有多少",
+                                       searcher.search("q"))
         self.assertIn(18, stats.numbers)
         self.assertNotIn(25, stats.numbers)
         self.assertNotIn("另一张表", stats.text)
-        self.assertEqual(len(hits), len(roster) + len(other))
+        self.assertEqual(len(context), len(roster) + len(other))
 
     def test_prose_question_is_not_expanded(self):
         chunks = roster_chunks()
@@ -237,8 +333,10 @@ class PipelineTest(unittest.TestCase):
 
 
 class CacheTest(unittest.TestCase):
-    def test_count_questions_are_not_cached_for_user_libraries(self):
-        self.assertFalse(cacheable("男生有多少女生有多少", preset=False))
+    def test_full_doc_questions_are_not_cached_for_user_libraries(self):
+        for q in ("男生有多少女生有多少", "谁在求职", "平均分是多少",
+                  "总结一下这份讲义"):
+            self.assertFalse(cacheable(q, preset=False), q)
         self.assertTrue(cacheable("进程和线程的区别", preset=False))
         # 内置语料是静态的，照常缓存
         self.assertTrue(cacheable("男生有多少女生有多少", preset=True))

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from retrieval.search import HybridSearcher, SearchHit
 
 from .aggregate import (MAX_SCAN_CHARS, PARTIAL_NOTE, TableStats,
-                        check_counts, is_count_question, table_stats)
+                        check_counts, needs_full_doc, table_stats)
 from .gate import RefusalGate
 from .prompt import build_messages, build_retry_messages
 from .providers import ProviderError, parse_payload
@@ -22,6 +22,9 @@ class AnswerResult:
     citations: List[Dict] = field(default_factory=list)
     reason: str = ""
     hits: List[SearchHit] = field(default_factory=list)
+    # 实际交给模型 / 用于校验的上下文；读全表或补相邻片段时会多于 hits。
+    # hits 仍是检索结果，界面上的「召回 N 条」按它显示。
+    context: List[SearchHit] = field(default_factory=list)
     attempts: int = 0
     errors: List[str] = field(default_factory=list)
     timings: Dict[str, int] = field(default_factory=dict)
@@ -39,33 +42,79 @@ class AnswerPipeline:
         self.prompt_mode = prompt_mode
 
     def _prepare(self, query: str, hits):
-        """统计类问题：读全同库片段，并让服务端把表格数出来。
+        """按问题类型准备交给模型的上下文。
 
-        只在用户自建资料库生效。库太大（超过一次能通读的上限）就退回 top-k，
-        同时告诉模型「没读全」，不许它报精确总数——宁可说不知道，也不给错数字。
+        - 数量 / 名单 / 平均极值 / 全文总结：必须读全同一库的片段，否则答案
+          会缺行或缺段，而且看起来仍然像模像样。库太大（超过一次能通读的
+          上限）就退回 top-k，并明确告诉模型「没读全」，不许报精确数字。
+        - 普通问答：只给检索结果，再补上同文档紧挨着的前后片段，避免一段话
+          被切在两块里、答案只读到一半。
         """
-        if self.prompt_mode != "doc" or not is_count_question(query):
+        if self.prompt_mode != "doc":
             return hits, None
         chunks = getattr(self.searcher, "chunks", None)
         if not chunks:
             return hits, None
-        total = sum(len(c.text) for c in chunks)
-        if total > MAX_SCAN_CHARS:
-            return hits, TableStats(
-                text=PARTIAL_NOTE % (total, MAX_SCAN_CHARS), partial=True)
-        seen = {h.chunk.id for h in hits}
-        expanded = list(hits) + [SearchHit(c, 0.0) for c in chunks
-                                 if c.id not in seen]
-        # 只数「召回命中过的那几份文档」：同一库里别的表格如果也有「男 25 行」，
-        # 把它的数字也放进允许值，会让对不上的答案蒙混过关。
+        if needs_full_doc(query):
+            total = sum(len(c.text) for c in chunks)
+            if total > MAX_SCAN_CHARS:
+                return hits, TableStats(
+                    text=PARTIAL_NOTE % (total, MAX_SCAN_CHARS), partial=True)
+            seen = {h.chunk.id for h in hits}
+            context = list(hits) + [SearchHit(c, 0.0) for c in chunks
+                                    if c.id not in seen]
+            # 只数「召回命中过的那几份文档」：同一库里别的表格如果也有「男 25 行」，
+            # 把它的数字也放进允许值，会让对不上的答案蒙混过关。
+            def doc_key(chunk):
+                ref = chunk.source_ref or {}
+                return ref.get("document_id") or chunk.title or chunk.id
+
+            hit_docs = {doc_key(h.chunk) for h in hits}
+            focus = [h.chunk for h in context if doc_key(h.chunk) in hit_docs]
+            focus = focus or [h.chunk for h in context]
+            return context, table_stats(focus, query)
+        return self._with_neighbors(hits, chunks), None
+
+    # 普通问答补前后片段的上限：top-k 之外不再无限加
+    NEIGHBOR_MAX_CHARS = 12000
+
+    def _with_neighbors(self, hits, chunks):
+        """给每条命中补同一文档里紧挨着的前后片段（WeKnora 的邻居扩展开）。
+
+        检索命中的往往是一段话或表格的中间几行，前后被切开；补上邻居能让
+        模型看到完整句群。只补一层、只补同文档，并有总字数上限。
+        """
         def doc_key(chunk):
             ref = chunk.source_ref or {}
             return ref.get("document_id") or chunk.title or chunk.id
 
-        hit_docs = {doc_key(h.chunk) for h in hits}
-        focus = [h.chunk for h in expanded if doc_key(h.chunk) in hit_docs]
-        focus = focus or [h.chunk for h in expanded]
-        return expanded, table_stats(focus, query)
+        by_doc = {}
+        for c in chunks:
+            by_doc.setdefault(doc_key(c), []).append(c)
+        for seq in by_doc.values():
+            seq.sort(key=lambda c: (c.source_ref or {}).get("start", c.seq))
+
+        chosen = list(hits)
+        seen = {h.chunk.id for h in hits}
+        used = sum(len(h.chunk.text) for h in hits)
+        for h in hits:
+            seq = by_doc.get(doc_key(h.chunk)) or []
+            index = {c.id: i for i, c in enumerate(seq)}
+            i = index.get(h.chunk.id)
+            if i is None:
+                continue
+            for j in (i - 1, i + 1):
+                if not (0 <= j < len(seq)):
+                    continue
+                c = seq[j]
+                if c.id in seen:
+                    continue
+                if used + len(c.text) > self.NEIGHBOR_MAX_CHARS:
+                    continue
+                chosen.append(SearchHit(c, 0.0))
+                seen.add(c.id)
+                used += len(c.text)
+        return chosen
 
     def answer(self, query: str, style: str = "",
                skip_rerank: bool = False) -> AnswerResult:
@@ -89,9 +138,10 @@ class AnswerPipeline:
         if decision.refuse:
             return done(AnswerResult(True, reason=decision.reason, hits=hits))
 
-        hits, stats = self._prepare(query, hits)
+        context, stats = self._prepare(query, hits)
         stats_text = stats.text if stats else ""
-        messages = build_messages(query, hits, style, self.prompt_mode, stats_text)
+        messages = build_messages(query, context, style, self.prompt_mode,
+                                  stats_text)
         errors: List[str] = []
         first_errors: List[str] = []
         stat_errors: List[str] = []
@@ -100,11 +150,12 @@ class AnswerPipeline:
             stat_errors = []
             tg = time.time()
             try:
-                raw = self.provider.generate(messages, hits=hits)
+                raw = self.provider.generate(messages, hits=context)
             except ProviderError as e:
                 spent["generate"] += int((time.time() - tg) * 1000)
                 return done(AnswerResult(True, reason="provider_error: %s" % e,
-                                         hits=hits, attempts=attempt,
+                                         hits=hits, context=context,
+                                         attempts=attempt,
                                          errors=first_errors))
             spent["generate"] += int((time.time() - tg) * 1000)
 
@@ -114,7 +165,7 @@ class AnswerPipeline:
             except ProviderError as e:
                 errors = [str(e)]
             else:
-                errors = verify_payload(payload, hits)
+                errors = verify_payload(payload, context)
                 if not errors and not payload["refused"]:
                     errors = check_counts(str(payload.get("answer") or ""), stats)
                     stat_errors = list(errors)
@@ -123,22 +174,24 @@ class AnswerPipeline:
                     if payload["refused"]:
                         return done(AnswerResult(
                             True, reason=str(payload.get("reason") or "模型判断资料不足"),
-                            hits=hits, attempts=attempt, errors=first_errors))
+                            hits=hits, context=context, attempts=attempt,
+                            errors=first_errors))
                     return done(AnswerResult(
                         False,
                         answer=str(payload.get("answer") or ""),
                         citations=list(payload.get("citations") or []),
-                        hits=hits, attempts=attempt, errors=first_errors))
+                        hits=hits, context=context, attempts=attempt,
+                        errors=first_errors))
             spent["verify"] += int((time.time() - tv) * 1000)
 
             if attempt == 1 and self.retry:
                 first_errors = list(errors)
-                messages = build_retry_messages(query, hits, raw, errors, style,
+                messages = build_retry_messages(query, context, raw, errors, style,
                                                 self.prompt_mode, stats_text)
                 continue
             reason = "stat_failed: " if stat_errors else "citation_failed: "
             return done(AnswerResult(True, reason=reason + "; ".join(errors),
-                                     hits=hits, attempts=attempt,
+                                     hits=hits, context=context, attempts=attempt,
                                      errors=first_errors or list(errors)))
 
         return done(AnswerResult(True, reason="unknown", hits=hits, attempts=2))
@@ -178,9 +231,10 @@ class AnswerPipeline:
                    "result": done(AnswerResult(True, reason=decision.reason, hits=hits))}
             return
 
-        hits, stats = self._prepare(query, hits)
+        context, stats = self._prepare(query, hits)
         stats_text = stats.text if stats else ""
-        messages = build_messages(query, hits, style, self.prompt_mode, stats_text)
+        messages = build_messages(query, context, style, self.prompt_mode,
+                                  stats_text)
         first_errors: List[str] = []
         stat_errors: List[str] = []
         for attempt in (1, 2):
@@ -190,7 +244,7 @@ class AnswerPipeline:
             buf: List[str] = []
             extractor = AnswerStream()
             try:
-                for chunk in generate_chunks(self.provider, messages, hits):
+                for chunk in generate_chunks(self.provider, messages, context):
                     buf.append(chunk)
                     delta = extractor.feed(chunk)
                     if delta:
@@ -201,7 +255,8 @@ class AnswerPipeline:
                 yield {"type": "done",
                        "result": done(AnswerResult(
                            True, reason="provider_error: %s" % e, hits=hits,
-                           attempts=attempt, errors=first_errors))}
+                           context=context, attempts=attempt,
+                           errors=first_errors))}
                 return
             timings["generate"] = int((time.time() - started) * 1000)
 
@@ -213,7 +268,7 @@ class AnswerPipeline:
             except ProviderError as e:
                 errors = [str(e)]
             else:
-                errors = verify_payload(payload, hits)
+                errors = verify_payload(payload, context)
                 if not errors and not payload["refused"]:
                     errors = check_counts(str(payload.get("answer") or ""), stats)
                     stat_errors = list(errors)
@@ -224,7 +279,7 @@ class AnswerPipeline:
                                "result": done(AnswerResult(
                                    True,
                                    reason=str(payload.get("reason") or "模型判断资料不足"),
-                                   hits=hits, attempts=attempt,
+                                   hits=hits, context=context, attempts=attempt,
                                    errors=first_errors))}
                         return
                     yield {"type": "done",
@@ -232,7 +287,7 @@ class AnswerPipeline:
                                False,
                                answer=str(payload.get("answer") or ""),
                                citations=list(payload.get("citations") or []),
-                               hits=hits, attempts=attempt,
+                               hits=hits, context=context, attempts=attempt,
                                errors=first_errors))}
                     return
             timings["verify"] = int((time.time() - started) * 1000)
@@ -242,14 +297,14 @@ class AnswerPipeline:
                 yield {"type": "reset",
                        "note": ("统计数字和表格对不上，正在重新生成" if stat_errors
                                 else "引用没有逐字对上原文，正在重新生成")}
-                messages = build_retry_messages(query, hits, raw, errors, style,
+                messages = build_retry_messages(query, context, raw, errors, style,
                                                 self.prompt_mode, stats_text)
                 continue
             reason = "stat_failed: " if stat_errors else "citation_failed: "
             yield {"type": "done",
                    "result": done(AnswerResult(
                        True, reason=reason + "; ".join(errors),
-                       hits=hits, attempts=attempt,
+                       hits=hits, context=context, attempts=attempt,
                        errors=first_errors or list(errors)))}
             return
 
