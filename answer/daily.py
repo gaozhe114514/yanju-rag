@@ -1,35 +1,52 @@
 # -*- coding: utf-8 -*-
-"""日常对话：不检索、不引用，纯粹和模型聊天办事。
+"""不查资料的两条回答链路。
 
-资料模式（默认）里每条结论都必须逐字对上检索到的原文，对不上就拒答；
-这条链路太窄，做不了「帮我改个句子」「排个计划」这类日常请求。
-所以日常对话单独一条链路：不碰检索库、不产出引用，也不允许自称
-「根据资料」。两条链路用请求里的 mode 区分，引用校验等硬规则只约束资料模式。
+- daily：用户主动进入的日常对话（旧版 mode=chat，接口仍兼容）。
+- general：自动问答里「资料查不到依据」的兜底；正文开头由服务端强制加上
+  「资料里没有直接依据」，所以它不会被误当成资料原文，也不产出引用。
+
+两条链路都不允许自称「根据资料」。引用必须逐字命中、资料没覆盖要明说，
+这两条硬规则仍由检索与引用校验负责，这里只负责说人话。
 """
 from typing import Dict, Iterator, List, Optional
 
 from .agent import normalize_history
 
 # 离线演示（ExtractiveProvider / 没有模型）时的回答：说实话，不假装生成
-OFFLINE_REPLY = ("现在是离线演示模式，没有接生成模型，日常对话答不了。"
-                 "切到「资料」模式仍可按资料原文回答。")
+OFFLINE_REPLY = ("现在是离线演示模式，没有接生成模型，这个问题答不了。"
+                 "接入模型后可以直接问；资料里有的内容仍可按原文回答。")
 
-DAILY_SYSTEM = """你是「言据」里的日常助手，和用户正常聊天、帮点小忙。
+# 服务端强制加在通用回答前面的一句话：不靠模型自觉，保证每次都明说
+GENERAL_PREFIX = "资料里没有直接依据，下面按通用知识回答，不带引用。\n\n"
+
+DAILY_SYSTEM = """你是「言据」里的助手，和用户正常聊天、帮点小忙。
 
 规则：
 1. 直接回答，用日常口气。要步骤、清单、草稿就写清楚，别绕。
-2. 这个模式不查资料，所以不要说「根据资料」「原文说」，也不要编造出处、页码、题号。
-3. 如果问题其实是在问某份资料里的内容（真题、考点、讲义或笔记），就直说：这条建议切到
-   「资料」模式再问，那边会给可逐字核对的原文引用。不要凭记忆作答。
+2. 这条链路不查资料，所以不要说「根据资料」「原文说」，也不要编造出处、页码、题号。
+3. 如果问题必须靠某份资料的原文才能答准，就直说这条得查资料才准，别凭记忆冒充原文。
 4. 不知道就说不知道，不编。
 5. 默认用中文；用户换语言就跟着换。
+6. 用纯文本：不要写 **、#、``` 这类 Markdown 标记；分条就用 1. 2. 3. 或短横线。
+"""
+
+GENERAL_SYSTEM = """你是「言据」的助手。这一轮已经查过资料，但没有找到能逐字引用的原文，
+所以下面按通用知识回答。
+
+规则：
+1. 系统会在回答最前面加一句「资料里没有直接依据，下面按通用知识回答，不带引用。」，
+   你直接从答案本身写起，不要重复这句。
+2. 不要编造出处、页码、题号，也不要说「根据资料」「原文说」。
+3. 直接回答；不确定就说不确定，不知道就说不知道，不编。
+4. 默认用中文；用户换语言就跟着换。
+5. 用纯文本：不要写 **、#、``` 这类 Markdown 标记；分条就用 1. 2. 3. 或短横线。
 """
 
 
-def build_daily_messages(query: str, history: Optional[List[Dict]] = None,
-                         style: str = "", tool_text: str = "") -> List[Dict]:
-    """拼日常对话的 messages。历史只留 user/assistant 的短文本。"""
-    messages: List[Dict] = [{"role": "system", "content": DAILY_SYSTEM}]
+def _messages(system: str, query: str, history: Optional[List[Dict]] = None,
+              style: str = "", tool_text: str = "") -> List[Dict]:
+    """拼 messages。历史只留 user/assistant 的短文本。"""
+    messages: List[Dict] = [{"role": "system", "content": system}]
     if style:
         messages.append({"role": "system", "content": "讲解方式：" + style[:400]})
     # 工具结果放在历史之前：它是这一轮的实时事实，不是聊天记录
@@ -40,22 +57,52 @@ def build_daily_messages(query: str, history: Optional[List[Dict]] = None,
     return messages
 
 
-def daily_reply(provider, query: str, history: Optional[List[Dict]] = None,
-                style: str = "", tool_text: str = "") -> str:
-    """非流式日常回答。没有可用模型时返回离线说明，不假装答过。"""
+def build_daily_messages(query: str, history: Optional[List[Dict]] = None,
+                         style: str = "", tool_text: str = "") -> List[Dict]:
+    return _messages(DAILY_SYSTEM, query, history, style, tool_text)
+
+
+def build_general_messages(query: str, history: Optional[List[Dict]] = None,
+                           style: str = "", tool_text: str = "") -> List[Dict]:
+    return _messages(GENERAL_SYSTEM, query, history, style, tool_text)
+
+
+def _reply(provider, messages: List[Dict]) -> str:
+    """没有可用模型时返回离线说明，不假装答过。"""
     if provider is None or not hasattr(provider, "complete"):
         return OFFLINE_REPLY
-    text = provider.complete(build_daily_messages(query, history, style, tool_text),
-                             temperature=0.6, max_tokens=700, json_mode=False)
+    text = provider.complete(messages, temperature=0.6, max_tokens=700,
+                             json_mode=False)
     return (text or "").strip() or "（模型这次没给出内容，再说一遍试试。）"
+
+
+def _stream(provider, messages: List[Dict]) -> Iterator[str]:
+    """模型支持流式就走流式，否则退成一整段。"""
+    if provider is not None and hasattr(provider, "chat_stream"):
+        yield from provider.chat_stream(messages, temperature=0.6, max_tokens=700)
+        return
+    yield _reply(provider, messages)
+
+
+def daily_reply(provider, query: str, history: Optional[List[Dict]] = None,
+                style: str = "", tool_text: str = "") -> str:
+    return _reply(provider, build_daily_messages(query, history, style, tool_text))
+
+
+def general_reply(provider, query: str, history: Optional[List[Dict]] = None,
+                  style: str = "", tool_text: str = "") -> str:
+    """通用回答：服务端强制在前面写清「资料里没有依据」。"""
+    body = _reply(provider, build_general_messages(query, history, style, tool_text))
+    return GENERAL_PREFIX + body
 
 
 def daily_stream(provider, query: str, history: Optional[List[Dict]] = None,
                  style: str = "", tool_text: str = "") -> Iterator[str]:
-    """流式日常回答：模型支持流式就走流式，否则退成一整段。"""
-    if provider is not None and hasattr(provider, "chat_stream"):
-        yield from provider.chat_stream(
-            build_daily_messages(query, history, style, tool_text),
-            temperature=0.6, max_tokens=700)
-        return
-    yield daily_reply(provider, query, history, style, tool_text)
+    yield from _stream(provider, build_daily_messages(query, history, style, tool_text))
+
+
+def general_stream(provider, query: str, history: Optional[List[Dict]] = None,
+                   style: str = "", tool_text: str = "") -> Iterator[str]:
+    yield GENERAL_PREFIX
+    yield from _stream(provider,
+                       build_general_messages(query, history, style, tool_text))

@@ -36,13 +36,15 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
-from answer.daily import daily_reply, daily_stream
+from answer.auto import fallback_detail, should_fallback
+from answer.daily import (daily_reply, daily_stream, general_reply,
+                          general_stream)
+from answer.pipeline import AnswerPipeline, AnswerResult
 from answer.tools import run_tools, tool_context, tool_will_run
 from answer.tutor import run_turn as tutor_turn
 from answer.cache import (cache_key, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
-from answer.pipeline import AnswerPipeline
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
@@ -95,8 +97,10 @@ class ChatRequest(BaseModel):
     history: List[ChatTurn] = Field(default_factory=list)
     style: str = Field("", max_length=400)
     collection: str = Field("", max_length=64)
-    # kb = 只按资料原文回答并附引用（默认）；chat = 日常对话，不检索、不带引用
-    mode: str = Field("kb", max_length=8)
+    # auto（默认）= 先检索，有依据就带引用，没依据改用标明的通用回答；
+    # kb = 严格只按资料原文回答，资料不够就拒答（给脚本 / 老客户端用）；
+    # chat = 旧版日常对话，不检索、不带引用
+    mode: str = Field("auto", max_length=8)
     # 设置里开着的工具名（服务端只认 answer/tools.py 的注册表）；资料模式一律忽略
     tools: List[str] = Field(default_factory=list, max_length=8)
     # 学习进度只存在浏览器里，由前端带一份摘要给「学习进度」工具用
@@ -707,6 +711,48 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
     }
 
 
+def _general_payload(res, answer: str, t0: float, plan=None,
+                     collection: str = "", tools: Optional[List[dict]] = None) -> dict:
+    """资料没有依据时的通用回答：不带引用，但保留召回与缺口，方便核对。"""
+    rewritten = plan.rewritten if plan and plan.rewritten != plan.query else ""
+    steps = _steps(res, plan, collection)
+    steps.append({"name": "通用回答", "ms": 0,
+                  "detail": fallback_detail(res.reason)})
+    for t in tools or []:
+        steps.append({"name": t.get("label", "工具"), "ms": 0,
+                      "detail": ("已取到实时数据" if t.get("ok")
+                                 else (t.get("detail") or "调用失败"))})
+    return {
+        "intent": plan.intent if plan else "kb",
+        "mode": "general",
+        "collection": "" if _is_preset(collection) else collection,
+        "refused": False,
+        "answer": answer,
+        "citations": [],
+        "reason": "",
+        "fallback_reason": res.reason,
+        "gap_detail": gap_detail(res.reason),
+        "hits": [_hit_payload(h) for h in res.hits],
+        "attempts": res.attempts,
+        "tools": tools or [],
+        "latency_ms": int((time.time() - t0) * 1000),
+        "rewritten_query": rewritten,
+        "trace": {
+            "intent": plan.intent if plan else "kb",
+            "rewritten_query": rewritten,
+            "steps": steps,
+        },
+    }
+
+
+def _general_error_payload(res, err: ProviderError, t0: float, plan=None,
+                           collection: str = "") -> dict:
+    """兜底生成也失败：如实拒答，不把空回答当成通用答案。"""
+    failed = AnswerResult(True, reason="provider_error: %s" % err,
+                          hits=res.hits, attempts=res.attempts)
+    return _answer_payload(failed, t0, plan, collection)
+
+
 def _non_kb_payload(plan, t0: float) -> dict:
     if plan.intent == "chitchat":
         answer = chitchat_reply(plan.query)
@@ -1021,6 +1067,23 @@ def chat(req: ChatRequest, request: Request,
     with _lock:
         res = pipeline.answer(plan.rewritten, style)
     _log_gap(req.query, res, req.collection)
+
+    # auto：资料里查不到可直接引用的依据时，改给明说的通用回答；
+    # kb（老客户端 / 脚本）保持严格拒答。
+    if req.mode != "kb" and should_fallback(res):
+        metrics.bump("chat_fallback")
+        tools = run_tools(req.tools, req.query, req.study)
+        try:
+            text = general_reply(_state.get("provider_impl"), plan.rewritten,
+                                 history, style, tool_context(tools))
+        except ProviderError as e:
+            metrics.bump("chat_refused")
+            return with_cache_meta(
+                _general_error_payload(res, e, t0, plan, req.collection))
+        metrics.bump("chat_answered")
+        return with_cache_meta(
+            _general_payload(res, text, t0, plan, req.collection, tools))
+
     metrics.bump("chat_refused" if res.refused else "chat_answered")
     payload = with_cache_meta(
         _answer_payload(res, t0, plan, req.collection))
@@ -1091,6 +1154,39 @@ def chat_stream(req: ChatRequest, request: Request,
                     continue
                 res = ev["result"]
                 _log_gap(req.query, res, req.collection)
+                if req.mode != "kb" and should_fallback(res):
+                    metrics.bump("chat_fallback")
+                    # 模型可能在说「资料不足」前已经吐过字，先清空再换成通用回答
+                    yield sse({"type": "reset",
+                               "note": "资料里没有依据，改用通用知识回答"})
+                    yield sse({"type": "status", "stage": "general"})
+                    tools = []
+                    if req.tools and tool_will_run(req.tools, req.query):
+                        yield sse({"type": "status", "stage": "tool",
+                                   "label": "实时数据"})
+                        tools = run_tools(req.tools, req.query, req.study)
+                        yield sse({"type": "status", "stage": "general"})
+                    parts = []
+                    try:
+                        for piece in general_stream(
+                                _state.get("provider_impl"), plan.rewritten,
+                                history, style, tool_context(tools)):
+                            if not piece:
+                                continue
+                            parts.append(piece)
+                            yield sse({"type": "delta", "text": piece})
+                    except ProviderError as e:
+                        metrics.bump("chat_refused")
+                        yield sse({"type": "error", "message": "生成服务暂时不可用"})
+                        yield sse({"type": "done", "data": with_cache_meta(
+                            _general_error_payload(res, e, t0, plan,
+                                                   req.collection))})
+                        return
+                    metrics.bump("chat_answered")
+                    payload = with_cache_meta(_general_payload(
+                        res, "".join(parts), t0, plan, req.collection, tools))
+                    yield sse({"type": "done", "data": payload})
+                    return
                 metrics.bump("chat_refused" if res.refused else "chat_answered")
                 payload = with_cache_meta(
                     _answer_payload(res, t0, plan, req.collection))
