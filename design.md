@@ -1,4 +1,4 @@
-# 引证 · 设计规范（v2.20）
+# 引证 · 设计规范（v2.21）
 
 > 视觉参考：DeepTutor 1.6.15 的 Cream（奶油）主题。
 > 落地位置：`web/index.html` 顶部 `:root`、「v0.20 奶油 · 陶土」、
@@ -305,6 +305,15 @@
   内边距 `9px 9px 9px 18px`、右侧 34px 圆形发送按钮。
 - 问答输入条本身承担 focus 外环，内部 `textarea` 必须
   `border: 0; outline: none`，不要再出现第二圈边框。
+- **下拉面板必须跟主题**：Windows 的 Chromium / Edge 原生 `select` 弹层不吃
+  `option` 背景色，深色 / 琉璃主题点开是一片白。所以所有 `select` 统一
+  `appearance: base-select`（只改外观，取值、键盘与读屏仍是原生 select），
+  展开的 `::picker(select)` 用 `--bg` 底、`--line` 边、10px 圆角、
+  `--shadow-raised`；选项文字 `--ink`，悬停 `--muted-surface`，选中
+  `--brand` / `--on-brand`，禁用 `--muted-soft`。玻璃主题的 `--card` 是
+  半透明，不能当面板底色。旧浏览器忽略 `base-select` 时回退到系统面板，
+  再用 `option` 的背景 / 文字色兜底。所有下拉共用这条全局规则，不要只在
+  某个弹层里单独补。
 
 ### 6.3 卡片
 
@@ -1032,6 +1041,7 @@
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
+| v2.21 | 2026-10-31 | 修下拉面板配色：Windows Chromium / Edge 的原生 select 弹层不吃 option 背景色，深色与琉璃主题点开是一片白。所有 `select` 改用 `appearance: base-select`，`::picker(select)` 用 `--bg` / `--line` / `--shadow-raised`，选项 `--ink`、悬停 `--muted-surface`、选中 `--brand` / `--on-brand`、禁用 `--muted-soft`；旧浏览器回退系统面板并用 option 颜色兜底。知识库新建、成员角色、练习年份 / 科目、设置统计窗口与题库导入等所有下拉共用这一条规则 |
 | v2.20 | 2026-10-31 | 知识库墙按可见性分区：「公司知识库 / 我的知识库」两个 `.lib-section-title`（11.5px/600 `--muted`、横跨整行），未登录时只留内置库 + `.lib-login` 引导面板；卡片徽标扩成「内置 / 个人 / 公司」三种，底部写「可编辑 / 只读」，删除只在可管理（`can_manage`）时出现。知识库详情按 `can_write` 切换内容编辑，按 `can_manage` 切换删除与成员入口：只读时隐藏加资料卡、删除与成员入口，工具栏下加 `.lib-readonly` 说明条，资料行保留「片段」但隐藏「重切分 / 删除」，片段弹层 textarea 只读。新增成员弹层（`.member-add` + 沿用 `.list-row` 的成员行，角色只有可编辑 / 只读）。只加 `.lib-section-title` / `.lib-login*` / `.lib-readonly` / `.member-add` 四组样式，不引入新颜色与字号 |
 | v2.19 | 2026-10-31 | 设置页「个人」组新增第一项「账号」：未登录时竖排表单（用户名 / 密码 + 登录 / 切换注册 + 状态行，进入页面不自动聚焦），已登录时只读事实（用户名 / 注册时间 / 上次同步）+「立即同步」+「退出登录」，下方「同步范围」两行事实说明哪些数据同步、哪些不同步。沿用 `.set-row-block` / `.set-account` / `.set-facts` / `.settings-status`，不引入新颜色、字号或组件。分区标题写「登录与同步」，避免与左侧导航项「账号」重复 |
 | v2.18 | 2026-10-31 | 知识库支持图片 OCR：拖拽区副行与文件选择器加入 PNG / JPG / WebP / BMP / GIF / TIFF，「图片暂不支持 OCR」改为「图片会走本地 OCR，太糊可能识别不出」；上传任务行沿用 v2.17 的样式，图片的「解析中」会停留几秒再变「已索引」，失败原因（没识别出文字 / 图片打不开 / 分辨率太大）直接写在行内，不新增颜色或组件 |

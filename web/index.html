@@ -137,6 +137,29 @@
       text-rendering: optimizeLegibility;
     }
     button, input, textarea, select { font: inherit; }
+    /* 原生下拉面板在 Windows 的 Chromium / Edge 里不吃 option 背景色，
+       深色主题点开仍是一片白；改成可定制的 base-select，只影响外观，
+       键盘、读屏和表单取值仍走原生 select。旧浏览器会忽略这条声明回退
+       到系统面板，下面的 option 颜色在能生效的浏览器里兜底。
+       面板底用不透明的 --bg：玻璃主题的 --card 是半透明，放白底上会发灰。 */
+    select, select::picker(select) { appearance: base-select; }
+    select::picker-icon { color: var(--muted); }
+    select::picker(select) {
+      margin-top: 4px; padding: 4px;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: var(--bg); color: var(--ink);
+      box-shadow: var(--shadow-raised);
+    }
+    select option {
+      padding: 7px 10px; border-radius: 6px;
+      background-color: var(--bg); color: var(--ink);
+    }
+    select option:hover, select option:focus { background-color: var(--muted-surface); }
+    select option:checked {
+      background-color: var(--brand); color: var(--on-brand);
+    }
+    select option:checked::checkmark { display: none; }
+    select option:disabled { color: var(--muted-soft); }
     button { cursor: pointer; }
     [hidden] { display: none !important; }
 
