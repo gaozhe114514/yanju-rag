@@ -16,7 +16,10 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # ubuntu-latest 已经是 24.04，而 setup-python 在 24.04 上不再提供 3.9 的
+    # 预编译包（3.9 已 EOL），日志会直接报 "version '3.9' ... was not found"。
+    # 项目本体和 Docker 镜像仍是 3.9，先固定到 22.04；等整体升到 3.11 再换回 latest。
+    runs-on: ubuntu-22.04
     env:
       # 强制 UTF-8，避免 runner 上非 UTF-8 输出编码把中文用例名或断言打崩。
       PYTHONUTF8: "1"
