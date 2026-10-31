@@ -140,6 +140,28 @@ def _tables(lines: Sequence[str]) -> List[dict]:
     return [t for t in tables if len(t["rows"]) >= 2]
 
 
+# 表头识别：导出的 xlsx 不一定有表头，第一行直接就是数据。把数据行当表头吃掉，
+# 人数就会少一个（线上名单因此报成 29 行、男 17），所以先判断第一行是什么。
+_NUM_CELL_RE = re.compile(r"^\d+(?:\.\d+)?$")
+
+
+def _has_header(rows: Sequence[Sequence[str]]) -> bool:
+    """第一行是表头还是数据。
+
+    表头通常全是文字标签；第一行只要有数字（学号、分数、日期），或者某个值
+    在下面同列又出现一次（性别「男 / 女」这种），就按数据处理。拿不准时仍按
+    表头处理，保持有表头的表格读法不变。
+    """
+    first = [c.strip() for c in rows[0]]
+    if any(_NUM_CELL_RE.match(c) for c in first if c):
+        return False
+    for i, cell in enumerate(first):
+        if cell and any(i < len(row) and row[i].strip() == cell
+                        for row in rows[1:]):
+            return False
+    return True
+
+
 def _matches(value: str, query: str) -> bool:
     """问题里点到某个取值了吗。
 
@@ -157,8 +179,10 @@ def _matches(value: str, query: str) -> bool:
 
 def _column_text(name: str, values) -> str:
     name = name or "未命名列"
+    # 无表头的表格用「第 N 列」，不再套一层「列」字
+    label = name if re.match(r"^第 \d+ 列$", name) else "「%s」列" % name
     pairs = "、".join("%s %d 行" % (v, n) for v, n in values)
-    return "「%s」列：%s" % (name, pairs)
+    return "%s：%s" % (label, pairs)
 
 
 # 编号类列不做平均/求和：学号、床位、宿舍号加起来没有意义
@@ -207,13 +231,22 @@ def table_stats(chunks: Sequence[Chunk], query: str) -> Optional[TableStats]:
     numbers: List[int] = []
     for title, lines in merge_docs(chunks):
         for sheet in _tables(lines)[:MAX_TABLES]:
-            header, data = sheet["rows"][0], sheet["rows"][1:]
+            rows = sheet["rows"]
+            has_header = _has_header(rows)
+            if has_header:
+                header, data = rows[0], rows[1:]
+            else:
+                width = max(len(r) for r in rows)
+                header = ["第 %d 列" % (i + 1) for i in range(width)]
+                data = rows
             if not data:
                 continue
             label = "《%s》" % (title or "资料")
             if sheet["name"]:
                 label += "（工作表：%s）" % sheet["name"]
-            lines_out = ["%s：有效数据 %d 行（不含表头）" % (label, len(data))]
+            suffix = "（不含表头）" if has_header else ""
+            lines_out = ["%s：有效数据 %d 行%s"
+                         % (label, len(data), suffix)]
             numbers.append(len(data))
 
             reported = 0

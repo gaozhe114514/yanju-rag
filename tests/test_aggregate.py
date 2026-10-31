@@ -98,6 +98,24 @@ class TableStatsTest(unittest.TestCase):
         self.assertIn(18, stats.numbers)
         self.assertIn(12, stats.numbers)
 
+    def test_headerless_table_does_not_lose_the_first_row(self):
+        # 线上那份名单的 xlsx 没有表头：第一行就是陈畅，被当成表头吃掉后
+        # 变成 29 行、男 17。第一行带长学号，必须按数据处理。
+        text = "\n".join(["工作表：Sheet1"] + roster_text().splitlines()[2:])
+        stats = table_stats(doc_chunks(text), "智科2301班男生有多少女生有多少")
+        self.assertIn("有效数据 30 行", stats.text)
+        self.assertIn("男 18 行", stats.text)
+        self.assertIn("女 12 行", stats.text)
+        self.assertNotIn("男 17 行", stats.text)
+        self.assertTrue(check_counts("智科2301班男生17人，女生12人。", stats))
+
+    def test_headerless_table_without_ids_is_still_data(self):
+        text = "\n".join(["工作表：名单", "张三 | 男", "李四 | 女", "王五 | 男"])
+        stats = table_stats(doc_chunks(text), "男生有多少")
+        self.assertIn("有效数据 3 行", stats.text)
+        self.assertIn("男 2 行", stats.text)
+        self.assertIn("女 1 行", stats.text)
+
     def test_columns_query_does_not_mention_are_not_dumped(self):
         stats = table_stats(roster_chunks(), "男生有多少女生有多少")
         self.assertNotIn("学号」列", stats.text)

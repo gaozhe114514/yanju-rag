@@ -1479,13 +1479,13 @@
 
     /* ---------- v0.22 学习 · 空间 · 看板 ---------- */
     .main[data-page="learning"] { --content-max: 900px; }
-    .main[data-subpage="notebooks"], .main[data-subpage="journal"],
+    .main[data-subpage="notebooks"],
     .main[data-subpage="personas"], .main[data-subpage="skills"],
     .main[data-subpage="memory"], .main[data-subpage="history"] {
       --content-max: 900px;
     }
     #page-mastery.active, #page-space.active, #page-history.active,
-    #page-notebooks.active, #page-journal.active, #page-personas.active,
+    #page-notebooks.active, #page-personas.active,
     #page-skills.active, #page-memory.active,
     #page-kanban.active { display: block; overflow-y: auto; }
     .subnav { display: flex; flex-wrap: wrap; }
@@ -1625,22 +1625,6 @@
     }
     .note-meta { margin-top: 8px; color: var(--muted); font-size: 11px; }
 
-    /* 日志 */
-    .journal-mission { color: var(--ink-2); font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
-    .timeline { display: flex; flex-direction: column; }
-    .tl-item { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px dashed var(--line); }
-    .tl-item:last-child { border-bottom: 0; }
-    .tl-dot {
-      flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%;
-      background: var(--brand);
-    }
-    .tl-dot.practice { background: var(--ok); }
-    .tl-dot.mastery { background: var(--warn); }
-    .tl-dot.task { background: var(--ink-3); }
-    .tl-body { flex: 1; min-width: 0; }
-    .tl-title { color: var(--ink); font-size: 13px; font-weight: 600; }
-    .tl-text { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.65; }
-    .tl-time { flex: none; color: var(--muted); font-size: 10.5px; }
 
     /* 精通之路 自测卡（v0.28 起路线列表与清单样式在文件末尾） */
     .quiz-inline {
@@ -2318,8 +2302,6 @@
     .mp-detail-sum { color: var(--muted); font-size: 12px; line-height: 1.7; }
     .mp-detail-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .mp-detail .quiz-inline { background: var(--card); }
-
-    .tl-dot.mastery { background: var(--info); }
 
     @media (max-width: 860px) {
       .mp-card { padding: 12px 13px; gap: 10px; }
@@ -3317,7 +3299,6 @@
       <button data-space="bank">题库</button>
       <button data-space="knowledge">考点</button>
       <button data-space="notebooks">笔记本</button>
-      <button data-space="journal">日志</button>
       <button data-space="history">对话</button>
       <button data-space="personas">人格</button>
       <button data-space="skills">技能</button>
@@ -3564,10 +3545,6 @@
       <div class="page-inner narrow"><div id="notebook-root"></div></div>
     </section>
 
-    <section class="page" id="page-journal">
-      <div class="page-inner narrow"><div id="journal-root"></div></div>
-    </section>
-
     <section class="page" id="page-personas">
       <div class="page-inner narrow"><div id="persona-root"></div></div>
     </section>
@@ -3699,6 +3676,7 @@
   const PARTNER_KEY = '408-partners-v1';
   const PARTNER_CHAT_KEY = '408-partner-chats-v1';
   const NOTEBOOK_KEY = '408-notebooks-v1';
+  // 学习日志已下线；键留着，只用于「设置 → 本机数据」把旧数据清掉
   const JOURNAL_KEY = '408-journal-v1';
   const MASTERY_KEY = '408-mastery-v1';
   const TASK_KEY = '408-task-board-v1';
@@ -3735,7 +3713,6 @@
     space: {title: '学习空间', sub: '对话、笔记、题目与个性化设置，集中在一处'},
     history: {title: '聊天历史', sub: '回顾、重命名或继续之前的对话'},
     notebooks: {title: '笔记本', sub: '把对话里的答案和自己的想法收在一起'},
-    journal: {title: '学习日志', sub: '当前目标、上次交接和确认过的学习记录'},
     personas: {title: '人格预设', sub: '换一种讲法，引用规则不变'},
     skills: {title: '技能', sub: '打开或关掉讲解方式，下一次提问生效'},
     memory: {title: '学习记忆', sub: '记下目标、薄弱点和偏好'},
@@ -3969,7 +3946,6 @@
     memory: loadJSON(MEMORY_KEY, {}),
     notebooks: loadList(NOTEBOOK_KEY),
     notebookId: '',
-    journal: loadJournal(),
     mastery: loadMastery(),
     masteryId: '',
     masteryOpen: '',
@@ -4952,17 +4928,8 @@
       // 拒答没有正文可存，不给「存到笔记本」，免得存出一条空笔记
       const nb = data.refused ? null : el('button', 'tool-btn', '存到笔记本');
       if (nb) nb.addEventListener('click', () => saveAnswerToNotebook(msg));
-      const jr = el('button', 'tool-btn', '记入日志');
-      jr.addEventListener('click', () => {
-        journalAdd('chat', clip(msg.query, 40),
-          data.refused
-            ? (data.gap_detail ? '缺：' + data.gap_detail : '资料未覆盖，已记录这个缺口。')
-            : clip(data.answer, 160));
-        toast('已记入学习日志');
-      });
       tools.appendChild(cp);
       if (nb) tools.appendChild(nb);
-      tools.appendChild(jr);
       meta.appendChild(tools);
     }
 
@@ -7572,9 +7539,6 @@
     if (!qz || qz.finished) return;
     if (qz.index + 1 >= qz.questions.length) {
       qz.finished = true;
-      journalAdd('practice', '完成一组小测',
-        '答对 ' + qz.correct + ' / ' + qz.questions.length + ' 题' +
-        (qz.quizSubject ? ' · ' + subjectName(qz.quizSubject) : ''));
     } else {
       qz.index += 1;
     }
@@ -8152,135 +8116,6 @@
     const extras = styleExtras();
     if (extras) bits.push(extras);
     return bits.join('；').slice(0, 400);
-  }
-
-  /* ---------- 学习日志 ---------- */
-  function loadJournal() {
-    const raw = loadJSON(JOURNAL_KEY, null);
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return {goal: '', records: []};
-    }
-    return {
-      goal: String(raw.goal || ''),
-      records: Array.isArray(raw.records) ? raw.records : []
-    };
-  }
-
-  function saveJournal() { saveKey(JOURNAL_KEY, state.journal); }
-
-  function journalAdd(type, title, insight) {
-    state.journal.records.unshift({
-      id: uid('j'), type: type || 'note', title: String(title || '').slice(0, 80),
-      insight: String(insight || '').slice(0, 600), ts: Date.now()
-    });
-    state.journal.records = state.journal.records.slice(0, 200);
-    saveJournal();
-    if (state.page === 'journal') renderJournal();
-  }
-
-  function journalHandoff() {
-    const bits = [];
-    const conv = state.conversations.slice()
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
-    if (conv) bits.push('上次问到：' + conv.title);
-    const last = Object.values(state.practice.history || {})
-      .sort((a, b) => (b.last_at || 0) - (a.last_at || 0))[0];
-    if (last) {
-      bits.push('最近练到：' + clip(last.stem, 38) +
-        '（' + (last.result === 'known' ? '会了' : '还不会') + '）');
-    }
-    const path = state.mastery.slice()
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
-    if (path) bits.push('精通之路：' + path.name + ' ' + masteryStats(path).pct + '%');
-    return bits.join('；') || '还没有学习记录，先去问一句或练一题吧。';
-  }
-
-  const JOURNAL_TYPES = {
-    chat: '问答', practice: '练习', mastery: '精通之路', task: '任务', note: '手记'
-  };
-
-  function renderJournal() {
-    const root = clearNode('#journal-root');
-    if (!root) return;
-    const goal = el('textarea');
-    goal.value = state.journal.goal || '';
-    goal.placeholder = '例如：11 月前把数据结构与算法的真题过一遍，重点补图论。';
-    goal.rows = 3;
-    const goalRow = field('我的目标', goal, '目标只存在这台设备上，不会上传。');
-    const saveBtn = el('button', 'primary', '保存目标');
-    saveBtn.addEventListener('click', () => {
-      state.journal.goal = goal.value.trim();
-      saveJournal();
-      toast('目标已保存');
-    });
-    const actions = el('div', 'form-actions');
-    actions.appendChild(saveBtn);
-    goalRow.appendChild(actions);
-    const mission = el('div', 'panel');
-    mission.appendChild(el('div', 'panel-title', '当前目标'));
-    mission.appendChild(goalRow);
-    root.appendChild(mission);
-
-    const handoff = el('div', 'panel');
-    const hHead = el('div', 'panel-head');
-    hHead.appendChild(el('div', 'panel-title', '上次交接'));
-    const addBtn = el('button', 'ghost', '记一条');
-    addBtn.addEventListener('click', openJournalEditor);
-    hHead.appendChild(addBtn);
-    handoff.appendChild(hHead);
-    handoff.appendChild(el('div', 'journal-mission', journalHandoff()));
-    root.appendChild(handoff);
-
-    const list = el('div', 'panel');
-    const lHead = el('div', 'panel-head');
-    lHead.appendChild(el('div', 'panel-title', '确认过的学习记录'));
-    lHead.appendChild(el('span', 'panel-sub', state.journal.records.length + ' 条'));
-    list.appendChild(lHead);
-    if (!state.journal.records.length) {
-      list.appendChild(el('div', 'empty-panel',
-        '还没有记录。答完题后点「记入日志」，或在这里手记一条。'));
-    } else {
-      const tl = el('div', 'timeline');
-      state.journal.records.slice(0, 60).forEach(rec => {
-        const item = el('div', 'tl-item');
-        item.appendChild(el('span', 'tl-dot ' + rec.type));
-        const body = el('div', 'tl-body');
-        body.appendChild(el('div', 'tl-title', rec.title || '学习记录'));
-        if (rec.insight) body.appendChild(el('div', 'tl-text', rec.insight));
-        item.appendChild(body);
-        item.appendChild(el('span', 'tl-time',
-          formatWhen(rec.ts) + ' · ' + (JOURNAL_TYPES[rec.type] || '记录')));
-        tl.appendChild(item);
-      });
-      list.appendChild(tl);
-    }
-    root.appendChild(list);
-  }
-
-  function openJournalEditor() {
-    const wrap = el('div', 'form-grid');
-    const title = el('input');
-    title.placeholder = '记下什么？';
-    title.maxLength = 80;
-    const text = el('textarea');
-    text.placeholder = '一句话写下今天真正弄懂的东西。';
-    wrap.appendChild(field('标题', title));
-    wrap.appendChild(field('内容', text));
-    const acts = el('div', 'form-actions');
-    const cancel = el('button', 'ghost', '取消');
-    cancel.addEventListener('click', closeModal);
-    const save = el('button', 'primary', '保存');
-    save.addEventListener('click', () => {
-      if (!title.value.trim()) { title.focus(); return; }
-      journalAdd('note', title.value.trim(), text.value.trim());
-      closeModal();
-      toast('已记入学习日志');
-    });
-    acts.appendChild(cancel);
-    acts.appendChild(save);
-    wrap.appendChild(acts);
-    openModal('记一条', wrap);
-    title.focus();
   }
 
   /* ---------- 知识库：用户自建资料库 ---------- */
@@ -9193,9 +9028,6 @@
         {page: 'notebooks', icon: 'i-book', title: '笔记本',
          desc: '把答案、引用和自己的手记收在一起。',
          count: state.notebooks.length + ' 个笔记本'},
-        {page: 'journal', icon: 'i-pen', title: '学习日志',
-         desc: '当前目标、上次交接和确认过的学习记录。',
-         count: state.journal.records.length + ' 条记录'},
         {page: 'bank', icon: 'i-list', title: '题库',
          desc: '内置 408 真题是预置题库，也可以导入或用自己的资料出题。',
          count: (1 + state.decks.length) + ' 个题库' +
@@ -9930,8 +9762,6 @@
     const complete = s.total > 0 && s.done >= s.total;
     if (complete && !path.completedAt) {
       path.completedAt = Date.now();
-      journalAdd('mastery', '走完精通之路：' + path.name,
-        '完成 ' + s.total + ' 个考点 · ' + subjectName(path.subject));
       return true;
     }
     if (!complete) path.completedAt = 0;
@@ -12114,10 +11944,6 @@
     } else if (key === correct) {
       toast('答对了，这一步完成');
     }
-    if (key !== correct) {
-      journalAdd('mastery', '自测错题：' + step.title,
-        '在精通之路「' + path.name + '」里选错，已保留在路线里等待重试。');
-    }
   }
 
   /* ---------- 任务看板 ---------- */
@@ -12353,7 +12179,6 @@
     saveBoard();
     renderKanban();
     if (status === 'done') {
-      journalAdd('task', '完成任务：' + t.title, '从看板移入「已完成」。');
       toast('任务完成：' + t.title);
     }
   }
@@ -12427,7 +12252,7 @@
     history.pushState(null, '', target);
   }
 
-  const SPACE_PAGES = ['library', 'bank', 'knowledge', 'notebooks', 'journal',
+  const SPACE_PAGES = ['library', 'bank', 'knowledge', 'notebooks',
     'history', 'personas', 'skills', 'memory'];
   const DETAIL_PAGES = ['mastery', 'notebooks', 'deck', 'collection'];
 
@@ -12587,8 +12412,6 @@
       renderHistory();
     } else if (page === 'notebooks') {
       renderNotebooks();
-    } else if (page === 'journal') {
-      renderJournal();
     } else if (page === 'personas') {
       renderPersonas();
     } else if (page === 'skills') {
@@ -13185,7 +13008,6 @@
     setFact(facts, '对话', state.conversations.length + ' 段');
     setFact(facts, '精通之路', state.mastery.length + ' 条 · 已掌握 ' + done + ' / ' + steps);
     setFact(facts, '笔记本', state.notebooks.length + ' 个');
-    setFact(facts, '学习日志', state.journal.records.length + ' 条');
     factsRow.main.appendChild(facts);
     secAll.body.appendChild(factsRow.row);
     body.appendChild(secAll.sec);
