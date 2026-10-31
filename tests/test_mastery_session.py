@@ -9,7 +9,7 @@ import unittest
 
 from answer.tutor import (clean_assess, clean_quiz, current_point,
                           engine_mastered, gate_status, grade_choice,
-                          normalize_mode, run_session_turn, run_turn)
+                          normalize_mode, run_session_turn, run_turn, wants_study)
 
 
 def outline(points, module="第一条"):
@@ -321,6 +321,50 @@ class RunTurnRoutingTest(unittest.TestCase):
                                      "mode": "study"}, [])
         self.assertEqual(result["mode"], "study")
         self.assertIn("【当前模式】学习", provider.calls[0][0][1]["content"])
+
+    def test_start_request_from_outline_switches_and_teaches(self):
+        """大纲定稿后说「开始学习吧」= 模式请求：这一轮就要开讲。"""
+        provider = FakeProvider([json.dumps({"say": "先讲第一段。", "quiz": None,
+                                             "assess": None})])
+        result = run_turn(provider, {"message": "开始学习吧", "goal": "复习线代",
+                                     "outline": outline([point()]),
+                                     "mode": "outline"}, [])
+        self.assertEqual(result["mode"], "study")
+        self.assertEqual(result.get("switched"), "study")
+        self.assertIn("【当前模式】学习", provider.calls[0][0][1]["content"])
+        self.assertIn("【这一轮该讲】", provider.calls[0][0][1]["content"])
+
+    def test_outline_discussion_is_not_a_start_request(self):
+        provider = FakeProvider([json.dumps({"say": "我把第二模块拆细。",
+                                             "stage": "draft", "outline": None})])
+        result = run_turn(provider, {"message": "第二模块拆细一点，再加一个实验环节",
+                                     "goal": "复习线代",
+                                     "outline": outline([point()]),
+                                     "mode": "outline"}, [])
+        self.assertEqual(result["mode"], "outline")
+        self.assertNotIn("switched", result)
+
+    def test_start_request_without_outline_stays_outline(self):
+        provider = FakeProvider([json.dumps({
+            "say": "先定大纲。", "stage": "intake", "ask": None, "outline": None})])
+        result = run_turn(provider, {"message": "开始学习吧", "goal": "复习线代",
+                                     "outline": {"modules": []},
+                                     "mode": "outline"}, [])
+        self.assertEqual(result["mode"], "outline")
+        self.assertNotIn("switched", result)
+
+
+class WantsStudyTest(unittest.TestCase):
+    """只有很短的一句「开始学吧」才算指令，不能把正经讨论当请求。"""
+
+    def test_plain_start_phrases(self):
+        for text in ("开始学习吧", "好的，开始学", "那就开始上课吧", "继续学吧", "开始！"):
+            self.assertTrue(wants_study(text), text)
+
+    def test_discussion_is_not_a_command(self):
+        for text in ("", "第二模块拆细一点，再加一个实验环节",
+                     "开始之前先看看资料够不够？", "我想先换个目标"):
+            self.assertFalse(wants_study(text), text)
 
 
 class GuardTest(unittest.TestCase):

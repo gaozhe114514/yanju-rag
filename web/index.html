@@ -2332,23 +2332,6 @@
       margin: 3px 0 2px; color: var(--muted); font-size: 11.5px; line-height: 1.6;
     }
 
-    .mp-panes {
-      display: flex; gap: 4px; width: fit-content; max-width: 100%;
-      margin: 2px 0 2px; padding: 3px; border: 1px solid var(--line);
-      border-radius: 10px; background: var(--cream);
-    }
-    .mp-pane {
-      display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
-      border: 0; border-radius: 7px; background: transparent; color: var(--muted);
-      font-size: 12px; transition: background .15s, color .15s;
-    }
-    .mp-pane:hover { color: var(--ink); }
-    .mp-pane.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-sm); }
-    .mp-pane:disabled { color: var(--muted-soft); cursor: default; }
-    .mp-pane.on:disabled { background: transparent; box-shadow: none; font-weight: 400; }
-    .mp-pane-count { color: var(--info); font-size: 11px; font-variant-numeric: tabular-nums; }
-    .mp-pane-hint { color: var(--muted-soft); font-size: 10.5px; }
-
     .ms-studio {
       display: grid; grid-template-columns: 268px minmax(0, 1fr);
       gap: 16px; align-items: start; max-width: 900px; margin-top: 10px;
@@ -2712,6 +2695,85 @@
       .ms-ask-foot { flex-wrap: wrap; padding: 2px 10px 10px; }
       .ms-composer { padding: 8px 10px 10px; }
       .ms-send { padding: 9px 12px; }
+    }
+
+    /* ---------- v0.55 精通之路详情页：占满内容区，大纲贴左，会话按问答页读宽 ---------- */
+    /* 详情页不再是一张 900px 的居中卡片：页头、返回、路线信息也一起贴左，免得标题居中而正文在左。
+       列表页不套这些规则，仍是原来的居中版式。 */
+    .main.mastery-detail .topbar,
+    .main.mastery-detail .subnav {
+      max-width: none; margin-left: 0; margin-right: 0;
+    }
+    #page-mastery.detail.active {
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #page-mastery.detail .page-inner {
+      display: flex; flex-direction: column; flex: 1; min-height: 0;
+      width: 100%; max-width: none; margin: 0; padding: 8px 36px 20px;
+    }
+    #page-mastery.detail #mastery-root {
+      display: flex; flex-direction: column; flex: 1; min-height: 0;
+    }
+    #page-mastery.detail .ms-studio {
+      display: grid; flex: 1; min-height: 0; margin-top: 6px; margin-left: -36px;
+      grid-template-columns: 272px minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr); gap: 24px;
+      align-items: stretch; max-width: none;
+    }
+    /* 大纲：不再是浮在页面里的卡片，而是直接贴在左侧导航栏上的一栏，
+       和会话只隔一条竖线；栏内文字仍与页头对齐（36px = page-inner 的左内边距）。 */
+    #page-mastery.detail .ms-rail {
+      position: static; height: 100%; max-height: none; min-height: 0;
+      border: 0; border-right: 1px solid var(--line); border-radius: 0;
+      background: transparent; box-shadow: none;
+    }
+    #page-mastery.detail .ms-rail-head { padding: 0 14px 10px 36px; border-bottom: 0; }
+    #page-mastery.detail .ms-rail-body { flex: 1; min-height: 0; padding: 10px 14px 0 36px; }
+    #page-mastery.detail .ms-rail-bar { margin: 0 14px 8px 36px; }
+    /* 会话：不再套卡，按问答页的读宽居中，头、消息、输入条同一条 860px 列 */
+    #page-mastery.detail .ms-chat {
+      height: 100%; min-height: 0; border: 0; border-radius: 0;
+      background: transparent; box-shadow: none; overflow: hidden;
+    }
+    #page-mastery.detail .ms-chat-head {
+      width: 100%; max-width: 860px; margin: 0 auto; padding: 0 0 12px;
+    }
+    #page-mastery.detail .ms-log {
+      width: 100%; max-height: none; min-height: 0; padding: 18px 0 20px;
+    }
+    #page-mastery.detail .ms-log > * {
+      width: 100%; max-width: 860px; margin-left: auto; margin-right: auto;
+    }
+    #page-mastery.detail .ms-starters,
+    #page-mastery.detail .ms-composer {
+      width: 100%; max-width: 860px; margin-left: auto; margin-right: auto;
+    }
+    #page-mastery.detail .ms-composer {
+      padding: 10px 0 0; border-top: 1px solid var(--line); background: transparent;
+    }
+    #page-mastery.detail .ms-starters { padding: 10px 0 0; }
+
+    @media (max-width: 860px) {
+      /* 手机回到普通文档流：会话在上、大纲在下，页面自己滚动 */
+      #page-mastery.detail.active { display: block; overflow-y: auto; }
+      #page-mastery.detail .page-inner { display: block; height: auto; padding: 12px 16px 24px; }
+      #page-mastery.detail #mastery-root { display: block; }
+      #page-mastery.detail .ms-studio {
+        display: flex; flex-direction: column; gap: 14px; margin: 8px 0 0;
+      }
+      #page-mastery.detail .ms-chat { order: -1; height: auto; }
+      #page-mastery.detail .ms-log { max-height: 56vh; min-height: 340px; padding: 14px 0; }
+      #page-mastery.detail .ms-rail {
+        height: auto; max-height: 260px; padding-top: 10px;
+        border-right: 0; border-top: 1px solid var(--line);
+      }
+      #page-mastery.detail .ms-rail-head { padding: 0 0 8px; }
+      #page-mastery.detail .ms-rail-body { padding: 8px 0 0; }
+      #page-mastery.detail .ms-rail-bar { margin: 0 0 8px; }
+      #page-mastery.detail .ms-chat-head,
+      #page-mastery.detail .ms-log > *,
+      #page-mastery.detail .ms-starters,
+      #page-mastery.detail .ms-composer { max-width: none; }
     }
 
     /* 精通之路的新建向导：目标 → 素材 → 大纲，照 DeepTutor 的两步弹窗 + 大纲会话 */
@@ -9775,6 +9837,11 @@
     const root = clearNode('#mastery-root');
     if (!root) return;
     const path = masteryById(state.masteryId);
+    // 详情页占满内容区（页头也贴左）；列表页保持原来的居中版式
+    const pageEl = document.querySelector('#page-mastery');
+    const mainEl = document.querySelector('.main');
+    if (pageEl) pageEl.classList.toggle('detail', !!path);
+    if (mainEl) mainEl.classList.toggle('mastery-detail', !!path);
     if (path) { renderMasteryDetail(root, path); return; }
     state.masteryId = '';
 
@@ -10265,6 +10332,8 @@
      资料，问几件从资料里看不出来的事，再起草模块与知识点；学习者说改哪里
      就只改哪里。会话存在本机（和路线一起），服务端每一轮都是无状态的。 */
   const MASTERY_OPENING = '用我选的资料，和我一起把这条精通之路的大纲定下来。';
+  // 切换到学习模式时自动发出的第一句：导师据此直接讲第一个知识点，而不是只回一句「好的」
+  const MASTERY_STUDY_OPENING = '开始学习吧，从当前这个知识点开始讲。';
   const KP_TYPE_LABELS = {memory: '记忆', procedure: '步骤', concept: '概念', design: '判断'};
   const KP_TYPE_HINTS = {
     memory: '要记住的事实', procedure: '步骤技能',
@@ -10693,8 +10762,9 @@
     return path.mode === 'study' || path.mode === 'review' ? path.mode : 'outline';
   }
 
-  function masterySetMode(path, mode) {
-    if (masteryMode(path) === mode) return;
+  function masterySetMode(path, mode, opts) {
+    const before = masteryMode(path);
+    if (before === mode) return;
     if (mode !== 'outline' && !(path.steps || []).length) {
       toast('先把大纲定下来，才有得学');
       return;
@@ -10703,6 +10773,19 @@
     path.updatedAt = Date.now();
     saveMastery();
     renderMastery();
+    // 照 DeepTutor：切到学习就在这一轮开讲，别把学习者丢进一张空会话。
+    // 从大纲里点某个知识点时由调用方自己发更具体的话，用 silent 跳过。
+    if (mode === 'study' && before === 'outline' && !(opts && opts.silent)) {
+      masterySend(path, MASTERY_STUDY_OPENING);
+    }
+  }
+
+  // 学习者在定大纲模式里直接说「开始学习」：切模式并在同一轮开讲，不用先找按钮
+  function masteryWantsStudy(text) {
+    const t = String(text || '').trim();
+    if (!t || t.length > 20) return false;
+    return /^(好[的]?[，,]?\s*)?(我们|那就|现在)?\s*(开始|进入)(学习|上课|学)?(吧|啊|呀|了)?[。！!～~]*$/.test(t)
+      || /^(好[的]?[，,]?\s*)?(继续|接着)(学习|学)?(吧|啊|呀)?[。！!～~]*$/.test(t);
   }
 
   // 服务端判完分会把整份大纲带回来；这里只把每点的证据合并回去，不动结构
@@ -10826,6 +10909,11 @@
     if (!path || path.busy) return;
     text = String(text || '').trim();
     if (!text) return;
+    // 定大纲模式下说「开始学习」= 切到学习并在这一轮开讲（DeepTutor 的 mode 语义）
+    if (masteryMode(path) === 'outline' && (path.steps || []).length && masteryWantsStudy(text)) {
+      path.mode = 'study';
+      path.updatedAt = Date.now();
+    }
     const history = (path.chat || []).slice();
     path.chat = path.chat || [];
     path.chat.push({role: 'user', content: text, at: Date.now(), mode: masteryMode(path)});
@@ -11403,7 +11491,8 @@
         row.appendChild(kind);
         row.addEventListener('click', () => {
           if (done) { openMasteryEvidence(path, p, m); return; }
-          masterySetMode(path, 'study');
+          // 下面自己会发针对这个知识点的话，别再让切模式顺手发一句
+          masterySetMode(path, 'study', {silent: true});
           if (deferred) {
             masteryControl(path, 'resume', p.id);
             return;
@@ -11642,35 +11731,6 @@
     return box;
   }
 
-  function masteryPaneSwitch(path, stats, mode) {
-    const bar = el('div', 'mp-panes');
-    bar.setAttribute('role', 'tablist');
-    bar.setAttribute('aria-label', '精通之路的三种模式');
-    const due = masteryDue(path).length;
-    MASTERY_MODES.forEach(([key, label, hint]) => {
-      const b = el('button', 'mp-pane' + (mode === key ? ' on' : ''));
-      b.type = 'button';
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', mode === key ? 'true' : 'false');
-      b.title = hint;
-      b.appendChild(el('span', 'mp-pane-label', label));
-      if (key === 'study' && stats.total) {
-        b.appendChild(el('span', 'mp-pane-count', stats.done + '/' + stats.total));
-      }
-      if (key === 'review' && due) {
-        b.appendChild(el('span', 'mp-pane-count', String(due)));
-      }
-      if (key !== 'outline' && !stats.total) {
-        b.disabled = true;
-        b.setAttribute('aria-disabled', 'true');
-        b.appendChild(el('span', 'mp-pane-hint', '待大纲'));
-      }
-      b.addEventListener('click', () => masterySetMode(path, key));
-      bar.appendChild(b);
-    });
-    return bar;
-  }
-
   function renderMasteryDetail(root, path) {
     const stats = masteryStats(path);
     const next = nextMasteryStep(path);
@@ -11730,9 +11790,8 @@
     acts.appendChild(del);
     head.appendChild(acts);
     root.appendChild(head);
-    root.appendChild(masteryPaneSwitch(path, stats, pane));
 
-    // 三种模式共用同一个工作台：左边大纲，右边会话
+    // 三种模式共用同一个工作台：左边大纲，右边会话；模式开关在会话头上（v0.55）
     if (pane === 'outline' || masteryModules(path).length) {
       renderMasteryStudio(root, path);
       return;
@@ -12320,6 +12379,13 @@
     if (page === 'mastery') state.masteryId = id || '';
     else if (page === 'notebooks') state.notebookId = id || '';
     else if (page === 'collection') state.collectionId = id || state.collectionId || '';
+    // 精通之路详情页的整宽版式只属于这一页，离开时摘掉，别影响问答页
+    if (page !== 'mastery') {
+      const mpPage = document.querySelector('#page-mastery');
+      const mpMain = document.querySelector('.main');
+      if (mpPage) mpPage.classList.remove('detail');
+      if (mpMain) mpMain.classList.remove('mastery-detail');
+    }
     const navPage = navPageFor(page);
     const mainEl = $('.main');
     if (mainEl) {

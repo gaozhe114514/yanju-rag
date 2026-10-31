@@ -70,7 +70,7 @@ TUTOR_SYSTEM = """你是「言据 · 精通之路」里的一对一导师。这�
 5. 模块 4 到 8 个，每个模块 2 到 6 个知识点，总数不超过 40。知识点要具体到能练的粒度，并且符合这门科目的考试大纲；拿不准的考点不要编。
 6. 每个知识点标 type：memory（要记住的事实）/ procedure（步骤技能）/ concept（要理解的概念）/ design（开放判断）。
 7. 不要编出处、页码、题号，也不要说「资料第几页」。材料里没有的内容不要假装它有；资料确实不够时，在 say 里直说缺什么。
-8. say 是给学习者看的话：这次做了什么、为什么这样排、请他改哪里。定稿后明说「大纲已定稿」，并告诉他可以点「开始学习」，也可以继续说改哪里；他认可后 stage 用 approved。第一次起草出来时 stage 用 draft；还在问问题时 stage 用 intake。
+8. say 是给学习者看的话：这次做了什么、为什么这样排、请他改哪里。定稿后明说「大纲已定稿」，并直接问一句「现在就按第一个模块开始学？」——学习者回「开始学习」时，系统会在同一轮切到学习模式让他开讲，所以不要只说「去找按钮」，也可以接着说改哪里。他认可后 stage 用 approved。第一次起草出来时 stage 用 draft；还在问问题时 stage 用 intake。
 9. 如果学习者这一轮只是在问概念、闲聊或补充信息，没有要求改动，就把 outline 置为 null，正常回答，不要每轮都重写大纲。
 10. 中文，简洁，可以用短列表；语气像真人导师，不谄媚。
 
@@ -479,6 +479,30 @@ def normalize_mode(raw, outline=None) -> str:
     return "study" if _all_points(outline) else "outline"
 
 
+# 学习者在定大纲时说「开始学习」= 想上课了。照 DeepTutor 的做法，这句话
+# 本身就切换模式，并且在同一轮把课开起来，而不是让他再去点按钮。
+_START_PAT = re.compile(
+    r"^(好[的]?[，,]?\s*)?(我们|那就|现在)?\s*(开始|进入)(学习|上课|学)?"
+    r"(吧|啊|呀|了)?[。！!～~]*$")
+_CONTINUE_PAT = re.compile(
+    r"^(好[的]?[，,]?\s*)?(继续|接着)(学习|学)?(吧|啊|呀)?[。！!～~]*$")
+
+
+def wants_study(raw) -> bool:
+    """保守判断：只有很短的一句「开始学吧」才算，别把正经讨论当指令。"""
+    text = str(raw or "").strip()
+    if not text or len(text) > 20:
+        return False
+    return bool(_START_PAT.match(text) or _CONTINUE_PAT.match(text))
+
+
+def _last_user_text(messages) -> str:
+    for turn in reversed(list(messages or [])):
+        if isinstance(turn, dict) and turn.get("role") == "user":
+            return str(turn.get("content") or "")
+    return ""
+
+
 def _all_points(outline) -> List[Dict]:
     rows = []
     for module in (outline or {}).get("modules") or []:
@@ -675,7 +699,7 @@ STUDY_SYSTEM = """你是「言据 · 精通之路」里的一对一导师。现�
 
 这一轮只做一件事：
 - 学习者刚答完上一道题（下面有「引擎判分」）→ 先讲这次作答说明了什么，补差距，再出一道新题；引擎已经判为掌握时，讲一句这次为什么过关，然后切到下一个知识点。
-- 没有判分 → 从「这一轮该讲」那个知识点开始讲一小段，然后出题。
+- 没有判分 → 从「这一轮该讲」那个知识点开始讲一小段，然后出题。**学习者说「开始学习」时也一样：直接讲第一小段，不要只回一句「好的，我们开始」就停下**；这一轮要让他真的看到课已经开始。
 - 出题（quiz 或 assess 不是 null）就代表这一轮结束：say 只写引出这道题的话，题本身只放在 quiz / assess 里，不要再用散文写一遍。
 - 学习者只是在问问题或闲聊 → 正常回答，quiz 和 assess 都置 null。
 
@@ -1085,9 +1109,17 @@ def _offline_session(payload, outline, grade, mastered_point, mode,
 def run_turn(provider, payload: dict, digest: Sequence[dict]) -> dict:
     """按模式分发：没大纲先定大纲，有大纲就跟着大纲学或复习。"""
     mode = normalize_mode(payload.get("mode"), payload.get("outline"))
+    switched = ""
+    # 已定稿的大纲 + 一句「开始学吧」：当作模式请求处理，在这一轮直接开讲。
+    hear = payload.get("message") or _last_user_text(payload.get("messages"))
+    if mode == "outline" and _all_points(payload.get("outline")) and wants_study(hear):
+        mode = "study"
+        switched = "study"
     if mode == "outline":
         result = _run_outline_turn(provider, payload, digest)
     else:
         result = run_session_turn(provider, payload, digest, mode)
-    result.setdefault("mode", mode)
+    result["mode"] = mode
+    if switched:
+        result["switched"] = switched
     return result
