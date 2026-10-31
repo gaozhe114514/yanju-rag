@@ -170,3 +170,37 @@ CREATE TABLE IF NOT EXISTS eval_results (
 
 CREATE INDEX IF NOT EXISTS eval_results_name_idx
     ON eval_results (name, created_at DESC);
+
+-- 账号（v0.51）：用户名 + PBKDF2 口令哈希；会话表只存 token 的 SHA-256，
+-- 即使数据库泄露也拿不到能直接用的登录凭据。
+CREATE TABLE IF NOT EXISTS users (
+    id            text PRIMARY KEY,
+    username      text NOT NULL,
+    username_key  text NOT NULL UNIQUE,
+    password_hash text NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    last_login_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    token_hash text PRIMARY KEY,
+    user_id    text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS user_sessions_user_idx
+    ON user_sessions (user_id, expires_at DESC);
+
+-- 登录后的个人数据：一个 localStorage 键一行，值与浏览器里一一对应。
+-- 访问口令、账号 token、同步元数据不进这张表（服务端也会再挡一次）。
+CREATE TABLE IF NOT EXISTS user_data (
+    user_id    text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key        text NOT NULL,
+    value      jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS user_data_user_idx
+    ON user_data (user_id, updated_at DESC);

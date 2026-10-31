@@ -2934,6 +2934,11 @@
       background: var(--card); color: var(--ink); font-size: 13px;
     }
     .set-ctrl input[type="password"] { min-width: 180px; }
+    /* 账号表单：用户名 / 密码 / 按钮竖排，宽度与「连接」里的口令列一致 */
+    .set-account { display: flex; flex-direction: column; gap: 8px; width: 260px; max-width: 100%; }
+    .set-account input { width: 100%; min-width: 0; }
+    .set-account .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .set-account .settings-status { margin-top: 2px; }
     .set-ctrl select:focus, .set-ctrl input:focus {
       outline: 0; border-color: var(--brand);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
@@ -3040,6 +3045,7 @@
       .set-ctrl { flex-wrap: wrap; justify-content: flex-start; }
       .set-ctrl select, .set-ctrl input { min-width: 0; width: 100%; }
       .set-ctrl input[type="password"] { min-width: 0; }
+      .set-account { width: 100%; }
       .set-themes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .set-token .set-ctrl { width: 100%; }
       .set-toolbar { padding: 10px 0 12px; }
@@ -3530,6 +3536,9 @@
   };
 
   const TOKEN_KEY = '408-access-token';
+  const ACCOUNT_KEY = '408-account-token-v1';
+  const SYNC_META_KEY = '408-sync-meta-v1';
+  const SYNC_OWNER_KEY = '408-sync-owner-v1';
   const CONV_KEY = '408-conversations-v1';
   const ACTIVE_KEY = '408-active-conv-v1';
   const STATS_KEY = '408-practice-stats-v1';
@@ -3554,6 +3563,10 @@
   // 问答模式：'kb' 只按资料原文回答并附引用；'chat' 是日常对话，不检索
   const CHAT_MODE_KEY = '408-chat-mode-v1';
   const PREFS_KEY = '408-prefs-v1';
+  // 账号 token、同步元数据和设备级视图状态不上传服务器。
+  // 访问口令更不能同步——它是进门凭据，不是个人内容。
+  const SYNC_SKIP_KEYS = [TOKEN_KEY, ACCOUNT_KEY, SYNC_META_KEY, SYNC_OWNER_KEY,
+                          ACTIVE_KEY, LIB_TAB_KEY];
   const PRESET_DECK = {
     id: 'cs408', preset: true, name: '408 真题',
     desc: '2019–2024 五卷真题，按科目和年份筛选；解析与出处来自服务端语料。',
@@ -3767,6 +3780,16 @@
   const state = {
     page: 'chat',
     token: localStorage.getItem(TOKEN_KEY) || '',
+    // 账号：token 只在本机，个人内容登录后按账号同步
+    account: {
+      token: localStorage.getItem(ACCOUNT_KEY) || '',
+      user: null,
+      mode: 'login',
+      busy: false,
+      syncing: false,
+      lastSync: 0,
+      error: ''
+    },
     health: null,
     meta: null,
     prefs: loadPrefs(),
@@ -3832,6 +3855,199 @@
 
   function activeConv() {
     return state.conversations.find(c => c.id === state.activeId) || null;
+  }
+
+  /* ---------- 账号与同步 ---------- */
+  // 所有个人数据仍然先写 localStorage；登录后由这里按「最后写入时间」
+  // 合并到服务器。写 localStorage 的代码一行没改，靠拦截 setItem 记账。
+  const nativeSetItem = Storage.prototype.setItem;
+  const syncState = {timer: null, running: false, suppress: false};
+  // 与 api/accounts.py 的 DELETED_MARK 保持一致：同步看到它就删本地那份。
+  const SYNC_DELETED = '__408_deleted__';
+
+  function isSyncKey(key) {
+    return typeof key === 'string' && key.indexOf('408-') === 0 &&
+      SYNC_SKIP_KEYS.indexOf(key) < 0;
+  }
+
+  function loadSyncMeta() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SYNC_META_KEY) || '{}');
+      return raw && typeof raw === 'object' ? raw : {};
+    } catch (e) { return {}; }
+  }
+
+  function saveSyncMeta(meta) {
+    try { nativeSetItem.call(localStorage, SYNC_META_KEY, JSON.stringify(meta)); }
+    catch (e) {}
+  }
+
+  function syncableLocalKeys() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (isSyncKey(k)) out.push(k);
+    }
+    return out;
+  }
+
+  function markSyncDirty(key) {
+    if (!isSyncKey(key)) return;
+    const meta = loadSyncMeta();
+    meta[key] = Date.now();
+    saveSyncMeta(meta);
+    scheduleSync();
+  }
+
+  Storage.prototype.setItem = function (key, value) {
+    nativeSetItem.call(this, key, value);
+    if (this === window.localStorage && !syncState.suppress) markSyncDirty(key);
+  };
+
+  function scheduleSync() {
+    if (!state.account.token || syncState.running) return;
+    clearTimeout(syncState.timer);
+    syncState.timer = setTimeout(() => { syncNow({}); }, 1600);
+  }
+
+  function stashToast(message) {
+    try { sessionStorage.setItem('408-next-toast', message); } catch (e) {}
+  }
+
+  function clearAccountToken() {
+    state.account.token = '';
+    state.account.user = null;
+    state.account.error = '';
+    localStorage.removeItem(ACCOUNT_KEY);
+  }
+
+  async function accountApi(path, opts) {
+    const options = Object.assign({}, opts || {});
+    const headers = Object.assign({}, options.headers || {});
+    if (state.account.token) {
+      headers['Authorization'] = 'Bearer ' + state.account.token;
+    }
+    options.headers = headers;
+    return api(path, options);
+  }
+
+  // 登录 / 手动同步时把两边按时间戳合并：本地更新的推上去，服务器更新的拉下来。
+  async function syncNow(opts) {
+    opts = opts || {};
+    if (!state.account.token) {
+      if (opts.toast) toast('先登录账号再同步', 'err');
+      return false;
+    }
+    if (syncState.running) {
+      if (opts.toast) toast('正在同步，稍等一下');
+      return false;
+    }
+    syncState.running = true;
+    state.account.syncing = true;
+    state.account.error = '';
+    if (opts.render) renderSettings();
+    try {
+      const server = await accountApi('/me/data');
+      const serverItems = (server && server.items) || {};
+      const meta = loadSyncMeta();
+      const localKeys = syncableLocalKeys();
+      const push = {};
+      const pull = [];
+
+      Object.keys(serverItems).forEach(key => {
+        if (!isSyncKey(key)) return;
+        const item = serverItems[key] || {};
+        const serverAt = Number(item.updated_at) || 0;
+        if (localKeys.indexOf(key) < 0) { pull.push(key); return; }
+        const localAt = Number(meta[key]) || 0;
+        if (localAt > serverAt) {
+          push[key] = {value: localStorage.getItem(key), updated_at: localAt};
+        } else if (serverAt > localAt) {
+          pull.push(key);
+        }
+      });
+      localKeys.forEach(key => {
+        if (!Object.prototype.hasOwnProperty.call(serverItems, key)) {
+          push[key] = {value: localStorage.getItem(key),
+                       updated_at: Number(meta[key]) || Date.now()};
+        }
+      });
+
+      if (pull.length) {
+        syncState.suppress = true;
+        pull.forEach(key => {
+          const value = String(serverItems[key].value);
+          if (value === SYNC_DELETED) localStorage.removeItem(key);
+          else nativeSetItem.call(localStorage, key, value);
+          meta[key] = Number(serverItems[key].updated_at) || Date.now();
+        });
+        saveSyncMeta(meta);
+        syncState.suppress = false;
+      }
+      if (Object.keys(push).length) {
+        const res = await accountApi('/me/data', {
+          method: 'PUT', body: {items: push}
+        });
+        const rejected = (res && res.server) || {};
+        Object.keys(rejected).forEach(key => {
+          meta[key] = Number(rejected[key]) || meta[key];
+        });
+        saveSyncMeta(meta);
+      }
+
+      state.account.lastSync = Date.now();
+      state.account.error = '';
+      if (pull.length && opts.reload) {
+        stashToast('已同步账号内容');
+        location.reload();
+        return true;
+      }
+      if (opts.toast) toast(pull.length ? '已拉取账号里的改动' : '已同步');
+      if (opts.render) renderSettings();
+      return true;
+    } catch (e) {
+      const detail = String((e.data && e.data.detail) || '');
+      if (e.status === 401 && detail.indexOf('登录') >= 0) {
+        clearAccountToken();
+        toast('登录已过期，请重新登录', 'err');
+      } else {
+        state.account.error = e.message || '同步失败';
+        if (opts.toast) toast('同步失败：' + state.account.error, 'err');
+      }
+      if (opts.render) renderSettings();
+      return false;
+    } finally {
+      syncState.running = false;
+      state.account.syncing = false;
+    }
+  }
+
+  // 换账号登录时先清掉上一个账号留在本机的个人数据，避免串到新账号；
+  // 匿名时期的数据没有 owner，登录时照常合并。
+  function prepareSyncOwner(userId) {
+    const previous = localStorage.getItem(SYNC_OWNER_KEY) || '';
+    if (previous && previous !== userId) {
+      syncableLocalKeys().forEach(key => localStorage.removeItem(key));
+      saveSyncMeta({});
+    }
+    nativeSetItem.call(localStorage, SYNC_OWNER_KEY, userId);
+  }
+
+  async function initAccount() {
+    if (!state.account.token) return;
+    try {
+      const me = await accountApi('/auth/me');
+      state.account.user = me.user;
+      if (!localStorage.getItem(SYNC_OWNER_KEY)) {
+        nativeSetItem.call(localStorage, SYNC_OWNER_KEY, me.user.id);
+      }
+    } catch (e) {
+      const detail = String((e.data && e.data.detail) || '');
+      // 访问口令没配时的 401 不要当成登录过期，否则一进站就被登出
+      if (e.status === 401 && detail.indexOf('登录') >= 0) clearAccountToken();
+      return;
+    }
+    await syncNow({reload: true});
   }
 
   function saveConvs() {
@@ -12016,6 +12232,8 @@
   }
 
   const SETTINGS_SECTIONS = [
+    {key: 'account', group: '个人', icon: 'i-users', label: '账号',
+     lede: '登录后，对话、笔记本、题库、精通之路和任务清单按账号同步；没登录时只在这台浏览器。'},
     {key: 'general', group: '个人', icon: 'i-gear', label: '通用',
      lede: '启动页、动效和考试日期。改动先留在这页，点底部的「应用更改」才生效。'},
     {key: 'appearance', group: '个人', icon: 'i-sun', label: '外观',
@@ -12157,6 +12375,147 @@
     return b;
   }
 
+  function settingsAccount(body) {
+    const user = state.account.user;
+    const sec = setSection('登录与同步',
+      '登录后，个人内容按账号同步；没登录时仍然只在这台浏览器。访问口令是进门凭据，不会同步。');
+
+    if (!user) {
+      const mode = state.account.mode === 'register' ? 'register' : 'login';
+      const row = setRow(mode === 'register' ? '注册账号' : '登录账号',
+        mode === 'register'
+          ? '用户名 2–24 个字符，密码至少 8 位。注册后本机现有内容会合并进新账号。'
+          : '登录后会把本机内容与账号里较新的那份合并，换设备也能接着用。');
+      row.row.classList.add('set-row-block');
+      const form = el('div', 'set-account');
+
+      const name = el('input');
+      name.type = 'text';
+      name.autocomplete = 'username';
+      name.placeholder = '用户名';
+      name.setAttribute('aria-label', '用户名');
+      form.appendChild(name);
+
+      const pw = el('input');
+      pw.type = 'password';
+      pw.autocomplete = mode === 'register' ? 'new-password' : 'current-password';
+      pw.placeholder = mode === 'register' ? '密码（至少 8 位）' : '密码';
+      pw.setAttribute('aria-label', '密码');
+      form.appendChild(pw);
+
+      const actions = el('div', 'btn-row');
+      const submit = el('button', 'primary',
+        mode === 'register' ? '注册并登录' : '登录');
+      submit.disabled = state.account.busy;
+      const toggle = el('button', 'ghost',
+        mode === 'register' ? '已有账号，去登录' : '还没有账号？注册');
+      toggle.addEventListener('click', () => {
+        state.account.mode = mode === 'register' ? 'login' : 'register';
+        renderSettings();
+      });
+      actions.appendChild(submit);
+      actions.appendChild(toggle);
+      form.appendChild(actions);
+
+      const status = el('div', 'settings-status');
+      if (state.account.busy) {
+        status.textContent = mode === 'register' ? '正在注册…' : '正在登录…';
+      }
+      form.appendChild(status);
+
+      async function send() {
+        const username = name.value.trim();
+        const password = pw.value;
+        if (!username || !password) {
+          status.className = 'settings-status err';
+          status.textContent = '用户名和密码都要填。';
+          return;
+        }
+        submit.disabled = true;
+        toggle.disabled = true;
+        state.account.busy = true;
+        status.className = 'settings-status';
+        status.textContent = mode === 'register' ? '正在注册…' : '正在登录…';
+        try {
+          const out = await api('/auth/' + mode, {
+            method: 'POST', body: {username: username, password: password}
+          });
+          state.account.token = out.token;
+          state.account.user = out.user;
+          nativeSetItem.call(localStorage, ACCOUNT_KEY, out.token);
+          prepareSyncOwner(out.user.id);
+          state.account.busy = false;
+          state.account.mode = 'login';
+          toast(mode === 'register' ? '账号已创建' : '已登录');
+          renderSettings();
+          await syncNow({reload: true, toast: true});
+        } catch (e) {
+          state.account.busy = false;
+          submit.disabled = false;
+          toggle.disabled = false;
+          const detail = String((e.data && e.data.detail) || e.message || '');
+          status.className = 'settings-status err';
+          status.textContent = (e.status === 401 && detail.indexOf('访问口令') >= 0)
+            ? '先到「服务 · 连接」里填访问口令，再登录账号。'
+            : (detail || '连接失败');
+        }
+      }
+
+      submit.addEventListener('click', send);
+      [name, pw].forEach(input => input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); send(); }
+      }));
+      row.ctrl.appendChild(form);
+      sec.body.appendChild(row.row);
+    } else {
+      const stateRow = setRow('登录状态',
+        '内容会先写在本机，再在后台合并到账号；两边都有改动时以后写入的为准。');
+      const facts = el('div', 'set-facts');
+      setFact(facts, '用户名', user.username);
+      setFact(facts, '注册时间', user.created_at
+        ? String(user.created_at).replace('T', ' ').slice(0, 16) : '—');
+      setFact(facts, '上次同步', state.account.syncing ? '同步中…'
+        : (state.account.lastSync ? formatWhen(state.account.lastSync) : '还没同步过'));
+      if (state.account.error) {
+        const err = el('div', 'settings-status err', '上次同步失败：' +
+          state.account.error);
+        facts.appendChild(err);
+      }
+      stateRow.main.appendChild(facts);
+      const syncBtn = el('button', 'primary',
+        state.account.syncing ? '同步中…' : '立即同步');
+      syncBtn.disabled = state.account.syncing;
+      syncBtn.addEventListener('click', () => {
+        syncNow({reload: true, toast: true, render: true});
+      });
+      stateRow.ctrl.appendChild(syncBtn);
+      sec.body.appendChild(stateRow.row);
+
+      const outRow = setRow('退出登录',
+        '退出后本机内容保留；换别的账号登录时，本机属于上个账号的内容会先清掉，避免串号。');
+      const outBtn = el('button', 'ghost', '退出登录');
+      outBtn.addEventListener('click', async () => {
+        if (!window.confirm('退出登录？本机内容会保留，重新登录可再同步。')) return;
+        outBtn.disabled = true;
+        try { await accountApi('/auth/logout', {method: 'POST'}); } catch (e) {}
+        clearAccountToken();
+        renderSettings();
+        toast('已退出登录');
+      });
+      outRow.ctrl.appendChild(outBtn);
+      sec.body.appendChild(outRow.row);
+    }
+
+    const note = setSection('同步范围',
+      '只同步个人内容；凭据和设备级状态不上传。');
+    const noteFacts = el('div', 'set-facts');
+    setFact(noteFacts, '会同步', '对话、学习进度、笔记本、日志、自建题库、精通之路、任务清单、偏好');
+    setFact(noteFacts, '不同步', '访问口令、账号登录 token、当前打开的那段对话、知识库资料（本来就在服务器）');
+    note.body.appendChild(noteFacts);
+    body.appendChild(sec.sec);
+    body.appendChild(note.sec);
+  }
+
   function settingsGeneral(body) {
     const s1 = setSection('启动与动效', '只影响这台设备下一次打开的样子。');
     const startRow = setRow('打开时停在', '地址栏没有 #/ 时落在这个页面。');
@@ -12226,7 +12585,7 @@
       steps += st.total;
       done += st.done;
     });
-    const s2 = setSection('进度', '只记在这台浏览器里，换设备从零开始。');
+    const s2 = setSection('进度', '没登录时只记在这台浏览器；登录账号后会跟着账号走。');
     const factsRow = setRow('精通之路进度', '按考点算的掌握情况。');
     const facts = el('div', 'set-facts');
     setFact(facts, '路线', state.mastery.length + ' 条');
@@ -12392,21 +12751,33 @@
     all: {keys: null}
   };
 
-  function clearLocalData(group) {
+  async function clearLocalData(group) {
+    // 登录状态下先在服务器上写墓碑，否则重新同步会把刚清掉的内容拉回来。
+    if (state.account.token) {
+      try {
+        const body = group === 'all'
+          ? {all: true}
+          : {keys: LOCAL_CLEAR_GROUPS[group].keys};
+        await accountApi('/me/data', {method: 'DELETE', body: body});
+      } catch (e) {
+        toast('服务器上的同步副本没删掉，重新同步可能会回来：' + e.message, 'err');
+      }
+    }
     if (group === 'all') {
-      // 口令是进入本站的凭据，清数据时保留，否则清完连题库都打不开
-      const keep = [TOKEN_KEY];
+      // 口令与账号登录都是凭据，清内容时保留，否则清完连题库都打不开
+      const keep = [TOKEN_KEY, ACCOUNT_KEY, SYNC_OWNER_KEY];
       Object.keys(localStorage).forEach(k => {
         if (k.indexOf('408-') === 0 && keep.indexOf(k) < 0) localStorage.removeItem(k);
       });
     } else {
       LOCAL_CLEAR_GROUPS[group].keys.forEach(k => localStorage.removeItem(k));
     }
+    saveSyncMeta({});
     location.reload();
   }
 
   function settingsData(body) {
-    const secAll = setSection('本机内容', '问答记录、学习进度和自定内容都在浏览器的 localStorage 里，不上传服务器。');
+    const secAll = setSection('本机内容', '内容先写在本机浏览器；登录账号后会同步到服务器，没登录就只在这台设备。');
     let steps = 0;
     let done = 0;
     state.mastery.forEach(p => {
@@ -12414,8 +12785,10 @@
       steps += s.total;
       done += s.done;
     });
-    const factsRow = setRow('存在这台设备上的内容',
-      '问答记录、学习进度和自定内容都在浏览器的 localStorage 里，不上传服务器。');
+    const factsRow = setRow('这台设备上的内容',
+      state.account.user
+        ? '已登录「' + state.account.user.username + '」，以下内容会同步到账号。'
+        : '问答记录、学习进度和自定内容都在浏览器的 localStorage 里，登录后才会同步。');
     const facts = el('div', 'set-facts');
     setFact(facts, '对话', state.conversations.length + ' 段');
     setFact(facts, '精通之路', state.mastery.length + ' 条 · 已掌握 ' + done + ' / ' + steps);
@@ -12450,7 +12823,7 @@
     });
 
     const allRow = setRow('清除全部本机数据',
-      '上面三类一起清掉，偏好设置也恢复默认；访问口令会保留。');
+      '上面三类一起清掉，偏好设置也恢复默认；访问口令和登录状态会保留，账号里的同步副本也会删除。');
     const allBtn = el('button', 'ghost set-danger', '全部清除');
     allBtn.addEventListener('click', () => {
       if (!window.confirm('清除全部本机数据？这个操作不能撤销。')) return;
@@ -12462,6 +12835,7 @@
   }
 
   const SETTINGS_RENDERERS = {
+    account: settingsAccount,
     general: settingsGeneral,
     appearance: settingsAppearance,
     learning: settingsLearning,
@@ -12931,6 +13305,14 @@
     autoGrow();
     loadHealth();
     ensureMeta(true);
+    initAccount();
+    try {
+      const msg = sessionStorage.getItem('408-next-toast');
+      if (msg) {
+        sessionStorage.removeItem('408-next-toast');
+        toast(msg);
+      }
+    } catch (e) {}
   }
 
   init();

@@ -55,6 +55,7 @@ from db.store import Store
 
 from .catalog import (brief, detail, filter_questions, format_subject_counts,
                       subject_counts)
+from .accounts import AccountError, AccountService
 from .feedback import (feedback_stats as jsonl_feedback_stats,
                        log_feedback as jsonl_log_feedback, normalize_feedback)
 from .gap import gap_detail, gap_stats, log_gap
@@ -230,6 +231,26 @@ class FeedbackRequest(BaseModel):
     cached: bool = False
 
 
+class CredentialsRequest(BaseModel):
+    # 最小长度交给账号层判，错误信息才能是中文而不是 pydantic 的 422
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class SyncItemRequest(BaseModel):
+    value: Any = None
+    updated_at: int = 0
+
+
+class SyncRequest(BaseModel):
+    items: Dict[str, SyncItemRequest] = Field(default_factory=dict)
+
+
+class DeleteDataRequest(BaseModel):
+    keys: List[str] = Field(default_factory=list)
+    all: bool = False
+
+
 def _enforce(request: Request, limit: bool) -> None:
     peer = request.client.host if request.client else ""
     d = GUARD.check(request.headers, peer, limit=limit)
@@ -247,6 +268,32 @@ def enforce_guard(request: Request) -> None:
 def enforce_content(request: Request) -> None:
     """题库浏览：只校验口令，不占问答额度。"""
     _enforce(request, False)
+
+
+def _accounts() -> AccountService:
+    """账号服务：有数据库就落库，没有就退到进程内存。"""
+    svc = _state.get("accounts")
+    if svc is None:
+        svc = AccountService(_state.get("store"))
+        _state["accounts"] = svc
+    return svc
+
+
+def _bearer(request: Request) -> str:
+    raw = request.headers.get("authorization") or ""
+    return raw[7:].strip() if raw[:7].lower() == "bearer " else ""
+
+
+def current_user(request: Request) -> Dict[str, Any]:
+    user = _accounts().authenticate(_bearer(request))
+    if user is None:
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    return user
+
+
+def _client_ip(request: Request) -> str:
+    peer = request.client.host if request.client else ""
+    return GUARD.client_ip(request.headers, peer)
 
 
 def _resolve(path: str) -> str:
@@ -369,6 +416,7 @@ def _load() -> None:
         "provider_impl": provider,
         "storage": "postgres" if store is not None else "memory",
         "store": store,
+        "accounts": AccountService(store),
         "gap_log": str(gap_path),
         "feedback_log": str(feedback_path),
         "agent": agent,
@@ -772,6 +820,64 @@ def health() -> dict:
         "collections": _collection_count(),
         "kb_backend": "weknora" if _weknora() is not None else "local",
     }
+
+
+@app.post("/auth/register")
+def auth_register(req: CredentialsRequest, request: Request,
+                  _: None = Depends(enforce_content)) -> dict:
+    try:
+        return _accounts().register(req.username, req.password,
+                                    ip=_client_ip(request))
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.post("/auth/login")
+def auth_login(req: CredentialsRequest, request: Request,
+               _: None = Depends(enforce_content)) -> dict:
+    try:
+        return _accounts().login(req.username, req.password,
+                                 ip=_client_ip(request))
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.post("/auth/logout")
+def auth_logout(request: Request, _: None = Depends(enforce_content)) -> dict:
+    _accounts().logout(_bearer(request))
+    return {"ok": True}
+
+
+@app.get("/auth/me")
+def auth_me(user: Dict[str, Any] = Depends(current_user),
+            _: None = Depends(enforce_content)) -> dict:
+    return {"user": user}
+
+
+@app.get("/me/data")
+def me_data_get(user: Dict[str, Any] = Depends(current_user),
+                _: None = Depends(enforce_content)) -> dict:
+    return {"items": _accounts().get_data(user["id"])}
+
+
+@app.put("/me/data")
+def me_data_put(req: SyncRequest, user: Dict[str, Any] = Depends(current_user),
+                _: None = Depends(enforce_content)) -> dict:
+    try:
+        items = {k: (v.model_dump() if hasattr(v, "model_dump") else v.dict())
+                 for k, v in req.items.items()}
+        return _accounts().put_data(user["id"], items)
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.delete("/me/data")
+def me_data_delete(req: DeleteDataRequest,
+                   user: Dict[str, Any] = Depends(current_user),
+                   _: None = Depends(enforce_content)) -> dict:
+    removed = _accounts().delete_data(user["id"], req.keys,
+                                      delete_all=bool(req.all))
+    return {"removed": removed}
 
 
 @app.post("/ask")

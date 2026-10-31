@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -29,6 +30,10 @@ class RevisionConflict(ValueError):
     def __init__(self, current: int = 0):
         super().__init__("这段已被别处改过，重新加载后再改")
         self.current = int(current or 0)
+
+
+class DuplicateUser(ValueError):
+    """用户名已被占用。账号层把它翻成「这个用户名已经被注册了」。"""
 
 
 def vector_literal(vec: Sequence[float]) -> str:
@@ -780,6 +785,132 @@ class Store:
                           if int(r["total"]) else 0.0),
             "payload": r["payload"],
         } for r in rows]
+
+
+    # ---------- 账号 ----------
+
+    def create_user(self, user_id: str, username: str, username_key: str,
+                    password_hash: str) -> Dict:
+        psycopg, _ = _psycopg()
+        try:
+            with self.connect() as conn:
+                row = conn.execute(
+                    "INSERT INTO users (id, username, username_key, password_hash,"
+                    " last_login_at) VALUES (%s, %s, %s, %s, now())"
+                    " RETURNING id, username, created_at, last_login_at",
+                    (user_id, username, username_key,
+                     password_hash)).fetchone()
+                conn.commit()
+        except psycopg.errors.UniqueViolation:
+            raise DuplicateUser("username taken")
+        return dict(row)
+
+    def get_user_by_key(self, username_key: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, username, password_hash, created_at, last_login_at"
+                " FROM users WHERE username_key = %s",
+                (username_key,)).fetchone()
+        return dict(row) if row else None
+
+    def touch_login(self, user_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET last_login_at = now() WHERE id = %s"
+                " RETURNING id, username, created_at, last_login_at",
+                (user_id,)).fetchone()
+            conn.commit()
+        return dict(row) if row else None
+
+    def create_session(self, token_hash: str, user_id: str,
+                       expires_at: datetime) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO user_sessions (token_hash, user_id, expires_at)"
+                " VALUES (%s, %s, %s)",
+                (token_hash, user_id, expires_at))
+            conn.commit()
+
+    def get_session(self, token_hash: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT u.id, u.username, u.created_at, u.last_login_at"
+                " FROM user_sessions s JOIN users u ON u.id = s.user_id"
+                " WHERE s.token_hash = %s AND s.expires_at > now()",
+                (token_hash,)).fetchone()
+        return dict(row) if row else None
+
+    def delete_session(self, token_hash: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "DELETE FROM user_sessions WHERE token_hash = %s",
+                (token_hash,))
+            conn.commit()
+            return row.rowcount > 0
+
+    def delete_expired_sessions(self, user_id: str) -> int:
+        with self.connect() as conn:
+            row = conn.execute(
+                "DELETE FROM user_sessions WHERE user_id = %s AND expires_at <= now()",
+                (user_id,))
+            conn.commit()
+            return int(row.rowcount or 0)
+
+    def get_user_data(self, user_id: str) -> Dict[str, Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT key, value, updated_at FROM user_data WHERE user_id = %s",
+                (user_id,)).fetchall()
+        return {r["key"]: {"value": r["value"], "updated_at": r["updated_at"]}
+                for r in rows}
+
+    def put_user_data(self, user_id: str, items: Dict[str, Tuple]) -> Dict:
+        """按 updated_at 做后写覆盖；旧数据不覆盖新数据，返回被拒的键。"""
+        applied = []
+        rejected = []
+        with self.connect() as conn:
+            for key, (value, updated_ms) in items.items():
+                row = conn.execute(
+                    "INSERT INTO user_data (user_id, key, value, updated_at)"
+                    " VALUES (%s, %s, %s::jsonb, %s)"
+                    " ON CONFLICT (user_id, key) DO UPDATE"
+                    " SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
+                    " WHERE user_data.updated_at <= EXCLUDED.updated_at"
+                    " RETURNING key",
+                    (user_id, key, json.dumps(value, ensure_ascii=False),
+                     datetime.fromtimestamp(updated_ms / 1000.0,
+                                            tz=timezone.utc))).fetchone()
+                if row:
+                    applied.append(key)
+                else:
+                    rejected.append(key)
+            server = {}
+            if rejected:
+                rows = conn.execute(
+                    "SELECT key, updated_at FROM user_data"
+                    " WHERE user_id = %s AND key = ANY(%s)",
+                    (user_id, rejected)).fetchall()
+                server = {r["key"]: int(r["updated_at"].timestamp() * 1000)
+                          for r in rows}
+            conn.commit()
+        return {"applied": applied, "server": server}
+
+    def delete_user_data(self, user_id: str,
+                         keys: Optional[Sequence[str]] = None) -> int:
+        """写墓碑而不是物理删：别的设备下次同步会把本地那份也删掉。"""
+        from api.accounts import DELETED_MARK  # 延迟导入，避免模块循环
+        with self.connect() as conn:
+            if keys is None:
+                row = conn.execute(
+                    "UPDATE user_data SET value = %s::jsonb, updated_at = now()"
+                    " WHERE user_id = %s", (json.dumps(DELETED_MARK), user_id))
+            else:
+                row = conn.execute(
+                    "UPDATE user_data SET value = %s::jsonb, updated_at = now()"
+                    " WHERE user_id = %s AND key = ANY(%s)",
+                    (json.dumps(DELETED_MARK), user_id, list(keys)))
+            conn.commit()
+            return int(row.rowcount or 0)
 
 
 def clean_query(query: str, limit: int = 200) -> str:
