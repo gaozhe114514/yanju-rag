@@ -1482,6 +1482,8 @@
 
     /* ---------- v0.22 学习 · 空间 · 看板 ---------- */
     .main[data-page="learning"] { --content-max: 900px; }
+    /* 图谱是画布，铺满内容区；标题、子导航跟着一起放宽，左边线仍对齐 */
+    .main[data-page="learning"].graph-mode { --content-max: 100%; }
     .main[data-subpage="notebooks"],
     .main[data-subpage="personas"], .main[data-subpage="skills"],
     .main[data-subpage="memory"], .main[data-subpage="history"] {
@@ -3178,11 +3180,11 @@
 
     /* ---------- 知识图谱（v0.64，照 Obsidian 的 graph view） ---------- */
     .graph-page {
-      flex: 1; min-height: 0; width: 100%; max-width: 900px; margin: 0 auto;
+      flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0 auto;
       padding: 16px 36px 18px; display: flex; flex-direction: column; gap: 10px;
     }
     .graph-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .graph-search { flex: 1 1 220px; min-width: 180px; }
+    .graph-search { flex: 1 1 220px; min-width: 180px; max-width: 420px; }
     .graph-library { max-width: 200px; }
     .graph-bar .chips { gap: 5px; }
     .graph-toggle {
@@ -12466,6 +12468,8 @@
     if (mainEl) {
       mainEl.dataset.page = navPage;
       mainEl.dataset.subpage = (navPage === 'space' && page !== 'space') ? page : '';
+      // 图谱页铺满宽度（.graph-mode 放宽 --content-max），别的页保持 900px
+      mainEl.classList.toggle('graph-mode', page === 'graph');
     }
     $$('#nav button, #tabbar button').forEach(b =>
       b.classList.toggle('active', b.dataset.page === navPage));
