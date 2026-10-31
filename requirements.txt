@@ -20,8 +20,6 @@ psycopg[binary]>=3.2
 pypdf>=4.0
 beautifulsoup4>=4.12
 chardet>=5.0
-# 表格结构化抽取（kb/tables.py）在 requirements-ocr.txt 里：这两份装的是同一批
-# 进料依赖，放后一份是为了不让 Dockerfile 前置层失效、重下 2.4GB 模型。
 
 # 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU、无需系统 OCR 引擎。
 #   opencv-python 在 slim 镜像里需要 libgl1 / libglib2.0-0（见 Dockerfile）；
