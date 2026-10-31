@@ -1210,46 +1210,37 @@
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
     }
 
-    /* 空态 = Agent 首页 */
+    /* 空态 = 欢迎页：居中一个问候 + 一排短示例，不放说明段落和统计 */
     .empty.home {
-      align-items: stretch; justify-content: safe center;
+      align-items: center; justify-content: center; text-align: center;
       width: 100%; max-width: 100%; min-height: 100%;
-      margin: 0 auto; padding: 40px 6px 6vh; text-align: left;
+      margin: 0 auto; padding: 24px 6px 6vh;
     }
-    .home-kicker {
-      color: var(--brand); font-size: 11px; font-weight: 500;
-      letter-spacing: .14em; text-transform: uppercase;
+    .welcome-mark {
+      display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+      border-radius: 13px; color: var(--bg); font-size: 20px; font-weight: 700;
+      background: linear-gradient(135deg, var(--brand-light), var(--brand-dark));
     }
     .home h2 {
-      margin: 10px 0; font-family: var(--display);
-      font-size: 31px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em;
-    }
-    .home-sub { max-width: 560px; color: var(--muted); font-size: 14px; line-height: 1.75; }
-    .home-stats {
-      display: flex; flex-wrap: wrap; align-items: center;
-      gap: 6px 0; margin-top: 18px; color: var(--muted); font-size: 12px;
-    }
-    .home-stat + .home-stat::before {
-      content: "·"; margin: 0 10px; color: var(--muted-soft);
+      margin: 15px 0 0; font-family: var(--display);
+      font-size: 32px; font-weight: 600; line-height: 1.3; letter-spacing: -.02em;
     }
     .home-prompts {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 10px; margin-top: 34px;
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 8px; margin-top: 26px; width: 100%; max-width: 600px;
     }
-    .prompt {
-      display: flex; flex-direction: column; gap: 7px;
-      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
-      background: var(--card); box-shadow: var(--shadow-sm); text-align: left;
-      transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    .home-chip {
+      padding: 8px 15px; border: 1px solid var(--line); border-radius: 999px;
+      background: transparent; color: var(--ink-3); font-size: 13px;
+      transition: border-color .15s ease, color .15s ease, background .15s ease;
     }
-    .prompt:hover {
-      border-color: var(--line-strong); transform: translateY(-1px);
-      box-shadow: 0 8px 22px rgba(28, 24, 22, .06);
+    .home-chip:hover { border-color: var(--brand); color: var(--brand); background: var(--card); }
+    .home-foot {
+      display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center;
+      gap: 7px; margin-top: 22px; color: var(--muted); font-size: 12px;
     }
-    .prompt-tag { color: var(--brand); font-size: 11px; font-weight: 600; letter-spacing: .04em; }
-    .prompt-q { color: var(--ink); font-size: 13.5px; line-height: 1.6; }
-    .home-note { margin-top: 22px; color: var(--muted); font-size: 11.5px; }
-    .home-own { margin-top: 10px; font-size: 11.5px; }
+    .home-foot-dot { color: var(--muted-soft); }
+    .home-foot .link-btn { font-size: 12px; }
 
     /* ---------- 资料 ---------- */
     .bank-head { gap: 12px; margin-bottom: 14px; }
@@ -2161,40 +2152,21 @@
     .composer-bar .send { margin-left: auto; }
     #page-chat .composer-hint { display: none; }
 
-    /* 欢迎态：一句问候 + 四行推荐，不再摆 2×2 卡片 */
+    /* 欢迎态：仿 WorkBuddy，竖排居中——图标、一句问候、一排短建议 */
     #page-chat .empty.home {
-      justify-content: center; align-items: stretch;
-      padding: 40px 0 8px; max-width: 740px; margin: 0 auto;
+      justify-content: center;
+      padding: 32px 0 4vh; max-width: 640px; margin: 0 auto;
     }
-    #page-chat .home-kicker { display: none; }
-    #page-chat .home h2 { margin: 0 0 10px; font-size: 33px; letter-spacing: -.01em; }
-    #page-chat .home-sub { max-width: 520px; font-size: 13.5px; }
-    #page-chat .home-prompts {
-      display: flex; flex-direction: column; gap: 0; margin-top: 30px;
-      width: 100%; max-width: 560px;
-    }
-    #page-chat .prompt {
-      flex-direction: row; align-items: baseline; gap: 8px;
-      padding: 9px 2px; border: 0; border-radius: 0; background: transparent;
-      box-shadow: none; color: var(--ink); font-size: 13.5px;
-      border-bottom: 1px solid var(--line);
-    }
-    #page-chat .prompt:last-child { border-bottom: 0; }
-    #page-chat .prompt:hover { transform: none; box-shadow: none; color: var(--brand); }
-    #page-chat .prompt:hover .prompt-q { color: var(--brand); }
-    #page-chat .prompt-tag { flex: none; font-size: 11.5px; }
-    #page-chat .prompt-q { font-size: 13.5px; color: var(--ink); }
-    #page-chat .prompt::after { content: "→"; margin-left: auto; color: var(--muted); font-size: 12px; }
-    #page-chat .prompt:hover::after { color: var(--brand); }
-    #page-chat .home-note { display: none; }
-    #page-chat .home-own { align-self: flex-start; margin-top: 18px; font-size: 11.5px; }
 
     @media (max-width: 860px) {
       #page-chat .messages { padding: 20px 16px 4px; }
       #page-chat .msg { margin-bottom: 26px; }
       #page-chat .composer-wrap { padding: 8px 16px 14px; }
-      #page-chat .empty.home { padding: 24px 4px 4px; }
+      #page-chat .empty.home { padding: 20px 4px 4px; }
+      #page-chat .welcome-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 18px; }
       #page-chat .home h2 { font-size: 26px; }
+      #page-chat .home-prompts { gap: 7px; margin-top: 22px; max-width: 320px; }
+      #page-chat .home-chip { padding: 7px 13px; font-size: 12.5px; }
       #page-chat .answer-text { font-size: 14.5px; }
       .msg-tools { margin-left: 0; }
     }
@@ -4517,51 +4489,40 @@
   function emptyState() {
     const daily = state.chatMode === 'chat';
     const wrap = el('div', 'empty home');
-    wrap.appendChild(el('h2', null, salutation() + (daily ? '，聊点什么？' : '，想问点什么？')));
-    wrap.appendChild(el('p', 'home-sub', daily
-      ? '日常对话不查资料、也不带引用，适合排计划、改文字、问点常识。要资料里的答案和出处，切回「资料」。'
-      : '答案只从资料里找依据，每条结论都附原话；资料里没有的，会直说没有。'));
+    wrap.appendChild(el('div', 'welcome-mark', '引'));
+    wrap.appendChild(el('h2', null, salutation() + (daily ? '，聊点什么？' : '，想查点什么？')));
 
-    const ed = examDate();
-    const left = daysUntil(ed);
-    const st = streakInfo();
-    const week = recentActivity(7);
-    const stats = el('div', 'home-stats');
-    stats.appendChild(el('span', 'home-stat',
-      left > 0 ? '距 ' + (ed.getFullYear() + 1) + ' 考试 ' + left + ' 天'
-        : (left === 0 ? '今天就是考试日' : '考试已过')));
-    stats.appendChild(el('span', 'home-stat',
-      st.streak ? '连续 ' + st.streak + ' 天' : '今天开个头'));
-    stats.appendChild(el('span', 'home-stat',
-      '近 7 天：问 ' + week.asks + ' · 练 ' + week.drills));
-    wrap.appendChild(stats);
-
+    // 短标签只负责好看，点下去发的是完整问句
     const prompts = el('div', 'home-prompts');
     (daily ? [
-      ['计划', '帮我排一份一周的复习计划，每天两小时'],
-      ['写作', '写一段 100 字以内的自我介绍'],
-      ['润色', '把「这个方案我觉得可能不太行」改得委婉一点'],
-      ['常识', '用通俗的话讲讲缓存是干什么的']
+      ['排一周复习计划', '帮我排一份一周的复习计划，每天两小时'],
+      ['写段自我介绍', '写一段 100 字以内的自我介绍'],
+      ['润色一句话', '把「这个方案我觉得可能不太行」改得委婉一点'],
+      ['聊聊缓存', '用通俗的话讲讲缓存是干什么的']
     ] : [
-      ['数据结构', '快速排序的时间复杂度'],
-      ['计算机网络', 'CSMA/CD 最小帧长怎么算'],
-      ['操作系统', '二级页式存储的虚拟地址怎么拆成页目录号和页号'],
-      ['操作系统', 'LRU 页置换 缺页次数']
-    ]).forEach(([tag, q]) => {
-      const b = el('button', 'prompt');
-      b.appendChild(el('span', 'prompt-tag', tag));
-      b.appendChild(el('span', 'prompt-q', q));
+      ['快速排序时间复杂度', '快速排序的时间复杂度'],
+      ['CSMA/CD 最小帧长', 'CSMA/CD 最小帧长怎么算'],
+      ['二级页式地址拆分', '二级页式存储的虚拟地址怎么拆成页目录号和页号'],
+      ['LRU 缺页次数', 'LRU 页置换 缺页次数']
+    ]).forEach(([label, q]) => {
+      const b = el('button', 'home-chip', label);
       b.addEventListener('click', () => askNow(q));
       prompts.appendChild(b);
     });
     wrap.appendChild(prompts);
+
+    const foot = el('div', 'home-foot');
+    foot.appendChild(el('span', null, daily
+      ? '日常对话不查资料，也不带引用'
+      : '答案只来自资料，没有会直说'));
     if (!daily) {
       // 不考 408 的人从这里进去：先把讲义贴进知识库，再回来提问
-      const own = el('button', 'link-btn home-own',
-        '想用自己的资料？把讲义贴进知识库 →');
+      foot.appendChild(el('span', 'home-foot-dot', '·'));
+      const own = el('button', 'link-btn home-own', '用自己的资料 →');
       own.addEventListener('click', () => go('library'));
-      wrap.appendChild(own);
+      foot.appendChild(own);
     }
+    wrap.appendChild(foot);
     return wrap;
   }
 
