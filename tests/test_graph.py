@@ -2,7 +2,8 @@
 """知识图谱测试：节点、关联边、科目/年份过滤与孤立题。"""
 import unittest
 
-from api.graph import build_graph
+from api.graph import (MAX_CHUNK_NODES, MAX_CHUNKS_PER_DOC,
+                       MAX_DOCUMENT_NODES, build_graph)
 
 
 def q(qid="2024-408-01", year=2024, seq=1, subject="ds", stem="题干"):
@@ -155,6 +156,114 @@ class EdgeCaseTest(unittest.TestCase):
             [q("2024-408-01"), q("2024-408-02", seq=2)],
             [card(related=["2024-408-01", "2024-408-02"])])
         self.assertEqual(by_id(graph, "k:ds-tree")["degree"], 2)
+
+
+def doc(did="doc-1", title="讲义", chunks=3, chars=300):
+    return {
+        "id": did, "title": title, "chars": chars, "chunk_total": chunks,
+        "chunks": [{"id": "%s-%03d" % (did, i), "seq": i,
+                    "text": "第 %d 段内容" % i,
+                    "start": i * 10, "end": i * 10 + 9}
+                   for i in range(chunks)],
+    }
+
+
+def lib(cid="lib-1", name="个人知识库", docs=None, visibility="private"):
+    return {"id": cid, "name": name, "visibility": visibility,
+            "documents": docs or []}
+
+
+class LibraryTest(unittest.TestCase):
+    """整份知识库：库 → 资料 → 片段。"""
+
+    def test_library_docs_and_chunks_are_drawn(self):
+        graph = build_graph([], [], libraries=[lib(docs=[doc()])])
+        self.assertEqual(ids(graph), [
+            "d:lib-1:doc-1", "l:lib-1",
+            "x:lib-1:doc-1:doc-1-000", "x:lib-1:doc-1:doc-1-001",
+            "x:lib-1:doc-1:doc-1-002"])
+        self.assertEqual(len(graph["links"]), 4)
+        self.assertEqual(by_id(graph, "l:lib-1")["kind"], "library")
+        self.assertEqual(by_id(graph, "l:lib-1")["degree"], 1)
+        self.assertEqual(by_id(graph, "d:lib-1:doc-1")["kind"], "document")
+        self.assertEqual(by_id(graph, "d:lib-1:doc-1")["degree"], 4)
+        chunk = by_id(graph, "x:lib-1:doc-1:doc-1-001")
+        self.assertEqual(chunk["kind"], "chunk")
+        self.assertEqual(chunk["seq"], 1)
+        self.assertEqual(chunk["document"], "doc-1")
+        self.assertEqual((chunk["start"], chunk["end"]), (10, 19))
+        self.assertEqual(graph["stats"]["documents"], 1)
+        self.assertEqual(graph["stats"]["chunks"], 3)
+        self.assertEqual(graph["stats"]["hidden_chunks"], 0)
+
+    def test_library_filter_shows_only_that_library(self):
+        graph = build_graph(
+            [], [], libraries=[
+                lib("lib-1", "个人知识库", [doc()]),
+                lib("lib-2", "公司知识库", [doc("doc-9", "手册", 2)],
+                    visibility="shared")],
+            library="lib-2")
+        self.assertEqual(ids(graph), [
+            "d:lib-2:doc-9", "l:lib-2",
+            "x:lib-2:doc-9:doc-9-000", "x:lib-2:doc-9:doc-9-001"])
+        # 下拉框仍要列出所有能看的库
+        names = [row["name"] for row in graph["stats"]["libraries"]]
+        self.assertEqual(names, ["408 考研（内置）", "个人知识库", "公司知识库"])
+        self.assertEqual(graph["stats"]["documents"], 1)
+        self.assertEqual(graph["stats"]["total_documents"], 1)
+
+    def test_corpus_filter_excludes_libraries(self):
+        graph = build_graph([q()], [card()], libraries=[lib(docs=[doc()])],
+                            library="cs408")
+        self.assertEqual(ids(graph), ["k:ds-tree", "q:2024-408-01"])
+        self.assertEqual(graph["stats"]["documents"], 0)
+        self.assertEqual(graph["stats"]["libraries"][0]["id"], "cs408")
+
+    def test_library_filter_excludes_corpus(self):
+        graph = build_graph([q()], [card()], libraries=[lib(docs=[doc()])],
+                            library="lib-1")
+        self.assertNotIn("k:ds-tree", ids(graph))
+        self.assertEqual(graph["stats"]["knowledge"], 0)
+        self.assertEqual(graph["stats"]["years"], [])
+
+    def test_unknown_library_falls_back_to_everything(self):
+        graph = build_graph([q()], [card()], libraries=[lib(docs=[doc()])],
+                            library="lib-gone")
+        self.assertIn("k:ds-tree", ids(graph))
+        self.assertIn("l:lib-1", ids(graph))
+        self.assertEqual(graph["stats"]["library"], "")
+
+    def test_empty_library_still_gets_a_node(self):
+        graph = build_graph([], [], libraries=[lib(docs=[])])
+        self.assertEqual(ids(graph), ["l:lib-1"])
+        self.assertEqual(graph["links"], [])
+        self.assertEqual(graph["stats"]["documents"], 0)
+
+    def test_chunks_per_document_are_capped_and_counted(self):
+        graph = build_graph([], [], libraries=[lib(docs=[doc(chunks=60)])])
+        chunks = [n for n in graph["nodes"] if n["kind"] == "chunk"]
+        self.assertEqual(len(chunks), MAX_CHUNKS_PER_DOC)
+        self.assertEqual(graph["stats"]["hidden_chunks"], 20)
+
+    def test_total_chunk_budget_is_respected(self):
+        docs = [doc("doc-%02d" % i, "资料 %d" % i, 40) for i in range(20)]
+        graph = build_graph([], [], libraries=[lib(docs=docs)])
+        chunks = [n for n in graph["nodes"] if n["kind"] == "chunk"]
+        self.assertEqual(len(chunks), MAX_CHUNK_NODES)
+        self.assertEqual(graph["stats"]["hidden_chunks"],
+                         20 * 40 - MAX_CHUNK_NODES)
+        self.assertEqual(graph["stats"]["documents"], 20)
+
+    def test_chunk_ids_do_not_collide_across_libraries(self):
+        graph = build_graph([], [], libraries=[
+            lib("lib-1", "甲", [doc()]), lib("lib-2", "乙", [doc()])])
+        node_ids = [n["id"] for n in graph["nodes"]]
+        self.assertEqual(len(node_ids), len(set(node_ids)))
+
+    def test_library_chunks_searchable_text(self):
+        graph = build_graph([], [], libraries=[lib(docs=[doc()])])
+        chunk = by_id(graph, "x:lib-1:doc-1:doc-1-002")
+        self.assertIn("第 2 段内容", chunk["summary"])
 
 
 if __name__ == "__main__":

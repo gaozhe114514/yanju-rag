@@ -1602,18 +1602,99 @@ def knowledge_detail(card_id: str, _: None = Depends(enforce_content)) -> dict:
     return know_detail(card, _state.get("questions_by_id", {}))
 
 
+def _graph_libraries(request: Request) -> List[dict]:
+    """当前账号能读的知识库，连资料与片段一起交给图谱。
+
+    片段一次按库取回（``collection_chunks``），不是一篇一个查询；
+    没有登录、没权限的库在这里就被挡掉，不会进图。
+    """
+    user = _optional_user(request)
+    wk = _weknora()
+    if wk is not None:
+        # WeKnora 后端拿片段要逐篇再请求，图谱只画到资料这一层
+        if not is_admin(user):
+            return []
+        try:
+            colls = wk.list_collections()
+        except WeKnoraError:
+            return []
+        out = []
+        for coll in colls:
+            cid = str(coll.get("id") or "")
+            if not cid:
+                continue
+            try:
+                docs = wk.list_documents(cid) if hasattr(wk, "list_documents") else []
+            except WeKnoraError:
+                docs = []
+            out.append({
+                "id": cid, "name": coll.get("name") or "未命名知识库",
+                "visibility": VISIBILITY_SHARED, "backend": "weknora",
+                "documents_count": int(coll.get("documents") or len(docs)),
+                "chunks_count": int(coll.get("chunks") or 0),
+                "documents": [{
+                    "id": str(d.get("id") or ""),
+                    "title": d.get("title") or "",
+                    "chars": int(d.get("chars") or 0),
+                    "chunk_total": int(d.get("chunks") or 0),
+                    "chunks": [],
+                } for d in docs if d.get("id")],
+            })
+        return out
+
+    lib = _state.get("library")
+    if lib is None:
+        return []
+    out = []
+    for coll in lib.list_collections():
+        role = _member_role(coll, user)
+        if not can_read(user, coll, role):
+            continue
+        cid = coll.get("id") or ""
+        if not cid:
+            continue
+        try:
+            chunks_by_doc: Dict[str, list] = {}
+            for chunk in lib.collection_chunks(cid):
+                chunks_by_doc.setdefault(chunk["document_id"], []).append(chunk)
+        except Exception:  # 单个库取片段失败只让这个库退化成资料层
+            chunks_by_doc = {}
+        docs = []
+        for doc in lib.list_documents(cid):
+            if (doc.get("status") or "completed") != "completed":
+                continue
+            did = doc.get("id") or ""
+            chunks = chunks_by_doc.get(did, [])
+            docs.append({
+                "id": did,
+                "title": doc.get("title") or "",
+                "chars": int(doc.get("chars") or 0),
+                "chunk_total": int(doc.get("chunks") or len(chunks)),
+                "chunks": chunks,
+            })
+        out.append({
+            "id": cid, "name": coll.get("name") or "",
+            "visibility": coll.get("visibility") or VISIBILITY_SHARED,
+            "backend": "local", "documents": docs,
+        })
+    return out
+
+
 @app.get("/graph")
-def knowledge_graph(subject: str = "", year: Optional[int] = None,
-                    orphans: int = 0,
+def knowledge_graph(request: Request, subject: str = "",
+                    year: Optional[int] = None, orphans: int = 0,
+                    library: str = "",
                     _: None = Depends(enforce_content)) -> dict:
-    """考点卡 ↔ 真题的关联图。边只来自卡片的 related_question_ids。"""
+    """整份知识库的图谱：408 考点 ↔ 真题，各知识库 → 资料 → 片段。"""
     store = _state.get("store")
     questions = (store.load_questions() if store is not None
                  else _state.get("questions", []))
     cards = (store.all_knowledge() if store is not None
              else _state.get("knowledge", []))
     return build_graph(questions, cards, subject=subject, year=year,
-                       include_orphans=bool(orphans))
+                       include_orphans=bool(orphans),
+                       libraries=_graph_libraries(request),
+                       library=library)
 
 
 @app.get("/chunks")

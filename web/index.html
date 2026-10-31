@@ -3183,6 +3183,7 @@
     }
     .graph-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .graph-search { flex: 1 1 220px; min-width: 180px; }
+    .graph-library { max-width: 200px; }
     .graph-bar .chips { gap: 5px; }
     .graph-toggle {
       display: inline-flex; align-items: center; gap: 6px; color: var(--muted);
@@ -3251,6 +3252,7 @@
       .graph-page { padding: 10px 14px 12px; gap: 8px; }
       .graph-bar { gap: 6px; }
       .graph-search { flex: 1 1 100%; }
+      .graph-library { max-width: 160px; }
       /* 科目胶囊横着滚，不换成三行，把高度留给图 */
       .graph-bar .chips {
         flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 2px;
@@ -3585,6 +3587,7 @@
             <span class="search-ico">⌕</span>
           </div>
           <div class="chips" id="graph-subjects"></div>
+          <select class="select graph-library" id="graph-library" aria-label="按知识库筛选"></select>
           <select class="select" id="graph-year" aria-label="按年份筛选"></select>
           <label class="graph-toggle">
             <input type="checkbox" id="graph-orphans"> 未关联真题
@@ -13426,14 +13429,20 @@
   const GRAPH_COLOR_VAR = {
     ds: '--info', co: '--brand', os: '--violet', cn: '--ok', '': '--muted'
   };
+  // 408 内置语料固定用这个 id，和 kb/library.py 的 PRESET_COLLECTION 对齐
+  const GRAPH_PRESET = 'cs408';
   const GRAPH_FORCE = {
     charge: 320, link: 0.05, rest: 34, gravity: 0.05,
     damping: 0.6, maxV: 14
   };
+  // 和 api/graph.py 的截断上限保持一致（只影响提示文案）
+  const GRAPH_MAX_DOCS = 500;
+  const GRAPH_MAX_CHUNKS = 600;
+  const GRAPH_MAX_PER_DOC = 40;
   const graphState = {
     active: false, bound: false, loading: false, seq: 0, data: null,
     nodes: [], links: [], byId: new Map(),
-    subject: '', year: '', orphans: false,
+    subject: '', year: '', orphans: false, library: '',
     query: '', matches: null, hoverId: '',
     alpha: 1, raf: 0, size: {w: 0, h: 0}, dpr: 1,
     view: {scale: 1, x: 0, y: 0},
@@ -13446,14 +13455,22 @@
     return {
       bg: v('--bg'), card: v('--card'), line: v('--line'),
       lineStrong: v('--line-strong'), ink: v('--ink'), ink3: v('--ink-3'),
-      muted: v('--muted'), brand: v('--brand'),
+      muted: v('--muted'), mutedSoft: v('--muted-soft'), brand: v('--brand'),
       ds: v('--info'), co: v('--brand'), os: v('--violet'), cn: v('--ok'),
       other: v('--muted'), font: v('--sans')
     };
   }
 
   function graphNodeColor(node, pal) {
-    return pal[node.subject] || pal.other;
+    if (node.subject) return pal[node.subject] || pal.other;
+    // 用户知识库的节点不属于任何科目，用中性色区分层级
+    if (node.kind === 'library') return pal.ink3;
+    if (node.kind === 'document') return pal.muted;
+    return pal.mutedSoft || pal.muted;
+  }
+
+  function graphIsCorpusLib(id) {
+    return !id || id === GRAPH_PRESET;
   }
 
   function graphStatus(text) {
@@ -13477,6 +13494,8 @@
     graphBind();
     graphResize();
     graphRenderSubjectChips();
+    graphRenderLibrarySelect();
+    graphApplyCorpusControls();
     if (!g.data && !g.loading) {
       graphFetch();
     } else {
@@ -13496,9 +13515,13 @@
     graphStatus('正在生成图谱…');
     try {
       const params = new URLSearchParams();
-      if (g.subject) params.set('subject', g.subject);
-      if (g.year) params.set('year', g.year);
-      if (g.orphans) params.set('orphans', '1');
+      if (g.library) params.set('library', g.library);
+      // 科目 / 年份 / 未关联真题只对 408 内置语料有意义
+      if (graphIsCorpusLib(g.library)) {
+        if (g.subject) params.set('subject', g.subject);
+        if (g.year) params.set('year', g.year);
+        if (g.orphans) params.set('orphans', '1');
+      }
       const qs = params.toString();
       const data = await api('/graph' + (qs ? '?' + qs : ''));
       if (seq !== g.seq) return;
@@ -13528,9 +13551,12 @@
     g.hoverId = '';
     g.nodes = (data.nodes || []).map((raw, i) => {
       const node = Object.assign({}, raw);
-      node.r = node.kind === 'knowledge'
-        ? 4.4 + Math.min(node.degree || 0, 6) * 1.3
-        : 2.6 + Math.min(node.degree || 0, 4) * 0.9;
+      const deg = node.degree || 0;
+      if (node.kind === 'knowledge') node.r = 4.4 + Math.min(deg, 6) * 1.3;
+      else if (node.kind === 'question') node.r = 2.6 + Math.min(deg, 4) * 0.9;
+      else if (node.kind === 'library') node.r = 6.4 + Math.min(deg, 8) * 0.55;
+      else if (node.kind === 'document') node.r = 4.2 + Math.min(deg, 8) * 0.45;
+      else node.r = 2.1;
       const old = prev.get(node.id);
       if (old) {
         node.x = old.x;
@@ -13558,16 +13584,20 @@
     g.alpha = graphReduceMotion() ? 0 : 0.35;
     graphFit();
     graphRenderYears();
+    graphRenderLibrarySelect();
+    graphApplyCorpusControls();
     graphRenderFoot();
     const canvas = $('#graph-canvas');
     if (canvas) {
       const stats = data.stats || {};
       canvas.setAttribute('aria-label',
-        '考点与真题关联图：' + (stats.knowledge || 0) + ' 个考点、' +
-        (stats.questions || 0) + ' 道真题、' + (stats.links || 0) + ' 条关联');
+        '知识图谱：' + (stats.knowledge || 0) + ' 个考点、' +
+        (stats.questions || 0) + ' 道真题、' +
+        (stats.documents || 0) + ' 篇资料、' +
+        (stats.chunks || 0) + ' 段片段、' + (stats.links || 0) + ' 条关联');
     }
     if (!g.nodes.length) {
-      graphStatus('当前筛选下没有可显示的关联。');
+      graphStatus('当前筛选下没有可显示的内容。');
     } else {
       graphStatus('');
       graphDraw();
@@ -13795,7 +13825,10 @@
       const sx = node.x * scale + ox;
       const sy = node.y * scale + oy;
       if (sx < -60 || sy < -60 || sx > w + 60 || sy > h + 60) continue;
-      const radius = Math.max(node.kind === 'knowledge' ? 3 : 2, node.r * scale);
+      const strong = node.kind === 'knowledge' || node.kind === 'library' ||
+        node.kind === 'document';
+      const radius = Math.max(
+        strong ? 3 : (node.kind === 'chunk' ? 1.6 : 2), node.r * scale);
       const alpha = nodeAlpha(node);
       const color = graphNodeColor(node, pal);
       const isKnowledge = node.kind === 'knowledge';
@@ -13816,11 +13849,22 @@
       ctx.fillStyle = pal.card;
       ctx.fill();
 
-      ctx.globalAlpha = alpha * (isKnowledge ? 1 : 0.78);
+      ctx.globalAlpha = alpha * (node.kind === 'question' ? 0.78
+        : (node.kind === 'chunk' ? 0.7 : 1));
       ctx.beginPath();
       ctx.arc(sx, sy, radius, 0, Math.PI * 2);
       ctx.fillStyle = color;
       ctx.fill();
+
+      // 知识库节点套一圈，和科目圆点在形状上也能分开
+      if (node.kind === 'library') {
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius + 2.6, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
 
       if (focus === node) {
         ctx.globalAlpha = 1;
@@ -13831,7 +13875,7 @@
         ctx.stroke();
       }
 
-      const showLabel = isKnowledge || scale >= 1.25 ||
+      const showLabel = strong || scale >= 1.25 ||
         (focusSet && focusSet.has(node.id)) ||
         (matches && matches.has(node.id));
       if (showLabel) {
@@ -13847,6 +13891,8 @@
           priority: (focus === node ? 1000 : 0) +
             (matches && matches.has(node.id) ? 500 : 0) +
             (focusSet && focusSet.has(node.id) ? 200 : 0) +
+            (node.kind === 'library' ? 70 : 0) +
+            (node.kind === 'document' ? 50 : 0) +
             (isKnowledge ? 40 : 0) + (node.degree || 0) * 4
         });
       }
@@ -13903,6 +13949,44 @@
     });
   }
 
+  // 知识库下拉：408 内置永远在第一项之后，其余是当前账号能读的库
+  function graphRenderLibrarySelect() {
+    const sel = $('#graph-library');
+    if (!sel) return;
+    const g = graphState;
+    const libs = (g.data && g.data.stats && g.data.stats.libraries) || [];
+    const keep = g.library;
+    sel.replaceChildren();
+    const all = el('option', null, '全部知识库');
+    all.value = '';
+    sel.appendChild(all);
+    libs.forEach(lib => {
+      const opt = el('option', null, lib.name);
+      opt.value = lib.id;
+      opt.title = lib.builtin
+        ? '内置 408 真题与考点'
+        : (lib.backend === 'weknora' ? 'WeKnora 知识库' : '自建知识库') +
+          ' · ' + (lib.documents || 0) + ' 篇资料';
+      sel.appendChild(opt);
+    });
+    g.library = keep && libs.some(l => l.id === keep) ? keep : '';
+    sel.value = g.library;
+    sel.hidden = !libs.length;
+  }
+
+  // 科目 / 年份 / 未关联真题只属于 408 内置语料，看自建库时收起来省地方
+  function graphApplyCorpusControls() {
+    const corpus = graphIsCorpusLib(graphState.library);
+    const subjects = $('#graph-subjects');
+    if (subjects) subjects.hidden = !corpus;
+    const toggle = document.querySelector('#page-graph .graph-toggle');
+    if (toggle) toggle.hidden = !corpus;
+    if (!corpus) {
+      const year = $('#graph-year');
+      if (year) year.hidden = true;
+    }
+  }
+
   function graphRenderYears() {
     const sel = $('#graph-year');
     if (!sel) return;
@@ -13944,9 +14028,31 @@
       item.appendChild(document.createTextNode(meta ? meta.label : row.label));
       box.appendChild(item);
     });
-    box.appendChild(el('span', 'g-count',
-      stats.knowledge + ' 个考点 · ' + stats.questions + ' 道真题 · ' +
-      stats.links + ' 条关联'));
+    // 自建库按库名标出来，最多四个，再多就只报总数
+    const libRows = (stats.libraries || []).filter(row => !row.builtin);
+    const shownLibs = libRows.filter(row => row.documents_shown);
+    shownLibs.slice(0, 4).forEach(row => {
+      const item = el('span', 'g-item');
+      item.title = row.name + ' · ' + row.documents_shown + ' 篇资料、' +
+        row.chunks_shown + ' 段片段';
+      const dot = el('i', 'g-dot');
+      dot.style.background = 'var(--muted)';
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(row.name));
+      box.appendChild(item);
+    });
+    if (shownLibs.length > 4) {
+      box.appendChild(el('span', 'g-item', '还有 ' + (shownLibs.length - 4) + ' 个库'));
+    }
+    const bits = [];
+    if (stats.knowledge || stats.questions) {
+      bits.push(stats.knowledge + ' 个考点 · ' + stats.questions + ' 道真题');
+    }
+    if (!graphIsCorpusLib(g.library) || stats.documents || stats.chunks) {
+      bits.push(stats.documents + ' 篇资料 · ' + stats.chunks + ' 段片段');
+    }
+    bits.push(stats.links + ' 条关联');
+    box.appendChild(el('span', 'g-count', bits.join(' · ')));
     if (stats.hidden_orphans) {
       const warn = el('span', 'g-warn', '还有 ' + stats.hidden_orphans + ' 道真题没有配考点');
       warn.title = '这些题还没有任何考点卡引用它们。勾选「未关联真题」可以把它们也画出来。';
@@ -13958,6 +14064,18 @@
         .map(m => m.card + ' → ' + m.question).join('\n');
       box.appendChild(warn);
     }
+    if (stats.hidden_chunks) {
+      const warn = el('span', 'g-warn', '还有 ' + stats.hidden_chunks + ' 段片段没有展开');
+      warn.title = '图谱每篇最多画 ' + GRAPH_MAX_PER_DOC + ' 段、总共最多 ' +
+        GRAPH_MAX_CHUNKS + ' 段，避免一次画太多卡住；完整片段在资料详情里看。';
+      box.appendChild(warn);
+    }
+    if (stats.hidden_documents) {
+      const warn = el('span', 'g-warn', '还有 ' + stats.hidden_documents + ' 篇资料没有画');
+      warn.title = '一次最多画 ' + GRAPH_MAX_DOCS +
+        ' 篇资料；选中单个知识库可以看得更全。';
+      box.appendChild(warn);
+    }
   }
 
   function graphShowTip(node, x, y) {
@@ -13965,16 +14083,35 @@
     const tip = $('#graph-tip');
     if (!tip) return;
     tip.replaceChildren();
-    const title = el('b', null, node.kind === 'knowledge' ? node.label : node.title);
-    const meta = el('span', null, node.kind === 'knowledge'
-      ? node.subject_label + (node.chapter ? ' · ' + node.chapter : '') +
-        ' · 关联 ' + node.degree + ' 道真题'
-      : node.subject_label + ' · 被 ' + node.degree + ' 个考点引用');
-    tip.appendChild(title);
-    tip.appendChild(meta);
-    const body = node.kind === 'knowledge' ? node.summary : node.stem;
-    if (body) tip.appendChild(el('em', null, body));
-    tip.appendChild(el('span', null, '点击查看'));
+    let titleText = node.label;
+    let metaText = '';
+    let bodyText = '';
+    let action = '点击查看';
+    if (node.kind === 'knowledge') {
+      metaText = node.subject_label + (node.chapter ? ' · ' + node.chapter : '') +
+        ' · 关联 ' + node.degree + ' 道真题';
+      bodyText = node.summary;
+    } else if (node.kind === 'question') {
+      titleText = node.title;
+      metaText = node.subject_label + ' · 被 ' + node.degree + ' 个考点引用';
+      bodyText = node.stem;
+    } else if (node.kind === 'library') {
+      metaText = '知识库 · ' + node.summary;
+      action = '点击打开知识库';
+    } else if (node.kind === 'document') {
+      metaText = '资料';
+      bodyText = node.summary;
+      action = '点击查看资料原文';
+    } else {
+      titleText = node.title;
+      metaText = '片段';
+      bodyText = node.summary;
+      action = '点击查看原文';
+    }
+    tip.appendChild(el('b', null, titleText));
+    tip.appendChild(el('span', null, metaText));
+    if (bodyText) tip.appendChild(el('em', null, bodyText));
+    tip.appendChild(el('span', null, action));
     tip.hidden = false;
     const rect = tip.getBoundingClientRect();
     let left = x + 14;
@@ -13993,7 +14130,40 @@
   function graphOpenNode(node) {
     if (!node) return;
     if (node.kind === 'knowledge') openKnowledge(node.ref);
-    else openQuestion(node.ref);
+    else if (node.kind === 'question') openQuestion(node.ref);
+    else if (node.kind === 'library') go('collection', node.ref);
+    else if (node.kind === 'document') {
+      graphOpenDocument(node.collection, node.ref);
+    } else if (node.kind === 'chunk') {
+      graphOpenDocument(node.collection, node.document, node.start, node.end);
+    }
+  }
+
+  // 打开资料原文；片段节点直接把那一段圈出来
+  function graphOpenDocument(cid, docId, start, end) {
+    if (!cid || !docId) return;
+    api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+      encodeURIComponent(docId))
+      .then(doc => {
+        const wrap = el('div', 'form-grid');
+        wrap.appendChild(el('div', 'panel-sub', doc.title || '资料原文'));
+        const box = el('div', 'doc-view');
+        const text = doc.text || '';
+        const s = Number(start);
+        const e = Number(end);
+        if (start != null && s >= 0 && e > s && e <= text.length) {
+          box.appendChild(document.createTextNode(text.slice(0, s)));
+          box.appendChild(el('mark', null, text.slice(s, e)));
+          box.appendChild(document.createTextNode(text.slice(e)));
+        } else {
+          box.appendChild(document.createTextNode(text));
+        }
+        wrap.appendChild(box);
+        openModal('资料原文', wrap);
+        const hit = box.querySelector('mark');
+        if (hit && hit.scrollIntoView) hit.scrollIntoView({block: 'center'});
+      })
+      .catch(e => toast('打不开资料原文：' + e.message, 'err'));
   }
 
   function graphResize() {
@@ -14041,6 +14211,17 @@
         graphShowTip(first, g.size.w / 2, g.size.h / 2);
       });
     }
+
+    const library = $('#graph-library');
+    if (library) library.addEventListener('change', () => {
+      const value = library.value || '';
+      if (value === g.library) return;
+      g.library = value;
+      g.hoverId = '';
+      graphHideTip();
+      graphApplyCorpusControls();
+      graphFetch();
+    });
 
     const year = $('#graph-year');
     if (year) year.addEventListener('change', () => {

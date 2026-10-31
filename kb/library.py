@@ -505,6 +505,25 @@ class Library:
                  "chars": len(r.get("text") or ""),
                  "revision": int(r.get("revision") or 0)} for r in rows]
 
+    def collection_chunks(self, cid: str) -> List[Dict]:
+        """整个库的片段一次取回（图谱用，避免一篇一个查询）。"""
+        if self.store is not None:
+            rows = self.store.doc_chunks(cid)
+        else:
+            rows = [k for k in self._mem["chunks"] if k["collection_id"] == cid]
+        out = []
+        for r in rows:
+            text = r.get("text") or ""
+            out.append({
+                "id": r["id"],
+                "document_id": r.get("document_id") or "",
+                "seq": int(r.get("seq") or 0),
+                "text": text,
+                "start": int(r.get("start_off", r.get("start", 0)) or 0),
+                "end": int(r.get("end_off", r.get("end", 0)) or 0),
+            })
+        return out
+
     def update_chunk(self, cid: str, doc_id: str, chunk_id: str, text: str,
                      revision: Optional[int] = None) -> Dict:
         text = (text or "").replace("\r\n", "\n").strip()
