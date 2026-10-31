@@ -80,6 +80,7 @@ v0.48 把用户资料库整套指给 WeKnora（`WEKNORA_BASE_URL`）。实测与
 - 后端：`python -m unittest discover -s tests -t .` → 406 个用例通过（13 跳过），
   其中 `tests/test_parsers.py` 覆盖各格式与拒绝路径，`tests/test_library_files.py` 覆盖状态流转与片段改删。
 - 前端：Playwright + 系统 Edge，1440×900 与 390×844 各跑一遍
-  「上传 docx → 已索引 → 打开片段 → 改一段并保存」，截图存 `data/work/kb-upload-*.png`、
-  `kb-upload-done-*.png`、`kb-chunks-local-*.png`、`kb-chunks-local-saved-*.png`。
+  「上传 docx → 已索引 → 打开片段 → 改一段并保存」，截图保留
+  `data/work/kb-upload-done-1440.png`（已索引）、`data/work/kb-chunks-local-saved-1440.png`
+  （改完保存）；390 的版本曾用于对比，已按截图清理规则删除。
 - 实测：docx 4KB → 950 字 / 2 段；片段修改返回「已保存，检索立即使用新内容」。
