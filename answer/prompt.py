@@ -73,9 +73,24 @@ STYLE_PROMPT = """
 """
 
 
+STATS_PROMPT = """
+【表格统计】下面是服务端把资料里的表格按原文逐行数出的结果：
+%s
+
+回答里涉及数量、合计的每一个数字都必须与上面完全一致，不得自行改写、估个大概
+或再加一遍；片段之间有重叠，不要重复计数。引用仍要逐字摘自【资料】里的表格行。
+如果统计只声明「没有读全」，就不要给出精确总数。
+"""
+
+
 def build_messages(query: str, hits: Sequence[SearchHit],
-                   style: str = "", mode: str = "exam") -> List[Dict]:
-    user = "【资料】\n%s\n\n【问题】\n%s" % (format_hits(hits, mode), query.strip())
+                   style: str = "", mode: str = "exam",
+                   stats: str = "") -> List[Dict]:
+    parts = ["【资料】\n%s" % format_hits(hits, mode)]
+    if stats:
+        parts.append(STATS_PROMPT.strip() % stats)
+    parts.append("【问题】\n%s" % query.strip())
+    user = "\n\n".join(parts)
     system = SYSTEM_PROMPT_DOC if mode == "doc" else SYSTEM_PROMPT
     style = " ".join((style or "").split())
     if style:
@@ -86,8 +101,9 @@ def build_messages(query: str, hits: Sequence[SearchHit],
 
 def build_retry_messages(query: str, hits: Sequence[SearchHit],
                          previous: str, errors: Sequence[str],
-                         style: str = "", mode: str = "exam") -> List[Dict]:
-    msgs = build_messages(query, hits, style, mode)
+                         style: str = "", mode: str = "exam",
+                         stats: str = "") -> List[Dict]:
+    msgs = build_messages(query, hits, style, mode, stats)
     msgs.append({"role": "assistant", "content": previous})
     feedback = "\n".join("- " + e for e in errors)
     msgs.append({

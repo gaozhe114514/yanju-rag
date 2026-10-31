@@ -9,6 +9,8 @@ import os
 import re
 from typing import Dict
 
+from .aggregate import is_count_question
+
 DEFAULT_TTL_S = 86400
 _WS = re.compile(r"\s+")
 
@@ -53,6 +55,15 @@ def ttl_from_env(name: str = "KB_CACHE_TTL", default: int = DEFAULT_TTL_S) -> in
 
 def is_fresh(age_s: float, ttl_s: int) -> bool:
     return ttl_s > 0 and 0 <= age_s <= ttl_s
+
+
+def cacheable(query: str, preset: bool) -> bool:
+    """统计类问题不缓存：自建库里的表格随时会更新，数字必须现算。
+
+    内置 408 语料是静态的，照常缓存；用户库里问「有多少人」这类问题
+    每次都要重新读全表、服务端重新数，命中旧缓存就会把过期的数字端出来。
+    """
+    return preset or not is_count_question(query)
 
 
 def storable_payload(payload: Dict) -> Dict:

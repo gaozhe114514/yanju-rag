@@ -11,9 +11,11 @@ v0.54 起前端不再让用户选「资料 / 日常」。每个问题都先走�
 """
 from answer.pipeline import AnswerResult
 
-# 这些拒答原因属于「系统 / 生成出了故障」或「引用纪律」，不能降级成通用回答
-_STRICT_PREFIXES = ("citation_failed", "provider_error", "server_not_ready",
-                    "empty_collection")
+# 这些拒答原因属于「系统 / 生成出了故障」或「引用纪律」，不能降级成通用回答。
+# stat_failed（数字和表格逐行数出的结果对不上）也是纪律问题：改给不带引用的
+# 通用回答只会把错数字说得更像真的。
+_STRICT_PREFIXES = ("citation_failed", "stat_failed", "provider_error",
+                    "server_not_ready", "empty_collection")
 
 
 def should_fallback(res: AnswerResult) -> bool:

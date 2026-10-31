@@ -44,7 +44,7 @@ from answer.daily import (daily_reply, daily_stream, general_reply,
 from answer.pipeline import AnswerPipeline, AnswerResult
 from answer.tools import run_tools, tool_context, tool_will_run
 from answer.tutor import run_turn as tutor_turn
-from answer.cache import (cache_key, cached_payload, namespace,
+from answer.cache import (cache_key, cacheable, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
@@ -902,6 +902,8 @@ def _cache_lookup(query: str, style: str = "",
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0:
         return None
+    if not cacheable(query, _is_preset(collection)):
+        return None
     key = cache_key(query, _cache_namespace(style, collection))
     try:
         return store.get_answer_cache(key, ttl)
@@ -914,6 +916,8 @@ def _cache_store(query: str, payload: dict, style: str = "",
     store = _state.get("store")
     ttl = int(_state.get("cache_ttl", 0))
     if store is None or ttl <= 0 or payload.get("refused"):
+        return
+    if not cacheable(query, _is_preset(collection)):
         return
     key = cache_key(query, _cache_namespace(style, collection))
     try:

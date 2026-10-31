@@ -4656,6 +4656,10 @@
     if (data.reason === 'provider_error' || (data.reason || '').indexOf('provider_error') === 0) {
       return '生成服务暂时不可用，请稍后再试。';
     }
+    if ((data.reason || '').indexOf('stat_failed') === 0) {
+      return '生成的数字和表格逐行数出的结果对不上，已按规则拒答。' +
+        '可以圈定更小的范围再问（例如说明是哪一列、哪一批人）。';
+    }
     if ((data.reason || '').indexOf('citation_failed') === 0) {
       return data.collection
         ? '生成的答案没能逐字对上资料原文，已按规则拒答。可以换个问法再试。'
@@ -4678,6 +4682,7 @@
       if (data.reason === 'empty_collection') reason = '知识库还没有资料';
       else if ((data.reason || '').indexOf('low_score') === 0) reason = '召回分数不足';
       else if ((data.reason || '').indexOf('low_margin') === 0) reason = '候选区分度不足';
+      else if ((data.reason || '').indexOf('stat_failed') === 0) reason = '统计校验未通过';
       else if ((data.reason || '').indexOf('citation_failed') === 0) reason = '引用校验未通过';
       else if ((data.reason || '').indexOf('provider_error') === 0) reason = '生成服务异常';
       return ['badge no', '未作答 · ' + reason];
@@ -13303,6 +13308,7 @@
   const GAP_REASONS = {
     no_hits: '资料未命中',
     low_score: '分数不足',
+    stat_failed: '统计校验失败',
     citation_failed: '引用校验失败',
     provider_error: '模型调用失败',
     clarify: '指代不明',
