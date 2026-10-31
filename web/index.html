@@ -2697,49 +2697,82 @@
       .ms-send { padding: 9px 12px; }
     }
 
-    /* ---------- v0.55 精通之路详情页：占满内容区，大纲贴左，会话按问答页读宽 ---------- */
-    /* 详情页不再是一张 900px 的居中卡片：页头、返回、路线信息也一起贴左，免得标题居中而正文在左。
+    /* ---------- v0.56 精通之路详情页：整页就是工作台，左栏从顶到底 ---------- */
+    /* 以前是先铺页头（标题 + 简介 + 返回 + 路线信息）再开始工作，有用的大纲和会话
+       被压到下半屏。现在详情页自己占满整屏：页头和子导航让位，路线信息收进左栏顶部，
+       左栏（路线信息 + 大纲）和侧栏一样高，右栏会话按问答页的样子铺开。
        列表页不套这些规则，仍是原来的居中版式。 */
-    .main.mastery-detail .topbar,
-    .main.mastery-detail .subnav {
-      max-width: none; margin-left: 0; margin-right: 0;
+    @media (min-width: 861px) {
+      .main.mastery-detail .topbar,
+      .main.mastery-detail .subnav { display: none; }
     }
     #page-mastery.detail.active {
-      display: flex; flex-direction: column; overflow: hidden;
+      display: flex; flex-direction: column; height: 100%; overflow: hidden;
     }
     #page-mastery.detail .page-inner {
       display: flex; flex-direction: column; flex: 1; min-height: 0;
-      width: 100%; max-width: none; margin: 0; padding: 8px 36px 20px;
+      width: 100%; max-width: none; margin: 0; padding: 0; overflow: hidden;
     }
     #page-mastery.detail #mastery-root {
       display: flex; flex-direction: column; flex: 1; min-height: 0;
     }
     #page-mastery.detail .ms-studio {
-      display: grid; flex: 1; min-height: 0; margin-top: 6px; margin-left: -36px;
+      display: grid; flex: 1; min-height: 0; margin: 0; gap: 0; max-width: none;
       grid-template-columns: 272px minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr); gap: 24px;
-      align-items: stretch; max-width: none;
+      grid-template-rows: auto minmax(0, 1fr);
+      align-items: stretch;
     }
-    /* 大纲：不再是浮在页面里的卡片，而是直接贴在左侧导航栏上的一栏，
-       和会话只隔一条竖线；栏内文字仍与页头对齐（36px = page-inner 的左内边距）。 */
+    /* 左栏顶：返回 + 路线名 + 元信息 + 目标 + 档案 + 三个操作，压紧成十来行，
+       把高度留给下面的大纲和右边的会话 */
+    #page-mastery.detail .ms-side-top {
+      grid-column: 1; grid-row: 1; min-width: 0;
+      max-height: 52vh; overflow-y: auto;
+      padding: 18px 16px 14px 20px;
+      border-right: 1px solid var(--line);
+    }
+    #page-mastery.detail .ms-side-top .mp-back {
+      margin: 0 0 10px; padding: 0; font-size: 12px; color: var(--muted);
+    }
+    #page-mastery.detail .ms-side-top .mp-head { display: block; margin: 0; }
+    #page-mastery.detail .ms-side-top .panel-title { font-size: 15px; line-height: 1.4; }
+    #page-mastery.detail .ms-side-top .panel-sub {
+      margin-top: 4px; font-size: 11px; line-height: 1.6;
+    }
+    #page-mastery.detail .ms-side-top .mp-goal {
+      margin-top: 8px; padding: 7px 9px; border-radius: 8px;
+      background: var(--muted-surface);
+      font-size: 11.5px; line-height: 1.6;
+    }
+    #page-mastery.detail .ms-side-top .mp-profile { margin-top: 8px; }
+    #page-mastery.detail .ms-side-top .page-actions {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px;
+    }
+    #page-mastery.detail .ms-side-top .page-actions button {
+      padding: 4px 9px; font-size: 11.5px; border-radius: 7px;
+    }
+    /* 大纲：左栏下半段，跟着侧栏一起到底，和会话只隔一条竖线；不再是浮在页面里的卡片 */
     #page-mastery.detail .ms-rail {
-      position: static; height: 100%; max-height: none; min-height: 0;
-      border: 0; border-right: 1px solid var(--line); border-radius: 0;
-      background: transparent; box-shadow: none;
+      grid-column: 1; grid-row: 2; position: static; height: auto;
+      max-height: none; min-height: 0;
+      border: 0; border-right: 1px solid var(--line);
+      border-top: 1px solid var(--line);
+      border-radius: 0; background: transparent; box-shadow: none;
     }
-    #page-mastery.detail .ms-rail-head { padding: 0 14px 10px 36px; border-bottom: 0; }
-    #page-mastery.detail .ms-rail-body { flex: 1; min-height: 0; padding: 10px 14px 0 36px; }
-    #page-mastery.detail .ms-rail-bar { margin: 0 14px 8px 36px; }
-    /* 会话：不再套卡，按问答页的读宽居中，头、消息、输入条同一条 860px 列 */
+    #page-mastery.detail .ms-rail-head { padding: 12px 14px 8px 20px; border-bottom: 0; }
+    #page-mastery.detail .ms-rail-body { flex: 1; min-height: 0; padding: 2px 12px 16px 20px; }
+    #page-mastery.detail .ms-rail-bar { margin: 0 14px 8px 20px; }
+    /* 会话：跨满右栏两行，不套卡，按问答页的读宽居中，头、消息、输入条同一条 860px 列 */
     #page-mastery.detail .ms-chat {
-      height: 100%; min-height: 0; border: 0; border-radius: 0;
+      grid-column: 2; grid-row: 1 / span 2;
+      height: auto; min-height: 0; border: 0; border-radius: 0;
       background: transparent; box-shadow: none; overflow: hidden;
     }
     #page-mastery.detail .ms-chat-head {
-      width: 100%; max-width: 860px; margin: 0 auto; padding: 0 0 12px;
+      width: 100%; max-width: 860px; margin: 0 auto; padding: 16px 0 10px;
+      border-bottom: 0;
     }
     #page-mastery.detail .ms-log {
-      width: 100%; max-height: none; min-height: 0; padding: 18px 0 20px;
+      width: 100%; max-height: none; min-height: 0; padding: 4px 0 18px;
     }
     #page-mastery.detail .ms-log > * {
       width: 100%; max-width: 860px; margin-left: auto; margin-right: auto;
@@ -2749,22 +2782,31 @@
       width: 100%; max-width: 860px; margin-left: auto; margin-right: auto;
     }
     #page-mastery.detail .ms-composer {
-      padding: 10px 0 0; border-top: 1px solid var(--line); background: transparent;
+      padding: 10px 0 14px; border-top: 1px solid var(--line); background: transparent;
     }
     #page-mastery.detail .ms-starters { padding: 10px 0 0; }
 
     @media (max-width: 860px) {
-      /* 手机回到普通文档流：会话在上、大纲在下，页面自己滚动 */
-      #page-mastery.detail.active { display: block; overflow-y: auto; }
-      #page-mastery.detail .page-inner { display: block; height: auto; padding: 12px 16px 24px; }
+      /* 手机回到普通文档流：路线信息在上、会话居中、大纲最后，页面自己滚动 */
+      #page-mastery.detail.active { display: block; height: auto; overflow-y: auto; }
+      #page-mastery.detail .page-inner {
+        display: block; height: auto; overflow: visible; padding: 12px 16px 24px;
+      }
       #page-mastery.detail #mastery-root { display: block; }
       #page-mastery.detail .ms-studio {
         display: flex; flex-direction: column; gap: 14px; margin: 8px 0 0;
       }
+      #page-mastery.detail .ms-side-top {
+        order: -2; max-height: none; overflow: visible; padding: 0 0 4px; border-right: 0;
+      }
+      #page-mastery.detail .ms-side-top .page-actions { margin-top: 10px; }
       #page-mastery.detail .ms-chat { order: -1; height: auto; }
-      #page-mastery.detail .ms-log { max-height: 56vh; min-height: 340px; padding: 14px 0; }
+      /* 手机上输入条要和屏幕底部的导航栏同时留出来：消息区压到 260px 起，
+         这样首屏就能看到「开始学习」和输入框，不用先往下滚 */
+      #page-mastery.detail .ms-chat-head { padding: 10px 0 8px; }
+      #page-mastery.detail .ms-log { max-height: 46vh; min-height: 260px; padding: 4px 0; }
       #page-mastery.detail .ms-rail {
-        height: auto; max-height: 260px; padding-top: 10px;
+        order: 0; height: auto; max-height: 260px; padding-top: 10px;
         border-right: 0; border-top: 1px solid var(--line);
       }
       #page-mastery.detail .ms-rail-head { padding: 0 0 8px; }
@@ -2774,6 +2816,7 @@
       #page-mastery.detail .ms-log > *,
       #page-mastery.detail .ms-starters,
       #page-mastery.detail .ms-composer { max-width: none; }
+      #page-mastery.detail .ms-composer { padding: 10px 0 0; }
     }
 
     /* 精通之路的新建向导：目标 → 素材 → 大纲，照 DeepTutor 的两步弹窗 + 大纲会话 */
@@ -11610,8 +11653,9 @@
     return panel;
   }
 
-  function renderMasteryStudio(root, path) {
+  function renderMasteryStudio(root, path, side) {
     const wrap = el('div', 'ms-studio');
+    if (side) wrap.appendChild(side);
     wrap.appendChild(masteryOutlineRail(path));
     wrap.appendChild(masteryChatPanel(path));
     root.appendChild(wrap);
@@ -11751,7 +11795,6 @@
       state.masteryPane = '';
       go('mastery');
     });
-    root.appendChild(back);
 
     const head = el('div', 'page-head-row mp-head');
     const left = el('div');
@@ -11789,13 +11832,21 @@
     });
     acts.appendChild(del);
     head.appendChild(acts);
-    root.appendChild(head);
 
     // 三种模式共用同一个工作台：左边大纲，右边会话；模式开关在会话头上（v0.55）
+    // v0.56：路线信息（返回、标题、目标、档案、操作）收进左栏顶部，页面不再先铺
+    // 一大段页头再开始工作；大纲栏和侧边栏一样从顶到底。
     if (pane === 'outline' || masteryModules(path).length) {
-      renderMasteryStudio(root, path);
+      const side = el('div', 'ms-side-top');
+      side.appendChild(back);
+      side.appendChild(head);
+      renderMasteryStudio(root, path, side);
       return;
     }
+
+    // 走到这里的是没有 modules 的老路线：仍用原来的页头 + 步骤清单
+    root.appendChild(back);
+    root.appendChild(head);
 
     // 路线建好了但还没排大纲（理论上走不到，留个兜底）
     if (!stats.total) {
