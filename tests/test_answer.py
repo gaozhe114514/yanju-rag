@@ -16,7 +16,8 @@ class FakeSearcher:
     def __init__(self, hits):
         self.hits = hits
 
-    def search(self, query):
+    def search(self, query, skip_rerank=False):
+        self.skip_rerank = skip_rerank
         return list(self.hits)
 
 

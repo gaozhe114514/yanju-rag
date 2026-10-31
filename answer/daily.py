@@ -8,6 +8,7 @@
 两条链路都不允许自称「根据资料」。引用必须逐字命中、资料没覆盖要明说，
 这两条硬规则仍由检索与引用校验负责，这里只负责说人话。
 """
+import re
 from typing import Dict, Iterator, List, Optional
 
 from .agent import normalize_history
@@ -18,6 +19,55 @@ OFFLINE_REPLY = ("现在是离线演示模式，没有接生成模型，这个�
 
 # 服务端强制加在通用回答前面的一句话：不靠模型自觉，保证每次都明说
 GENERAL_PREFIX = "资料里没有直接依据，下面按通用知识回答，不带引用。\n\n"
+
+# 模型有时会把这句话抄进回答开头，服务端再拼一次就成了两遍。
+# 开头是这几个说法的整行，一律当回声去掉。
+_ECHO_HEADS = ("资料里没有直接依据", "资料中没有直接依据", "资料未覆盖")
+
+
+def strip_echo(text: str) -> str:
+    """去掉模型复述的那句「资料里没有直接依据」。"""
+    out = (text or "").lstrip()
+    if not any(out.startswith(h) for h in _ECHO_HEADS):
+        return out
+    nl = out.find("\n")
+    return "" if nl < 0 else out[nl + 1:].lstrip("\n")
+
+
+def _strip_echo_stream(chunks: Iterator[str]) -> Iterator[str]:
+    """流式版：开头可能是回声时先攒着，确定不是回声就立刻往下传。"""
+    buf = ""
+    passthrough = False
+    for chunk in chunks:
+        if passthrough:
+            yield chunk
+            continue
+        buf += chunk or ""
+        head = buf.lstrip()
+        if not head:
+            continue
+        if any(h.startswith(head) for h in _ECHO_HEADS):
+            continue  # 还只收到开头几个字，等它长出来再判断
+        if any(head.startswith(h) for h in _ECHO_HEADS):
+            nl = head.find("\n")
+            if nl < 0:
+                if len(head) > 300:  # 没有换行的长回声：直接丢掉
+                    passthrough = True
+                    buf = ""
+                continue
+            head = head[nl + 1:].lstrip("\n")
+            passthrough = True
+            if head:
+                yield head
+            buf = ""
+            continue
+        passthrough = True
+        yield head
+        buf = ""
+    if buf:
+        rest = strip_echo(buf)
+        if rest:
+            yield rest
 
 DAILY_SYSTEM = """你是「言据」里的助手，和用户正常聊天、帮点小忙。
 
@@ -93,7 +143,7 @@ def general_reply(provider, query: str, history: Optional[List[Dict]] = None,
                   style: str = "", tool_text: str = "") -> str:
     """通用回答：服务端强制在前面写清「资料里没有依据」。"""
     body = _reply(provider, build_general_messages(query, history, style, tool_text))
-    return GENERAL_PREFIX + body
+    return GENERAL_PREFIX + strip_echo(body)
 
 
 def daily_stream(provider, query: str, history: Optional[List[Dict]] = None,
@@ -104,5 +154,5 @@ def daily_stream(provider, query: str, history: Optional[List[Dict]] = None,
 def general_stream(provider, query: str, history: Optional[List[Dict]] = None,
                    style: str = "", tool_text: str = "") -> Iterator[str]:
     yield GENERAL_PREFIX
-    yield from _stream(provider,
-                       build_general_messages(query, history, style, tool_text))
+    yield from _strip_echo_stream(
+        _stream(provider, build_general_messages(query, history, style, tool_text)))

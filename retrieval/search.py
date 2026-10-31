@@ -2,7 +2,7 @@
 """双路召回 → RRF → 精排。"""
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from .bm25 import BM25
 from .chunk import Chunk
@@ -65,6 +65,24 @@ def match_exact_question(query: str, chunks: Sequence[Chunk]) -> Optional[Chunk]
     return chunk if status == "found" else None
 
 
+# 「实时数据」问法跳过精排的门槛。本地 bge-small 实测（277 个 chunk）：
+# 在库问题 BM25 最高分 ≥6.4、向量分 ≥0.51；「今天开封市天气」「红烧肉怎么做」
+# 这类库外问题 BM25 ≤4.0、向量 ≤0.49。两个条件同时满足才跳过——
+# 宁可多花几秒，也不误拒在库问题。
+_SKIP_BM25 = 5.0
+_SKIP_VEC = 0.55
+
+
+def weak_evidence(bm_hits: Sequence[tuple], vmap: Dict[int, float]) -> bool:
+    """双路召回都拿不出像样的证据：精排救不回来，也不用花那几秒。"""
+    top_bm = max((s for _, s in bm_hits), default=0.0)
+    if top_bm >= _SKIP_BM25:
+        return False
+    if not vmap:
+        return True
+    return max(vmap.values()) < _SKIP_VEC
+
+
 class HybridSearcher:
     def __init__(self, chunks: Sequence[Chunk], embedder=None,
                  reranker=None, k_each: int = 50, k_fuse: int = 30,
@@ -91,17 +109,18 @@ class HybridSearcher:
             vecs = embedder.embed([c.text for c in self.chunks])
             self.vector_index = VectorIndex(vecs)
 
-    def search(self, query: str) -> List[SearchHit]:
+    def search(self, query: str, skip_rerank: bool = False) -> List[SearchHit]:
         if not self.exact_refs:
-            return self._search(query)
+            return self._search(query, skip_rerank=skip_rerank)
         status, exact = resolve_exact_question(query, self.chunks)
         if status in ("missing", "ambiguous"):
             # 用户点名了题号，但库里要么没有、要么对不上年份：
             # 用别的题作答等于答非所问，直接返回空让拒答闸门拦下。
             return []
-        return self._search(query, exact)
+        return self._search(query, exact, skip_rerank=skip_rerank)
 
-    def _search(self, query: str, exact: Optional[Chunk] = None) -> List[SearchHit]:
+    def _search(self, query: str, exact: Optional[Chunk] = None,
+                skip_rerank: bool = False) -> List[SearchHit]:
         bm_hits = self.bm25.search(tokenize(query), self.k_each)
         bmap = dict(bm_hits)
         lists = [bm_hits]
@@ -118,6 +137,12 @@ class HybridSearcher:
                 v_hits = self.vector_index.search(qv, self.k_each)
             vmap = dict(v_hits)
             lists.append(v_hits)
+
+        if skip_rerank and self.reranker is not None and weak_evidence(bm_hits, vmap):
+            # 实时数据类问题（今天几号、开封天气）：双路召回都没有像样的证据，
+            # 资料里不可能有能逐字引用的原文。精排要 5~7 秒，救不回这类问题，
+            # 直接返回空让闸门拒答，省掉这段时间。
+            return []
 
         fused = rrf(lists, k=60, top_k=self.k_fuse)
         ranked = (self.reranker.rerank(query, fused, self.k_final)

@@ -43,6 +43,13 @@ class ExtractCityTest(unittest.TestCase):
         self.assertEqual(extract_city("北京明天会下雨吗"), "北京")
         self.assertEqual(extract_city("查一下上海的天气"), "上海")
 
+    def test_trailing_question_words(self):
+        # v0.57：线上问过「今天开封市天气什么样」，城市被连问法一起取走，
+        # Open-Meteo 查不到「开封市什么样」这个地名，天气工具直接失败。
+        self.assertEqual(extract_city("今天开封市天气什么样"), "开封市")
+        self.assertEqual(extract_city("北京啥样"), "北京")
+        self.assertEqual(extract_city("开封市区的天气怎么样"), "开封市")
+
     def test_english_question(self):
         self.assertEqual(extract_city("Zhengzhou weather today"), "Zhengzhou")
 
@@ -52,6 +59,27 @@ class ExtractCityTest(unittest.TestCase):
 
     def test_overlong_is_rejected(self):
         self.assertEqual(extract_city("这是一个非常非常非常非常长的地名啊啊啊"), "")
+
+
+class GeocodeCacheTest(unittest.TestCase):
+    def setUp(self):
+        tools._GEO_CACHE.clear()
+
+    def tearDown(self):
+        tools._GEO_CACHE.clear()
+
+    def test_second_call_hits_cache(self):
+        fetch = FakeFetch()
+        first = tools._geocode("郑州", fetch, cache=True)
+        second = tools._geocode("郑州 ", fetch, cache=True)
+        self.assertEqual(first, second)
+        self.assertEqual(len(fetch.calls), 1)
+
+    def test_cache_can_be_turned_off(self):
+        fetch = FakeFetch()
+        tools._geocode("郑州", fetch, cache=False)
+        tools._geocode("郑州", fetch, cache=False)
+        self.assertEqual(len(fetch.calls), 2)
 
 
 class WeatherLabelTest(unittest.TestCase):

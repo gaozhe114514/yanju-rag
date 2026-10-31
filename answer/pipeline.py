@@ -36,9 +36,10 @@ class AnswerPipeline:
         # exam：408 真题 + 考点；doc：用户自建资料库
         self.prompt_mode = prompt_mode
 
-    def answer(self, query: str, style: str = "") -> AnswerResult:
+    def answer(self, query: str, style: str = "",
+               skip_rerank: bool = False) -> AnswerResult:
         t0 = time.time()
-        hits = self.searcher.search(query)
+        hits = self.searcher.search(query, skip_rerank=skip_rerank)
         t1 = time.time()
         decision = self.gate.check(query, hits)
         t2 = time.time()
@@ -46,6 +47,8 @@ class AnswerPipeline:
             "retrieve": int((t1 - t0) * 1000),
             "gate": int((t2 - t1) * 1000),
         }
+        if skip_rerank and not hits and getattr(self.searcher, "reranker", None):
+            timings["rerank_skipped"] = 1
         spent = {"generate": 0, "verify": 0}
 
         def done(res: AnswerResult) -> AnswerResult:
@@ -101,7 +104,8 @@ class AnswerPipeline:
 
         return done(AnswerResult(True, reason="unknown", hits=hits, attempts=2))
 
-    def answer_stream(self, query: str, style: str = ""):
+    def answer_stream(self, query: str, style: str = "",
+                      skip_rerank: bool = False):
         """流式版本：先吐出 answer 文本，收完后照常校验引用。
 
         事件类型：
@@ -113,7 +117,7 @@ class AnswerPipeline:
         """
         t0 = time.time()
         yield {"type": "status", "stage": "retrieve"}
-        hits = self.searcher.search(query)
+        hits = self.searcher.search(query, skip_rerank=skip_rerank)
         t1 = time.time()
         decision = self.gate.check(query, hits)
         t2 = time.time()
@@ -121,6 +125,8 @@ class AnswerPipeline:
             "retrieve": int((t1 - t0) * 1000),
             "gate": int((t2 - t1) * 1000),
         }
+        if skip_rerank and not hits and getattr(self.searcher, "reranker", None):
+            timings["rerank_skipped"] = 1
         yield {"type": "status", "stage": "gate", "hits": len(hits),
                "refuse": bool(decision.refuse)}
 

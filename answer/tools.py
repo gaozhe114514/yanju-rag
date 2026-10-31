@@ -13,6 +13,7 @@ import math
 import os
 import re
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -26,7 +27,9 @@ BING_RSS_URL = "https://www.bing.com/search"
 BING_API_URL = "https://api.bing.microsoft.com/v7.0/search"
 TAVILY_URL = "https://api.tavily.com/search"
 SERPER_URL = "https://google.serper.dev/search"
-TIMEOUT_S = 6
+# 实时数据接口正常 200~500ms 就回；给 4 秒已经足够，再久就是对方挂了，
+# 不能让一次天气查询把整条回答卡住十几秒。
+TIMEOUT_S = 4
 FETCH_TIMEOUT_S = 8
 FETCH_MAX_BYTES = 1_500_000
 FETCH_MAX_CHARS = 1600
@@ -82,7 +85,8 @@ _WMO = {
 _STOP_WORDS = [
     "今天", "明天", "后天", "现在", "当前", "刚才", "这几天", "最近",
     "请问", "帮我", "查一下", "查查", "查下", "看看", "看一下", "告诉我",
-    "天气", "气温", "温度", "预报", "怎么样", "如何", "多少度", "几度",
+    "天气", "气温", "温度", "预报", "怎么样", "什么样", "怎样", "啥样", "咋样",
+    "好不好", "情况", "如何", "多少度", "几度",
     "冷不冷", "热不热", "会不会", "会下雨", "会下雪", "要下雨", "要下雪",
     "有雨", "有雪", "下雨", "下雪", "刮风",
     "的", "呢", "吗", "啊", "呀",
@@ -90,6 +94,8 @@ _STOP_WORDS = [
     "is", "the", "in", "at", "how", "it", "like",
 ]
 _PUNCT = re.compile(r"[。，、！？,.!?;；:：\"'“”‘’()（）\[\]【】\s]+")
+# 地名后缀：万一还有没剥干净的问法（「开封市什么样」），从第一个后缀处截断
+_ADMIN_END = re.compile(r"[市县区旗]")
 
 # 日期不是算式：2026-10-30 里的连字符不能让计算工具误以为要减法
 _DATE_RE = re.compile(
@@ -146,6 +152,9 @@ def extract_city(query: str) -> str:
         text = re.sub(re.escape(word), " ", text, flags=re.IGNORECASE)
     left = [p for p in text.split() if p]
     city = "".join(left).strip()
+    m = _ADMIN_END.search(city)
+    if m and m.end() < len(city):
+        city = city[:m.end()]
     if not city or len(city) > 12:
         return ""
     return city
@@ -196,19 +205,44 @@ def _num(value, digits: int = 0) -> str:
         return "—"
 
 
+# 地名解析结果缓存：地名几乎不变，没必要每次重走一次 TLS（约 1 秒）
+_GEO_CACHE: Dict[str, tuple] = {}
+_GEO_TTL_S = 24 * 3600
+_GEO_CACHE_MAX = 256
+
+
+def _geocode(city: str, fetch: Callable[[str, Dict[str, str]], dict],
+             cache: bool = True) -> dict:
+    """城市名 → Open-Meteo 地名结果；开启缓存时同一城市 24 小时内只查一次。"""
+    key = city.strip().lower()
+    now = time.time()
+    if cache:
+        hit = _GEO_CACHE.get(key)
+        if hit and now - hit[0] < _GEO_TTL_S:
+            return hit[1]
+    geo = fetch(GEOCODE_URL, {"name": city, "count": "1", "language": "zh",
+                              "format": "json"})
+    if cache and geo is not None:
+        if len(_GEO_CACHE) >= _GEO_CACHE_MAX:
+            _GEO_CACHE.clear()  # 公开地名，清空了重查也不贵
+        _GEO_CACHE[key] = (now, geo)
+    return geo
+
+
 def weather_lookup(query: str, fetch: Callable[[str, Dict[str, str]], dict] = None,
                    context: Optional[dict] = None) -> dict:
     """查天气。返回统一结构，失败也返回结构，不抛异常给上层。"""
-    fetch = fetch or _get_json
     city = extract_city(query)
+    # 地名解析走一次 TLS 就要 1 秒左右，而地名几乎不变：同一城市 24 小时内复用
+    cache = fetch is None
+    fetch = fetch or _get_json
     base = {"name": "weather", "label": "天气", "source": "Open-Meteo",
             "detail": "", "ok": False}
     if not city:
         base["detail"] = "没听出要查哪个城市。说「郑州天气」这种格式，我再查。"
         return base
     try:
-        geo = fetch(GEOCODE_URL, {"name": city, "count": "1", "language": "zh",
-                                  "format": "json"})
+        geo = _geocode(city, fetch, cache=cache)
         hits = (geo or {}).get("results") or []
         if not hits:
             base["detail"] = "Open-Meteo 里没找到「%s」这个地名。" % city

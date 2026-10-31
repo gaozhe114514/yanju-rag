@@ -13,7 +13,7 @@ from retrieval.chunk import (Chunk, build_chunk, build_knowledge_chunk,
 from retrieval.eval import evaluate
 from retrieval.fuse import rrf
 from retrieval.rerank import LexicalReranker
-from retrieval.search import HybridSearcher, match_exact_question
+from retrieval.search import HybridSearcher, match_exact_question, weak_evidence
 from retrieval.tokenize import tokenize
 
 
@@ -199,6 +199,53 @@ class SearcherTest(unittest.TestCase):
         hits = s.search("快速排序")
         self.assertEqual(len(hits), 2)
         self.assertEqual(hits[0].chunk.id, "2019-408-03")
+
+
+class CountingReranker:
+    def __init__(self):
+        self.calls = 0
+
+    def rerank(self, query, candidates, top_k=5):
+        self.calls += 1
+        return [(i, 0.9) for i, _ in candidates][:top_k]
+
+
+class WeakEvidenceTest(unittest.TestCase):
+    def test_bm25_alone_is_enough(self):
+        self.assertFalse(weak_evidence([(0, 6.4)], {0: 0.4}))
+
+    def test_vector_alone_is_enough(self):
+        self.assertFalse(weak_evidence([(0, 0.0)], {0: 0.60}))
+
+    def test_nothing_to_go_on(self):
+        self.assertTrue(weak_evidence([(0, 3.9)], {0: 0.42}))
+        self.assertTrue(weak_evidence([], {}))
+
+
+class SkipRerankTest(unittest.TestCase):
+    """实时数据问题：证据太弱就直接空手回去，不花精排那几秒。"""
+
+    def test_skips_when_evidence_is_weak(self):
+        chunks = sample_chunks()
+        rr = CountingReranker()
+        s = HybridSearcher(chunks, reranker=rr)
+        self.assertEqual(s.search("今天开封市天气什么样", skip_rerank=True), [])
+        self.assertEqual(rr.calls, 0)
+
+    def test_reranks_when_evidence_is_strong(self):
+        chunks = sample_chunks()
+        rr = CountingReranker()
+        s = HybridSearcher(chunks, reranker=rr)
+        hits = s.search("快速排序 时间复杂度", skip_rerank=True)
+        self.assertTrue(hits)
+        self.assertEqual(rr.calls, 1)
+
+    def test_default_never_skips(self):
+        chunks = sample_chunks()
+        rr = CountingReranker()
+        s = HybridSearcher(chunks, reranker=rr)
+        s.search("今天开封市天气什么样")
+        self.assertEqual(rr.calls, 1)
 
 
 class EvalTest(unittest.TestCase):

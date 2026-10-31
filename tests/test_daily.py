@@ -2,8 +2,9 @@
 """日常对话链路：不检索、不引用，也不在本模块里假装查过资料。"""
 import unittest
 
-from answer.daily import (DAILY_SYSTEM, OFFLINE_REPLY, build_daily_messages,
-                          daily_reply, daily_stream)
+from answer.daily import (DAILY_SYSTEM, GENERAL_PREFIX, OFFLINE_REPLY,
+                          build_daily_messages, daily_reply, daily_stream,
+                          general_stream, strip_echo)
 from answer.providers import DeepSeekProvider, ProviderError
 
 
@@ -110,6 +111,41 @@ class DailyStreamTest(unittest.TestCase):
 
     def test_offline_stream_yields_the_offline_line(self):
         self.assertEqual(list(daily_stream(None, "q")), [OFFLINE_REPLY])
+
+
+class EchoStripTest(unittest.TestCase):
+    """模型把服务端强加的那句话又抄一遍时，只保留一遍。"""
+
+    def test_single_line_echo_removed(self):
+        body = GENERAL_PREFIX + "开封今天多云，18 到 25 度。"
+        self.assertEqual(strip_echo(body), "开封今天多云，18 到 25 度。")
+
+    def test_plain_answer_untouched(self):
+        self.assertEqual(strip_echo("开封今天多云。"), "开封今天多云。")
+        self.assertEqual(strip_echo("资料结构里先看页表。"), "资料结构里先看页表。")
+
+    def test_stream_keeps_one_prefix(self):
+        class Chunks:
+            def __init__(self, pieces):
+                self.pieces = list(pieces)
+
+            def chat_stream(self, messages, **kwargs):
+                yield from self.pieces
+
+        pieces = ["资料里没有直接依据", "，下面按通用知识回答，不带引用。\n\n",
+                  "开封今天", "多云。"]
+        out = "".join(general_stream(Chunks(pieces), "开封天气"))
+        self.assertEqual(out, GENERAL_PREFIX + "开封今天多云。")
+        self.assertEqual(out.count("资料里没有直接依据"), 1)
+
+    def test_stream_without_echo_passes_through(self):
+        class Chunks:
+            def chat_stream(self, messages, **kwargs):
+                yield "开封"
+                yield "今天晴。"
+
+        self.assertEqual("".join(general_stream(Chunks(), "q")),
+                         GENERAL_PREFIX + "开封今天晴。")
 
 
 class DeepSeekChatStreamTest(unittest.TestCase):

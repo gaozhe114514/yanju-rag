@@ -27,6 +27,8 @@ import os
 import threading
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -77,6 +79,51 @@ ROOT = Path(__file__).resolve().parents[1]
 _state = {}
 _lock = threading.Lock()
 GUARD = AccessGuard.from_env()
+
+# 工具调用打的是外部接口，和检索（含精排，2C 机器上 5~7 秒）并行跑，
+# 等回答真的降级到通用链路时再取结果，不占关键路径。
+_TOOLS_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tools")
+# 工具自己每个外部调用最多 TIMEOUT_S 秒，天气要打两个接口；这里给足，
+# 免得等到了超时才发现结果被扔掉。工具从检索那一刻就在跑，不从这行才开始计时。
+TOOL_WAIT_S = 9.0
+# 问的是「此刻」的事实：静态资料库里不可能有能逐字引用的原文
+_LIVE_TOOLS = ("weather", "time", "calc")
+# 可以抢跑的工具：本地算或轻量外部查询。搜索 / 抓网页不打，免得资料能答时白花外部额度
+_PREFETCH_TOOLS = ("weather", "time", "calc", "study", "code")
+
+
+def _split_tools(names) -> tuple:
+    """拆成「可以和检索并行跑」与「必须等到真降级再跑」两组。"""
+    fast, slow = [], []
+    for name in names or []:
+        name = str(name or "").strip()
+        if not name:
+            continue
+        (fast if name in _PREFETCH_TOOLS else slow).append(name)
+    return fast, slow
+
+
+def _live_query(names, query: str) -> bool:
+    """这轮是不是实时数据问题（天气 / 日期 / 算术）。"""
+    for name in names or []:
+        name = str(name or "").strip()
+        if name in _LIVE_TOOLS and tool_will_run([name], query):
+            return True
+    return False
+
+
+def _tool_results(future, timeout: float = TOOL_WAIT_S) -> List[dict]:
+    """取并行工具的结果；超时就如实说没等到，不拿半截数据凑答案。"""
+    if future is None:
+        return []
+    try:
+        return future.result(timeout=timeout) or []
+    except FutureTimeout:
+        return [{"name": "tool", "label": "实时数据", "source": "",
+                 "detail": "没在规定时间内返回，这次不用它", "ok": False}]
+    except Exception as e:  # 工具自己炸了不能影响回答
+        return [{"name": "tool", "label": "实时数据", "source": "",
+                 "detail": "调用出错（%s）" % type(e).__name__, "ok": False}]
 
 
 class AskRequest(BaseModel):
@@ -650,9 +697,14 @@ def _steps(res, plan=None, collection: str = "") -> list:
             detail_text = plan.note or "独立问题，无需改写"
         steps.append({"name": "理解问题", "ms": plan.ms, "detail": detail_text})
 
+    if timings.get("rerank_skipped"):
+        retrieve_detail = ("%s：实时数据问题，双路召回没有可用证据，跳过精排"
+                           % _corpus_label(collection))
+    else:
+        retrieve_detail = ("%s：BM25 + 向量双路召回 → RRF → Cross-Encoder 精排"
+                           % _corpus_label(collection))
     steps.append({"name": "检索", "ms": timings.get("retrieve", 0),
-                  "detail": "%s：BM25 + 向量双路召回 → RRF → Cross-Encoder 精排"
-                            % _corpus_label(collection)})
+                  "detail": retrieve_detail})
 
     gate_ok = not (res.refused and gen_ms == 0)
     steps.append({"name": "拒答判断", "ms": timings.get("gate", 0),
@@ -1064,15 +1116,22 @@ def chat(req: ChatRequest, request: Request,
         out["trace"]["rewritten_query"] = rewritten
         return out
 
+    fast_tools, slow_tools = _split_tools(req.tools)
+    tools_future = None
+    if fast_tools and tool_will_run(fast_tools, req.query):
+        tools_future = _TOOLS_POOL.submit(run_tools, fast_tools,
+                                          req.query, req.study)
+    live = _live_query(req.tools, req.query)
     with _lock:
-        res = pipeline.answer(plan.rewritten, style)
+        res = pipeline.answer(plan.rewritten, style, skip_rerank=live)
     _log_gap(req.query, res, req.collection)
 
     # auto：资料里查不到可直接引用的依据时，改给明说的通用回答；
     # kb（老客户端 / 脚本）保持严格拒答。
     if req.mode != "kb" and should_fallback(res):
         metrics.bump("chat_fallback")
-        tools = run_tools(req.tools, req.query, req.study)
+        tools = _tool_results(tools_future) + run_tools(slow_tools, req.query,
+                                                        req.study)
         try:
             text = general_reply(_state.get("provider_impl"), plan.rewritten,
                                  history, style, tool_context(tools))
@@ -1147,8 +1206,19 @@ def chat_stream(req: ChatRequest, request: Request,
             yield sse({"type": "done", "data": out})
             return
 
+        # 轻量工具先挂到后台跑，和检索并行；真的降级到通用链路时再取结果。
+        fast_tools, slow_tools = _split_tools(req.tools)
+        tools_future = None
+        if fast_tools and tool_will_run(fast_tools, req.query):
+            tools_future = _TOOLS_POOL.submit(run_tools, fast_tools,
+                                              req.query, req.study)
+        # 天气 / 日期 / 算术这类问的是此刻的事实，资料库里不会有可引用原文：
+        # 双路召回没有像样证据时跳过 5~7 秒的精排，直接交给通用链路。
+        live = _live_query(req.tools, req.query)
+
         with _lock:
-            for ev in pipeline.answer_stream(plan.rewritten, style):
+            for ev in pipeline.answer_stream(plan.rewritten, style,
+                                             skip_rerank=live):
                 if ev.get("type") != "done":
                     yield sse(ev)
                     continue
@@ -1161,10 +1231,13 @@ def chat_stream(req: ChatRequest, request: Request,
                                "note": "资料里没有依据，改用通用知识回答"})
                     yield sse({"type": "status", "stage": "general"})
                     tools = []
-                    if req.tools and tool_will_run(req.tools, req.query):
+                    if tools_future is not None or tool_will_run(slow_tools, req.query):
                         yield sse({"type": "status", "stage": "tool",
                                    "label": "实时数据"})
-                        tools = run_tools(req.tools, req.query, req.study)
+                        tools = _tool_results(tools_future)
+                        # 搜索 / 抓网页不抢跑：真降级了才打，不白花外部额度
+                        if slow_tools:
+                            tools += run_tools(slow_tools, req.query, req.study)
                         yield sse({"type": "status", "stage": "general"})
                     parts = []
                     try:

@@ -96,9 +96,27 @@ class StreamPipelineTest(unittest.TestCase):
         self.assertTrue(done.refused)
         self.assertTrue(done.reason.startswith("citation_failed"))
 
+    def test_skip_rerank_reaches_searcher(self):
+        seen = {}
+
+        class S:
+            reranker = object()
+
+            def search(self, query, skip_rerank=False):
+                seen["skip"] = skip_rerank
+                return []
+
+        pipe = AnswerPipeline(S(), StreamProvider(payload()))
+        events = self.collect(pipe.answer_stream("今天开封市天气什么样",
+                                                 skip_rerank=True))
+        done = [e for e in events if e["type"] == "done"][0]["result"]
+        self.assertTrue(seen["skip"])
+        self.assertTrue(done.refused)
+        self.assertEqual(done.timings.get("rerank_skipped"), 1)
+
     def test_gate_refusal_has_no_delta(self):
         class EmptySearcher:
-            def search(self, query):
+            def search(self, query, skip_rerank=False):
                 return []
 
         pipe = AnswerPipeline(EmptySearcher(), StreamProvider(payload()))

@@ -302,7 +302,7 @@ class DocPromptTest(unittest.TestCase):
                         '"quote": "快速排序是稳定排序"}], "reason": ""}')
 
         class S:
-            def search(self, query):
+            def search(self, query, skip_rerank=False):
                 return [self_hit]
 
         self_hit = self._hit()
