@@ -272,6 +272,8 @@
     .page { display: none; flex: 1; min-height: 0; }
     .page.active { display: flex; flex-direction: column; }
     #page-today.active, #page-bank.active, #page-practice.active, #page-knowledge.active, #page-quality.active { display: block; overflow-y: auto; }
+    /* 库列表、库详情、题库详情都是长页面，自身没有滚动区；漏了这三页会被 .app 裁掉下半截 */
+    #page-library.active, #page-collection.active, #page-deck.active { display: block; overflow-y: auto; }
     .page-inner { width: 100%; max-width: 1000px; margin: 0 auto; padding: 24px; }
     .page-inner.narrow { max-width: 780px; }
 
