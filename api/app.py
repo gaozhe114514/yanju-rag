@@ -606,8 +606,8 @@ def _preset_collection() -> dict:
     knowledge = _state.get("knowledge", [])
     return {
         "id": PRESET_COLLECTION,
-        "name": "408 考研（内置）",
-        "description": "计算机统考真题与考点卡片，只读",
+        "name": "408 题库（真题 + 考点）",
+        "description": "计算机统考真题与考点卡片，题库页与练习用，只读",
         "builtin": True,
         "documents": len(questions) + len(knowledge),
         "chunks": len(questions) + len(knowledge),
@@ -1872,9 +1872,11 @@ def _members_payload(cid: str, coll: Dict) -> Dict:
 @app.get("/collections")
 def collections_list(request: Request,
                      _: None = Depends(enforce_content)) -> dict:
-    """当前账号能看到的库；内置 408 语料永远排在第一，只读。
+    """当前账号能看到的自建资料库。
 
-    未登录只返回内置库，前端据此提示登录，而不是把公司库藏起来装不存在。
+    408 题库（真题 + 考点）不再作为「知识库」返回：它在题库页和练习里用，
+    知识库页只列用户自己的库（公司库 + 个人库）。未登录不返回任何库，
+    前端据此提示登录，而不是把公司库藏起来装不存在。
     """
     user = _optional_user(request)
     wk = _weknora()
@@ -1887,7 +1889,7 @@ def collections_list(request: Request,
                                      visibility=VISIBILITY_SHARED,
                                      owner_id=""), "")
                  for c in raw]
-        return {"items": [_preset_collection()] + items,
+        return {"items": items,
                 "storage": "weknora", "backend": "weknora",
                 "need_login": user is None,
                 "can_create_shared": is_admin(user)}
@@ -1903,7 +1905,7 @@ def collections_list(request: Request,
         if not can_read(user, coll, role):
             continue
         items.append(describe(user, coll, role))
-    return {"items": [_preset_collection()] + items,
+    return {"items": items,
             "storage": _state.get("storage", "memory"), "backend": "local",
             "need_login": user is None,
             "can_create_shared": is_admin(user)}

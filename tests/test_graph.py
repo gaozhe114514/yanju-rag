@@ -208,7 +208,7 @@ class LibraryTest(unittest.TestCase):
             "x:lib-2:doc-9:doc-9-000", "x:lib-2:doc-9:doc-9-001"])
         # 下拉框仍要列出所有能看的库
         names = [row["name"] for row in graph["stats"]["libraries"]]
-        self.assertEqual(names, ["408 考研（内置）", "个人知识库", "公司知识库"])
+        self.assertEqual(names, ["408 题库（真题 + 考点）", "个人知识库", "公司知识库"])
         self.assertEqual(graph["stats"]["documents"], 1)
         self.assertEqual(graph["stats"]["total_documents"], 1)
 

@@ -431,7 +431,7 @@ def build_graph(questions: Sequence[Dict], knowledge: Sequence[Dict],
     stats.update(lib_stats)
 
     preset_meta = {
-        "id": PRESET_LIBRARY, "name": "408 考研（内置）", "builtin": True,
+        "id": PRESET_LIBRARY, "name": "408 题库（真题 + 考点）", "builtin": True,
         "backend": "local", "visibility": "builtin",
         "documents": len(questions) + len(knowledge),
         "chunks": len(questions) + len(knowledge),

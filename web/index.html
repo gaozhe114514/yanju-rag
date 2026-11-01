@@ -3453,7 +3453,7 @@
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
             <button class="composer-chip" id="collection-chip" type="button"
-                    aria-haspopup="dialog" title="只用内置 408 真题与考点；要查自己导入的资料，就在这里切换">408 内置</button>
+                    aria-haspopup="dialog" title="只用 408 题库的真题与考点；要查自己导入的资料，就在这里切换">408 题库</button>
             <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
@@ -4909,12 +4909,12 @@
     return box;
   }
 
-  // 「资料未覆盖」多半不是模型不行，而是提问时还停在「408 内置」范围：
+  // 「资料未覆盖」多半不是模型不行，而是提问时还停在「408 题库」范围：
   // 用户导入过的资料在别的库里，这里直接给一条换库重问的退路。
   function libraryFallbackHint(msg) {
     const box = el('div', 'refuse-note');
     box.appendChild(el('span', 'refuse-note-k', '资料范围'));
-    const text = el('span', null, '刚才只查了内置 408 语料。');
+    const text = el('span', null, '刚才只查了 408 题库（真题 + 考点）。');
     box.appendChild(text);
     fetchCollections().then(items => {
       const libs = (items || []).filter(c => c && !c.builtin);
@@ -8256,7 +8256,7 @@
 
   /* ---------- 知识库：用户自建资料库 ---------- */
   // 每个知识库在服务端是一组带出处的片段；问答只在这些片段里召回。
-  // 内置 408 语料由 /collections 以第一项返回，只读，不出现在本地列表里。
+  // /collections 只返回自建库；408 题库（真题 + 考点）走题库页与练习，不在这里列。
 
   function collectionById(id) {
     return state.collections.find(c => c.id === id) || null;
@@ -8300,10 +8300,10 @@
     const chip = $('#collection-chip');
     if (!chip) return;
     const c = activeCollection();
-    chip.textContent = c ? c.name : '408 内置';
+    chip.textContent = c ? c.name : '408 题库';
     chip.classList.toggle('on', !!c);
     chip.title = c ? '当前只用「' + c.name + '」里的资料回答'
-      : '选择回答依据的知识库';
+      : '不选库时回答依据是 408 题库（真题 + 考点）';
   }
 
   function openAccountSettings() {
@@ -8329,7 +8329,7 @@
         panel.appendChild(el('div', 'lib-login-title',
           '登录后使用公司知识库和个人知识库'));
         panel.appendChild(el('div', 'lib-login-text',
-          '内置 408 语料不用登录也能用；公司知识库由管理员维护，个人知识库只有你自己能看。'));
+          '公司知识库由管理员维护、登录后可读；个人知识库只有你自己能看。'));
         const btn = el('button', 'primary', '去登录账号');
         btn.addEventListener('click', openAccountSettings);
         panel.appendChild(btn);
@@ -8422,7 +8422,7 @@
     // v0.63.2：换库只换之后的回答依据，不另开新对话（用户明确要求）
     if (state.page !== 'chat') go('chat');
     toast(id ? '之后的提问只用「' + c.name + '」里的资料'
-      : '之后的提问使用内置 408 语料');
+      : '之后的提问使用 408 题库（真题 + 考点）');
   }
 
   function deleteCollection(c) {
@@ -9126,6 +9126,10 @@
       list.appendChild(row);
     };
     fetchCollections(true).then(items => {
+      // 408 题库不再作为「知识库」返回，但仍是默认的问答依据，这里补一行
+      const meta = state.meta || {};
+      mk({id: '', name: '408 题库（真题 + 考点）', builtin: true,
+          questions: meta.chunks || 0, knowledge: meta.knowledge || 0});
       items.forEach(mk);
       wrap.appendChild(list);
       const acts = el('div', 'form-actions');
@@ -9153,9 +9157,9 @@
       {label: '对话与资料', items: [
         {page: 'library', icon: 'i-grid', title: '知识库',
          desc: '把自己的资料放进来，问答只引用这些原文。',
-         count: state.collections.length > 1
-           ? (state.collections.length - 1) + ' 个自建库 + 内置语料'
-           : '内置 408 语料'},
+         count: state.collections.length
+           ? state.collections.length + ' 个知识库'
+           : '还没有知识库'},
         {page: 'history', icon: 'i-chat', title: '聊天历史',
          desc: '回顾并继续之前的对话。',
          count: state.conversations.length + ' 段对话'},
@@ -13953,7 +13957,7 @@
     });
   }
 
-  // 知识库下拉：408 内置永远在第一项之后，其余是当前账号能读的库
+  // 知识库下拉：408 题库排在第一项之后，其余是当前账号能读的库
   function graphRenderLibrarySelect() {
     const sel = $('#graph-library');
     if (!sel) return;
@@ -13968,7 +13972,7 @@
       const opt = el('option', null, lib.name);
       opt.value = lib.id;
       opt.title = lib.builtin
-        ? '内置 408 真题与考点'
+        ? '408 题库：真题与考点'
         : (lib.backend === 'weknora' ? 'WeKnora 知识库' : '自建知识库') +
           ' · ' + (lib.documents || 0) + ' 篇资料';
       sel.appendChild(opt);
