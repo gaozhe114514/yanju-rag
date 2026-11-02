@@ -3344,6 +3344,80 @@
       .graph-foot { gap: 10px; font-size: 11px; }
       .graph-zoom button { width: 34px; height: 34px; }
     }
+
+    /* ---------- v0.69 侧栏收放 / 顶栏瘦身 ---------- */
+    .app { transition: grid-template-columns .18s ease; }
+    .sidebar { position: relative; }
+    .side-toggle {
+      position: absolute; top: 20px; right: -12px; z-index: 2;
+      width: 24px; height: 24px; display: grid; place-items: center;
+      padding: 0; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--bg); color: var(--muted);
+      box-shadow: var(--shadow-sm); transition: color .12s, border-color .12s;
+    }
+    .side-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+    .side-toggle svg {
+      width: 14px; height: 14px; fill: none; stroke: currentColor;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+      transition: transform .18s ease;
+    }
+    .new-chat { display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .new-chat-ico { font-size: 15px; line-height: 1; }
+
+    .app.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+    .app.collapsed .sidebar { padding-left: 8px; padding-right: 8px; }
+    .app.collapsed .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+    .app.collapsed .brand-text,
+    .app.collapsed .new-chat-label,
+    .app.collapsed .nav-label,
+    .app.collapsed .side-section,
+    .app.collapsed .side-note,
+    .app.collapsed #token-label,
+    .app.collapsed .token-gear { display: none; }
+    .app.collapsed .side-toggle svg { transform: rotate(180deg); }
+    .app.collapsed .new-chat { padding: 8px 0; }
+    .app.collapsed .nav button { justify-content: center; padding: 8px 0; }
+    .app.collapsed .nav-ico { width: auto; }
+    .app.collapsed .side-foot { margin-top: auto; border-top: 0; padding-top: 0; }
+    .app.collapsed .token-btn { justify-content: center; padding: 7px 0; }
+
+    /* 页面标题只做定位，不再逐页写宣传语 */
+    .topbar {
+      height: 52px; padding: 0 24px; gap: 12px; align-items: center;
+      width: 100%; max-width: none; margin: 0;
+      border-bottom: 1px solid var(--line); background: var(--bg);
+      backdrop-filter: none;
+    }
+    .top-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    #page-title {
+      font-family: var(--sans); font-size: 14px; font-weight: 600;
+      line-height: 1.4; letter-spacing: 0;
+    }
+    .sub {
+      margin-top: 0; max-width: none; font-size: 11.5px; line-height: 1.4;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sub:empty { display: none; }
+    .top-actions { align-self: center; }
+    .subnav {
+      width: 100%; max-width: none; margin: 0; padding: 8px 24px;
+      border-bottom: 1px solid var(--line); background: var(--bg);
+    }
+    .deck-bar h2 { font: 600 16px/1.4 var(--sans); letter-spacing: -.01em; }
+    .set-title {
+      font: 600 20px/1.35 var(--sans); letter-spacing: -.01em;
+    }
+    .set-head { margin-bottom: 22px; }
+
+    @media (max-width: 860px) {
+      .app.collapsed { grid-template-columns: 1fr; }
+      .side-toggle { display: none; }
+      .sidebar { position: fixed; }
+      .topbar { padding: 0 16px; }
+      .subnav { padding: 8px 16px; }
+      #page-title { font-size: 16px; }
+      .set-title { font-size: 19px; }
+    }
   </style>
 </head>
 <body>
@@ -3414,6 +3488,10 @@
 </svg>
 <div class="app">
   <aside class="sidebar" id="sidebar">
+    <button class="side-toggle" id="side-toggle" type="button"
+            aria-label="收起侧栏" aria-expanded="true" title="收起侧栏">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
+    </button>
     <div class="brand">
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 96 96">
@@ -3424,17 +3502,17 @@
                 font-size="44" font-weight="700">言</text>
         </svg>
       </div>
-      <div>
+      <div class="brand-text">
         <h1>言据</h1>
         <p>言必有据 · 句句可查</p>
       </div>
     </div>
-    <button class="new-chat" id="new-chat">＋ 新建对话</button>
+    <button class="new-chat" id="new-chat" title="新建对话"><span class="new-chat-ico">＋</span><span class="new-chat-label">新建对话</span></button>
     <nav class="nav" id="nav">
-      <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
-      <button data-page="learning"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span>学习</button>
-      <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>学习空间</button>
-      <button data-page="kanban"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span>任务清单</button>
+      <button data-page="chat" class="active" title="问答"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span><span class="nav-label">问答</span></button>
+      <button data-page="learning" title="学习"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span><span class="nav-label">学习</span></button>
+      <button data-page="space" title="学习空间"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span><span class="nav-label">学习空间</span></button>
+      <button data-page="kanban" title="任务清单"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span><span class="nav-label">任务清单</span></button>
     </nav>
     <div class="side-section">
       <div class="side-title">最近对话</div>
@@ -3900,10 +3978,12 @@
   // 问答当前依据的知识库：空字符串 = 内置 408 语料
   const COLLECTION_KEY = '408-chat-collection-v1';
   const PREFS_KEY = '408-prefs-v1';
+  // 侧栏收放是这台设备的视图状态，跟着屏幕大小走，不跟账号同步
+  const SIDEBAR_KEY = '408-sidebar-collapsed-v1';
   // 账号 token、同步元数据和设备级视图状态不上传服务器。
   // 访问口令更不能同步——它是进门凭据，不是个人内容。
   const SYNC_SKIP_KEYS = [TOKEN_KEY, ACCOUNT_KEY, SYNC_META_KEY, SYNC_OWNER_KEY,
-                          ACTIVE_KEY, LIB_TAB_KEY];
+                          ACTIVE_KEY, LIB_TAB_KEY, SIDEBAR_KEY];
   const PRESET_DECK = {
     id: 'cs408', preset: true, name: '408 真题',
     desc: '2019–2024 五卷真题，按科目和年份筛选；解析与出处来自服务端语料。',
@@ -3914,24 +3994,24 @@
   };
   const PAGE_META = {
     today: {title: '今日', sub: '每天只做一件小事'},
-    chat: {title: '问答', sub: '多轮追问 · 每条结论都可核对'},
-    mastery: {title: '精通之路', sub: '按章节把考点排成路线，答对关联真题才算掌握'},
-    library: {title: '知识库', sub: '把自己的资料放进来，问答只引用这些原文'},
-    collection: {title: '知识库', sub: '资料详情 · 切分后逐段可被引用'},
-    bank: {title: '题库', sub: '内置 408 真题与自建题库，标签和出处都随题保存'},
-    deck: {title: '题库', sub: '题库详情 · 按标签筛选、按出处核对'},
-    knowledge: {title: '考点', sub: '考点卡片 · 与真题双向关联'},
-    graph: {title: '知识图谱', sub: '考点与真题按卡片里写明的关联连成一张图 · 可拖拽缩放'},
-    practice: {title: '练习', sub: '按年份科目练习 · 错题本与掌握度'},
-    space: {title: '学习空间', sub: '对话、笔记、题目与个性化设置，集中在一处'},
-    history: {title: '聊天历史', sub: '回顾、重命名或继续之前的对话'},
-    notebooks: {title: '笔记本', sub: '把对话里的答案和自己的想法收在一起'},
-    personas: {title: '人格预设', sub: '换一种讲法，引用规则不变'},
-    skills: {title: '技能', sub: '打开或关掉讲解方式，下一次提问生效'},
-    memory: {title: '学习记忆', sub: '记下目标、薄弱点和偏好'},
-    kanban: {title: '任务清单', sub: '待办、进行中、已完成，一件件推进'},
-    settings: {title: '设置', sub: '口令、偏好和本机数据，都收在这一页'},
-    quality: {title: '质量看板', sub: '拒答、缓存与语料的运行状况'}
+    chat: {title: '问答', sub: ''},
+    mastery: {title: '精通之路', sub: ''},
+    library: {title: '知识库', sub: ''},
+    collection: {title: '知识库', sub: ''},
+    bank: {title: '题库', sub: ''},
+    deck: {title: '题库', sub: ''},
+    knowledge: {title: '考点', sub: ''},
+    graph: {title: '知识图谱', sub: ''},
+    practice: {title: '练习', sub: ''},
+    space: {title: '学习空间', sub: ''},
+    history: {title: '聊天历史', sub: ''},
+    notebooks: {title: '笔记本', sub: ''},
+    personas: {title: '人格预设', sub: ''},
+    skills: {title: '技能', sub: ''},
+    memory: {title: '学习记忆', sub: ''},
+    kanban: {title: '任务清单', sub: ''},
+    settings: {title: '设置', sub: ''},
+    quality: {title: '质量看板', sub: ''}
   };
 
   function loadJSON(key, fallback) {
@@ -4796,6 +4876,23 @@
   function closeSidebar() {
     $('#sidebar').classList.remove('open');
     $('#scrim').classList.remove('show');
+  }
+
+  // 桌面侧栏收成 64px 图标条；手机端是抽屉，不参与收放。
+  function applySidebarCollapsed(collapsed) {
+    const app = $('.app');
+    const btn = $('#side-toggle');
+    if (!app || !btn) return;
+    app.classList.toggle('collapsed', !!collapsed);
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.title = collapsed ? '展开侧栏' : '收起侧栏';
+    btn.setAttribute('aria-label', btn.title);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+    } catch (e) {}
+  }
+  function toggleSidebarCollapsed() {
+    applySidebarCollapsed(!$('.app').classList.contains('collapsed'));
   }
 
   /* ---------- chat rendering ---------- */
@@ -14851,6 +14948,8 @@
     if (examEdit) examEdit.addEventListener('click', editExamDate);
     $('#menu-btn').addEventListener('click', openSidebar);
     $('#scrim').addEventListener('click', closeSidebar);
+    const sideToggle = $('#side-toggle');
+    if (sideToggle) sideToggle.addEventListener('click', toggleSidebarCollapsed);
     $('#settings-btn').addEventListener('click', () => go('settings'));
     $('#auth-open').addEventListener('click', () => openSettings('这个站点需要访问口令。'));
     $('#modal-close').addEventListener('click', () => closeModal());
@@ -15036,6 +15135,9 @@
 
   function init() {
     bind();
+    try {
+      if (localStorage.getItem(SIDEBAR_KEY) === '1') applySidebarCollapsed(true);
+    } catch (e) {}
     renderToken();
     applyPrefs();
     // 没有带 #/ 地址时，按「打开时停在」的偏好落地；有地址就以地址为准
