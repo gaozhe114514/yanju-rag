@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fdfcf9">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.74.1">
+  <meta name="app-version" content="0.74.2">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -3665,13 +3665,16 @@
 
     /* ---------- v0.69 侧栏收放 / 顶栏瘦身 ---------- */
     .app { transition: grid-template-columns .18s ease; }
+    /* 按钮骑在侧栏右缘上，但侧栏为了裁长文案带 overflow:hidden；
+       用 fixed 定位让它不被裁掉，left 跟着收放动画一起走。 */
     .sidebar { position: relative; }
     .side-toggle {
-      position: absolute; top: 20px; right: -12px; z-index: 2;
+      position: fixed; top: 20px; left: calc(268px - 12px); right: auto; z-index: 3;
       width: 24px; height: 24px; display: grid; place-items: center;
       padding: 0; border: 1px solid var(--line); border-radius: 999px;
       background: var(--bg); color: var(--muted);
-      box-shadow: var(--shadow-sm); transition: color .12s, border-color .12s;
+      box-shadow: var(--shadow-sm);
+      transition: color .12s, border-color .12s, left .18s ease;
     }
     .side-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
     .side-toggle svg {
@@ -3692,6 +3695,7 @@
     .app.collapsed .side-note,
     .app.collapsed #token-label,
     .app.collapsed .token-gear { display: none; }
+    .app.collapsed .side-toggle { left: calc(64px - 12px); }
     .app.collapsed .side-toggle svg { transform: rotate(180deg); }
     .app.collapsed .new-chat { padding: 8px 0; }
     .app.collapsed .nav button { justify-content: center; padding: 8px 0; }
