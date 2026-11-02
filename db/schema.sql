@@ -106,6 +106,22 @@ CREATE TABLE IF NOT EXISTS document_versions (
 CREATE INDEX IF NOT EXISTS document_versions_doc_idx
     ON document_versions (document_id, id DESC);
 
+-- v0.72：资料附件与插图。原文件按字节存，正文里只用 [[文件名]] / ![[文件名]]
+-- 引用；删除资料时由外键级联清理。
+CREATE TABLE IF NOT EXISTS document_assets (
+    id            text PRIMARY KEY,
+    collection_id text NOT NULL,
+    document_id   text NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    filename      text NOT NULL,
+    mime          text NOT NULL DEFAULT '',
+    nbytes        int NOT NULL DEFAULT 0,
+    data          bytea NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS document_assets_doc_idx
+    ON document_assets (document_id, created_at);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   text PRIMARY KEY,
     value text NOT NULL

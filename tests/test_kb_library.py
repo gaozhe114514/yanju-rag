@@ -6,6 +6,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from answer.cache import namespace
 from answer.pipeline import AnswerPipeline
@@ -305,6 +306,94 @@ class DocumentEditTest(unittest.TestCase):
         self.assertTrue(self.lib.delete_document(self.coll["id"], self.doc["id"]))
         self.assertEqual(self.lib.list_document_versions(self.coll["id"],
                                                          self.doc["id"]), [])
+
+
+class DocumentAssetTest(unittest.TestCase):
+    def setUp(self):
+        self.lib = make_library()
+        self.cid = self.lib.create_collection("附件库")["id"]
+        self.doc = self.lib.add_document(self.cid, SAMPLE, "带图资料")
+        self.doc_id = self.doc["id"]
+
+    def test_roundtrip_keeps_bytes(self):
+        data = b"\x89PNG\r\n\x1a\nfake-image-bytes"
+        row = self.lib.add_document_asset(self.cid, self.doc_id, "结构图.png",
+                                          "image/png", data)
+        self.assertTrue(row["id"].startswith("asset-"))
+        self.assertEqual(row["name"], "结构图.png")
+        self.assertEqual(row["bytes"], len(data))
+        listed = self.lib.list_document_assets(self.cid, self.doc_id)
+        self.assertEqual([a["name"] for a in listed], ["结构图.png"])
+        got = self.lib.get_document_asset(self.cid, self.doc_id, row["id"])
+        self.assertEqual(got["data"], data)
+        self.assertEqual(got["name"], "结构图.png")
+        self.assertTrue(self.lib.delete_document_asset(
+            self.cid, self.doc_id, row["id"]))
+        self.assertEqual(self.lib.list_document_assets(self.cid, self.doc_id), [])
+        self.assertFalse(self.lib.delete_document_asset(
+            self.cid, self.doc_id, row["id"]))
+
+    def test_duplicate_name_gets_suffix(self):
+        self.lib.add_document_asset(self.cid, self.doc_id, "笔记.txt",
+                                    "text/plain", b"one")
+        second = self.lib.add_document_asset(self.cid, self.doc_id,
+                                             "笔记.txt", "text/plain", b"two")
+        self.assertEqual(second["name"], "笔记 (2).txt")
+
+    def test_path_and_blank_name_are_cleaned(self):
+        row = self.lib.add_document_asset(
+            self.cid, self.doc_id, "C:\\temp\\..\\资料/图 1.png",
+            "image/png", b"x")
+        self.assertEqual(row["name"], "图 1.png")
+        blank = self.lib.add_document_asset(self.cid, self.doc_id, "  ",
+                                            "", b"y")
+        self.assertEqual(blank["name"], "附件")
+
+    def test_size_and_count_are_capped(self):
+        with mock.patch("kb.library.MAX_ASSET_BYTES", 4):
+            with self.assertRaises(LibraryError):
+                self.lib.add_document_asset(self.cid, self.doc_id, "big.bin",
+                                            "", b"12345")
+        with mock.patch("kb.library.MAX_ASSETS", 2):
+            self.lib.add_document_asset(self.cid, self.doc_id, "a.txt", "", b"a")
+            self.lib.add_document_asset(self.cid, self.doc_id, "b.txt", "", b"b")
+            with self.assertRaises(LibraryError):
+                self.lib.add_document_asset(self.cid, self.doc_id, "c.txt", "", b"c")
+        with self.assertRaises(LibraryError):
+            self.lib.add_document_asset(self.cid, self.doc_id, "empty.txt", "", b"")
+
+    def test_unknown_document_rejected(self):
+        with self.assertRaises(LibraryError):
+            self.lib.add_document_asset(self.cid, "doc-0000000000", "x.txt",
+                                        "", b"x")
+
+    def test_delete_document_drops_assets(self):
+        row = self.lib.add_document_asset(self.cid, self.doc_id, "a.png",
+                                          "image/png", b"png")
+        self.assertTrue(self.lib.delete_document(self.cid, self.doc_id))
+        self.assertIsNone(self.lib.get_document_asset(self.cid, self.doc_id,
+                                                      row["id"]))
+        self.assertEqual(self.lib.list_document_assets(self.cid, self.doc_id), [])
+
+    def test_delete_collection_drops_assets(self):
+        self.lib.add_document_asset(self.cid, self.doc_id, "a.png",
+                                    "image/png", b"png")
+        self.assertTrue(self.lib.delete_collection(self.cid))
+        self.assertEqual(self.lib.list_document_assets(self.cid, self.doc_id), [])
+
+    def test_assets_persist_to_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "library.json")
+            lib = make_library(state_path=path)
+            cid = lib.create_collection("会保存的附件库")["id"]
+            doc_id = lib.add_document(cid, SAMPLE, "排序")["id"]
+            row = lib.add_document_asset(cid, doc_id, "图.png", "image/png",
+                                         b"\x00\x01binary")
+            again = make_library(state_path=path)
+            got = again.get_document_asset(cid, doc_id, row["id"])
+            self.assertEqual(got["data"], b"\x00\x01binary")
+            self.assertEqual(again.list_document_assets(cid, doc_id)[0]["name"],
+                             "图.png")
 
 
 class SearchTest(unittest.TestCase):

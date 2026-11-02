@@ -9,6 +9,7 @@
 有 Postgres 时落库；没有数据库时退化成进程内 + 一个 JSON 文件，
 方便单测和本地开发（文件放 data/work/，不提交）。
 """
+import base64
 import hashlib
 import json
 import os
@@ -31,6 +32,9 @@ MAX_DESC = 200
 MAX_TITLE = 80
 MAX_DOC_CHARS = 50000
 MAX_DOCS = 200
+# 附件只随资料存原文件，不进正文与索引；单篇最多 20 个、单个 8MB。
+MAX_ASSET_BYTES = 8 * 1024 * 1024
+MAX_ASSETS = 20
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -48,6 +52,31 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _asset_name(name: str) -> str:
+    """只留文件名，去掉路径、控制字符与多余空白；空名回退「附件」。"""
+    raw = (name or "").replace("\\", "/").split("/")[-1]
+    raw = "".join(ch for ch in raw if ch >= " " and ch != "\x7f").strip()
+    raw = " ".join(raw.split())
+    return raw[:120] or "附件"
+
+
+def _unique_asset_name(existing, name: str) -> str:
+    """同一篇资料里文件名不重名，[[文件名]] 才不会指到两份附件。"""
+    if name not in existing:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not dot or not stem:
+        stem, ext = name, ""
+    else:
+        ext = "." + ext
+    i = 2
+    while True:
+        cand = ("%s (%d)%s" % (stem, i, ext))[:120]
+        if cand not in existing:
+            return cand
+        i += 1
+
+
 class LibraryError(ValueError):
     """可以直接映射成 400/404 的错误。"""
 
@@ -63,7 +92,8 @@ class Library:
         self.reranker_model = reranker_model
         self._searchers: Dict[str, tuple] = {}
         self._mem = {"collections": [], "documents": [], "chunks": [],
-                     "members": [], "document_versions": []}
+                     "members": [], "document_versions": [],
+                     "document_assets": []}
         self._state_path = Path(state_path) if (state_path and store is None) else None
         if self._state_path is not None:
             self._load_state()
@@ -80,7 +110,7 @@ class Library:
         except ValueError:
             return
         for key in ("collections", "documents", "chunks", "members",
-                    "document_versions"):
+                    "document_versions", "document_assets"):
             if isinstance(data.get(key), list):
                 self._mem[key] = data[key]
 
@@ -218,6 +248,9 @@ class Library:
             self._mem["document_versions"] = [
                 v for v in self._mem["document_versions"]
                 if v["collection_id"] != cid]
+            self._mem["document_assets"] = [
+                a for a in self._mem["document_assets"]
+                if a["collection_id"] != cid]
             ok = len(self._mem["collections"]) != before
             if ok:
                 self._save_state()
@@ -380,6 +413,10 @@ class Library:
                 v for v in self._mem["document_versions"]
                 if not (v["document_id"] == doc_id
                         and v["collection_id"] == cid)]
+            self._mem["document_assets"] = [
+                a for a in self._mem["document_assets"]
+                if not (a["document_id"] == doc_id
+                        and a["collection_id"] == cid)]
             ok = len(self._mem["documents"]) != before
             if ok:
                 self._save_state()
@@ -514,6 +551,76 @@ class Library:
                                    author=author)
         out["restored_from"] = int(version["id"])
         return out
+
+    # ---------- 附件：插图与非图片文件 ----------
+
+    def add_document_asset(self, cid: str, doc_id: str, filename: str,
+                           mime: str, data: bytes) -> Dict:
+        """把原文件挂到一篇资料上。正文不动，也不进检索库。"""
+        if self.get_document(cid, doc_id) is None:
+            raise LibraryError("资料不存在")
+        if not data:
+            raise LibraryError("附件是空的")
+        if len(data) > MAX_ASSET_BYTES:
+            raise LibraryError("单个附件最多 %d MB" % (MAX_ASSET_BYTES // 1048576))
+        existing = self.list_document_assets(cid, doc_id)
+        if len(existing) >= MAX_ASSETS:
+            raise LibraryError("一篇资料最多 %d 个附件，先删掉一些" % MAX_ASSETS)
+        name = _unique_asset_name({a["name"] for a in existing},
+                                  _asset_name(filename))
+        asset_id = _new_id("asset")
+        if self.store is not None:
+            row = self.store.add_document_asset(asset_id, cid, doc_id, name,
+                                                mime or "", data)
+            if row is None:
+                raise LibraryError("资料不存在")
+            return row
+        row = {"id": asset_id, "collection_id": cid, "document_id": doc_id,
+               "filename": name, "mime": mime or "", "nbytes": len(data),
+               "data": base64.b64encode(data).decode("ascii"),
+               "created_at": _now()}
+        self._mem["document_assets"].append(row)
+        self._save_state()
+        return {"id": asset_id, "name": name, "mime": mime or "",
+                "bytes": len(data), "created_at": row["created_at"]}
+
+    def list_document_assets(self, cid: str, doc_id: str) -> List[Dict]:
+        if self.store is not None:
+            return self.store.list_document_assets(cid, doc_id)
+        return [{
+            "id": a["id"], "name": a["filename"], "mime": a.get("mime") or "",
+            "bytes": int(a.get("nbytes") or 0),
+            "created_at": str(a.get("created_at") or ""),
+        } for a in self._mem["document_assets"]
+            if a["document_id"] == doc_id and a["collection_id"] == cid]
+
+    def get_document_asset(self, cid: str, doc_id: str,
+                           asset_id: str) -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.get_document_asset(cid, doc_id, asset_id)
+        for a in self._mem["document_assets"]:
+            if (a["document_id"] == doc_id and a["collection_id"] == cid
+                    and a["id"] == asset_id):
+                out = dict(a)
+                out["name"] = out.pop("filename")
+                out["data"] = base64.b64decode(out.get("data") or "")
+                out["bytes"] = int(out.get("nbytes") or 0)
+                return out
+        return None
+
+    def delete_document_asset(self, cid: str, doc_id: str,
+                              asset_id: str) -> bool:
+        if self.store is not None:
+            return self.store.delete_document_asset(cid, doc_id, asset_id)
+        before = len(self._mem["document_assets"])
+        self._mem["document_assets"] = [
+            a for a in self._mem["document_assets"]
+            if not (a["id"] == asset_id and a["document_id"] == doc_id
+                    and a["collection_id"] == cid)]
+        ok = len(self._mem["document_assets"]) != before
+        if ok:
+            self._save_state()
+        return ok
 
     # ---------- 文件进料：先占位（processing），解析完再切分入库 ----------
 

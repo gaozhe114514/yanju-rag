@@ -589,6 +589,74 @@ class Store:
         out["created_at"] = str(out.get("created_at") or "")
         return out
 
+    # ---------- 资料附件：插图与非图片文件 ----------
+
+    def add_document_asset(self, asset_id: str, cid: str, doc_id: str,
+                           filename: str, mime: str, data: bytes) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "INSERT INTO document_assets"
+                " (id, collection_id, document_id, filename, mime, nbytes, data)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                " RETURNING id, filename, mime, nbytes, created_at",
+                (asset_id, cid, doc_id, filename, mime, len(data), data)
+            ).fetchone()
+            conn.commit()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["filename"],
+            "mime": row["mime"] or "",
+            "bytes": int(row["nbytes"] or 0),
+            "created_at": str(row["created_at"] or ""),
+        }
+
+    def list_document_assets(self, cid: str, doc_id: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, filename, mime, nbytes, created_at"
+                " FROM document_assets"
+                " WHERE collection_id = %s AND document_id = %s"
+                " ORDER BY created_at, id",
+                (cid, doc_id)).fetchall()
+        return [{
+            "id": r["id"],
+            "name": r["filename"],
+            "mime": r["mime"] or "",
+            "bytes": int(r["nbytes"] or 0),
+            "created_at": str(r["created_at"] or ""),
+        } for r in rows]
+
+    def get_document_asset(self, cid: str, doc_id: str,
+                           asset_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, filename, mime, nbytes, data, created_at"
+                " FROM document_assets"
+                " WHERE collection_id = %s AND document_id = %s AND id = %s",
+                (cid, doc_id, asset_id)).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["filename"],
+            "mime": row["mime"] or "",
+            "bytes": int(row["nbytes"] or 0),
+            "data": bytes(row["data"] or b""),
+            "created_at": str(row["created_at"] or ""),
+        }
+
+    def delete_document_asset(self, cid: str, doc_id: str,
+                              asset_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM document_assets"
+                " WHERE collection_id = %s AND document_id = %s AND id = %s",
+                (cid, doc_id, asset_id))
+            conn.commit()
+            return cur.rowcount > 0
+
     def vector_search_docs(self, query_vec: Sequence[float], top_k: int,
                            cid: str) -> List[Tuple[str, float]]:
         lit = vector_literal(query_vec)

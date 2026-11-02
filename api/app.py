@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from answer.agent import QueryAgent, chitchat_reply
@@ -2238,6 +2238,94 @@ def document_version_restore(cid: str, doc_id: str, version_id: int,
     _state["doc_pipelines"].pop(cid, None)
     out["author"] = author
     return out
+
+
+# 能直接内嵌到预览里的图片类型；SVG 能带脚本，一律按附件下载。
+ASSET_INLINE_MIME = {"image/png", "image/jpeg", "image/gif", "image/webp",
+                     "image/bmp", "image/avif"}
+MAX_ASSET = 8 * 1024 * 1024
+
+
+def _asset_mime(request: Request) -> str:
+    raw = (request.headers.get("content-type") or "").split(";")[0].strip()
+    return raw.lower()[:80] or "application/octet-stream"
+
+
+def _asset_payload(row: Dict) -> dict:
+    return {"id": row["id"], "name": row["name"], "mime": row["mime"],
+            "bytes": int(row.get("bytes") or 0),
+            "inline": row["mime"] in ASSET_INLINE_MIME,
+            "created_at": str(row.get("created_at") or "")}
+
+
+@app.get("/collections/{cid}/documents/{doc_id}/assets")
+def document_assets(cid: str, doc_id: str, request: Request,
+                    _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    lib = _library()
+    if lib.get_document(cid, doc_id) is None:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    items = [_asset_payload(a) for a in lib.list_document_assets(cid, doc_id)]
+    return {"items": items, "total": len(items),
+            "max_bytes": MAX_ASSET, "max_items": 20}
+
+
+@app.post("/collections/{cid}/documents/{doc_id}/assets")
+async def document_asset_add(cid: str, doc_id: str, request: Request,
+                             _: None = Depends(enforce_content)) -> dict:
+    """原始字节放请求体，文件名走 X-Filename（URI 编码），不依赖 multipart。"""
+    user, coll, _role = _guard_collection(cid, request, write=True)
+    if coll.get("weknora"):
+        raise HTTPException(status_code=400,
+                            detail="这个知识库由 WeKnora 托管，暂不支持在线附件")
+    length = request.headers.get("content-length") or ""
+    if length.isdigit() and int(length) > MAX_ASSET:
+        raise HTTPException(status_code=413,
+                            detail="单个附件最多 %d MB" % (MAX_ASSET // 1048576))
+    body = await request.body()
+    if len(body) > MAX_ASSET:
+        raise HTTPException(status_code=413,
+                            detail="单个附件最多 %d MB" % (MAX_ASSET // 1048576))
+    if not body:
+        raise HTTPException(status_code=400, detail="附件是空的")
+    try:
+        row = _library().add_document_asset(
+            cid, doc_id, _upload_name(request.headers.get("X-Filename", "")),
+            _asset_mime(request), body)
+    except LibraryError as e:
+        raise _lib_error(e)
+    return _asset_payload(row)
+
+
+@app.get("/collections/{cid}/documents/{doc_id}/assets/{asset_id}")
+def document_asset_get(cid: str, doc_id: str, asset_id: str, request: Request,
+                       _: None = Depends(enforce_content)) -> Response:
+    _guard_collection(cid, request, write=False)
+    row = _library().get_document_asset(cid, doc_id, asset_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    inline = row["mime"] in ASSET_INLINE_MIME
+    name = urllib.parse.quote(row["name"] or "附件")
+    return Response(
+        content=row.get("data") or b"",
+        media_type=row["mime"] or "application/octet-stream",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=300",
+            "Content-Disposition": ("inline" if inline else "attachment")
+            + "; filename*=UTF-8''" + name,
+        })
+
+
+@app.delete("/collections/{cid}/documents/{doc_id}/assets/{asset_id}")
+def document_asset_delete(cid: str, doc_id: str, asset_id: str,
+                          request: Request,
+                          _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=True)
+    ok = _library().delete_document_asset(cid, doc_id, asset_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    return {"ok": True, "id": asset_id}
 
 
 @app.delete("/collections/{cid}/documents/{doc_id}")

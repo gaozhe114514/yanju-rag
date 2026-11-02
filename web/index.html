@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fdfcf9">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.71">
+  <meta name="app-version" content="0.72">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1727,6 +1727,51 @@
     .de-meta { flex: 1; min-width: 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
     .de-meta.err { color: var(--danger); }
     .de-actions { display: flex; gap: 8px; flex: none; }
+    .de-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: none; }
+    .de-tools .tool-btn { font-size: 11.5px; padding: 4px 11px; }
+    .de-asset-count { margin-left: auto; color: var(--muted); font-size: 11.5px; }
+    .de-assets { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+    .de-asset {
+      display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+      padding: 3px 5px 3px 10px; border: 1px solid var(--line);
+      border-radius: 999px; background: var(--card);
+    }
+    .de-asset-name {
+      max-width: 220px; padding: 0; border: 0; background: transparent;
+      color: var(--ink-3); font-size: 11.5px; line-height: 1.5;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .de-asset-name:hover { color: var(--brand); }
+    .de-asset-size { flex: none; color: var(--muted-soft); font-size: 10.5px; }
+    .de-asset-del {
+      flex: none; width: 18px; height: 18px; padding: 0; border: 0;
+      border-radius: 50%; background: transparent; color: var(--muted-soft);
+      font-size: 13px; line-height: 1;
+    }
+    .de-asset-del:hover { background: var(--danger-surface); color: var(--danger); }
+    .doc-md .md-img {
+      display: block; max-width: 100%; max-height: 420px; margin: 4px 0 12px;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: var(--surface-2); object-fit: contain; cursor: zoom-in;
+    }
+    .doc-md .md-file {
+      color: var(--brand); text-decoration: none;
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .doc-md .md-file::after { content: " ↓"; color: var(--muted-soft); font-size: 11px; }
+    .doc-md .md-missing {
+      color: var(--danger); border-bottom: 1px dashed
+      color-mix(in srgb, var(--danger) 50%, transparent);
+    }
+    .doc-md .md-table-wrap { margin: 0 0 12px; overflow-x: auto; }
+    .doc-md .md-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.6; }
+    .doc-md .md-table th, .doc-md .md-table td {
+      padding: 6px 10px; border: 1px solid var(--line); text-align: left;
+      vertical-align: top;
+    }
+    .doc-md .md-table th { background: var(--surface-2); font-weight: 600; }
+    .doc-md .md-table .ta-c { text-align: center; }
+    .doc-md .md-table .ta-r { text-align: right; }
     .toolbar {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       margin-bottom: 14px;
@@ -1912,6 +1957,10 @@
       .de-foot { flex-wrap: wrap; }
       .de-actions { width: 100%; }
       .de-actions button { flex: 1; min-height: 40px; }
+      .de-tools .tool-btn { flex: 1; min-height: 34px; }
+      .de-asset-count { flex-basis: 100%; margin-left: 0; }
+      .de-asset-name { max-width: 150px; }
+      .doc-md .md-img { max-height: 300px; }
       .module { padding: 14px; }
       .space-groups { gap: 24px; }
     }
@@ -9387,16 +9436,36 @@
     })[ch]);
   }
 
-  function mdInline(escaped) {
+  function mdInline(escaped, assets) {
     const codes = [];
     let out = escaped.replace(/`([^`\n]+)`/g, (m, code) => {
       codes.push(code);
       return '\u0000C' + (codes.length - 1) + '\u0000';
     });
+    const assetOf = name => (assets && assets.get ? assets.get(name) : null);
+    // ![[图.png]] 内嵌图片；不是图片或找不到时退成附件链接 / 缺失提示
+    out = out.replace(/!\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g,
+      (m, target, alias) => {
+        const name = target.trim();
+        const label = (alias || target).trim();
+        const hit = assetOf(name);
+        if (!hit) return '<span class="md-missing">附件「' + label + '」不在这里</span>';
+        if (!hit.inline) {
+          return '<a class="md-file" href="#" data-asset-name="' + name + '">' +
+            label + '</a>';
+        }
+        return '<img class="md-img" data-asset-name="' + name +
+          '" alt="' + label + '">';
+      });
+    // [[x]]：同库同名附件优先，否则当作资料双链
     out = out.replace(/\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g,
       (m, target, alias) => {
         const name = target.trim();
         const label = (alias || target).trim();
+        if (assetOf(name)) {
+          return '<a class="md-file" href="#" data-asset-name="' + name + '">' +
+            label + '</a>';
+        }
         return '<a class="md-wiki" href="#" data-wiki="' + name + '">' +
           label + '</a>';
       });
@@ -9410,8 +9479,35 @@
     return out;
   }
 
+  function mdTableCells(line) {
+    const body = String(line || '').trim().replace(/^\|/, '').replace(/\|$/, '');
+    const cells = [];
+    let cur = '';
+    for (let k = 0; k < body.length; k++) {
+      const ch = body[k];
+      if (ch === '\\' && body[k + 1] === '|') { cur += '|'; k++; continue; }
+      if (ch === '|') { cells.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cells.push(cur.trim());
+    return cells;
+  }
+
+  function mdTableSep(line) {
+    if (!line || line.indexOf('|') < 0) return false;
+    const cells = mdTableCells(line);
+    return cells.length >= 2 && cells.every(c => /^:?-{3,}:?$/.test(c));
+  }
+
+  function mdAlignClass(cell) {
+    const left = cell.charAt(0) === ':';
+    const right = cell.charAt(cell.length - 1) === ':';
+    if (left && right) return 'ta-c';
+    return right ? 'ta-r' : '';
+  }
+
   /* 只认白名单语法；先整体转义再拼标签，输入里的 HTML 一律当文字 */
-  function renderMarkdown(src) {
+  function renderMarkdown(src, assets) {
     const lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
     const out = [];
     let list = null;
@@ -9419,6 +9515,8 @@
     const closeList = () => {
       if (list) { out.push('</' + list + '>'); list = null; }
     };
+    const startsTable = k =>
+      !!lines[k] && lines[k].indexOf('|') >= 0 && mdTableSep(lines[k + 1]);
     const isBlockStart = line =>
       /^(#{1,6})\s|^```|^>\s?|^\s*[-*+]\s|^\s*\d+[.)]\s|^\s*([-*_])(\s*\1){2,}\s*$/.test(line);
     while (i < lines.length) {
@@ -9436,11 +9534,41 @@
         continue;
       }
       if (!line.trim()) { closeList(); i++; continue; }
+      if (line.indexOf('|') >= 0 && mdTableSep(lines[i + 1])) {
+        closeList();
+        const heads = mdTableCells(line);
+        const aligns = mdTableCells(lines[i + 1]).map(mdAlignClass);
+        const rows = [];
+        i += 2;
+        while (i < lines.length && lines[i].trim()
+               && lines[i].indexOf('|') >= 0
+               && !/^\s*```/.test(lines[i])) {
+          rows.push(mdTableCells(lines[i]));
+          i++;
+        }
+        let html = '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
+        heads.forEach((cell, k) => {
+          html += '<th' + (aligns[k] ? ' class="' + aligns[k] + '"' : '') + '>' +
+            mdInline(mdEscape(cell), assets) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        rows.forEach(row => {
+          html += '<tr>';
+          heads.forEach((_, k) => {
+            html += '<td' + (aligns[k] ? ' class="' + aligns[k] + '"' : '') + '>' +
+              mdInline(mdEscape(row[k] || ''), assets) + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        out.push(html);
+        continue;
+      }
       const head = /^(#{1,6})\s+(.*)$/.exec(line);
       if (head) {
         closeList();
         const n = head[1].length;
-        out.push('<h' + n + '>' + mdInline(mdEscape(head[2])) + '</h' + n + '>');
+        out.push('<h' + n + '>' + mdInline(mdEscape(head[2]), assets) + '</h' + n + '>');
         i++;
         continue;
       }
@@ -9451,7 +9579,7 @@
         closeList();
         const buf = [];
         while (i < lines.length && /^>\s?/.test(lines[i])) {
-          buf.push(mdInline(mdEscape(lines[i].replace(/^>\s?/, ''))));
+          buf.push(mdInline(mdEscape(lines[i].replace(/^>\s?/, '')), assets));
           i++;
         }
         out.push('<blockquote>' + buf.join('<br>') + '</blockquote>');
@@ -9462,18 +9590,19 @@
       if (ul || ol) {
         const tag = ul ? 'ul' : 'ol';
         if (list !== tag) { closeList(); out.push('<' + tag + '>'); list = tag; }
-        out.push('<li>' + mdInline(mdEscape((ul || ol)[1])) + '</li>');
+        out.push('<li>' + mdInline(mdEscape((ul || ol)[1]), assets) + '</li>');
         i++;
         continue;
       }
       closeList();
       const buf = [line];
       i++;
-      while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) {
+      while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])
+             && !startsTable(i)) {
         buf.push(lines[i]);
         i++;
       }
-      out.push('<p>' + buf.map(l => mdInline(mdEscape(l))).join('<br>') + '</p>');
+      out.push('<p>' + buf.map(l => mdInline(mdEscape(l), assets)).join('<br>') + '</p>');
     }
     closeList();
     return out.join('\n') ||
@@ -9487,13 +9616,16 @@
   }
 
   function openDocumentEditor(c, d) {
-    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
-      encodeURIComponent(d.id))
-      .then(doc => buildDocumentEditor(c, d, doc))
+    const base = '/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id);
+    Promise.all([
+      api(base),
+      api(base + '/assets').catch(() => ({items: []}))
+    ]).then(([doc, assets]) => buildDocumentEditor(c, d, doc, assets || {}))
       .catch(e => toast('打不开资料：' + e.message, 'err'));
   }
 
-  function buildDocumentEditor(c, d, doc) {
+  function buildDocumentEditor(c, d, doc, assetPayload) {
     const cid = c.id;
     const docId = d.id;
     let mode = 'edit';
@@ -9502,6 +9634,11 @@
     let viewing = null;       // 正在查看的历史版本
     let saving = false;
     let previewTimer = null;
+    const assetList = ((assetPayload && assetPayload.items) || []).slice();
+    const assetByName = new Map(assetList.map(a => [a.name, a]));
+    const assetUrls = new Map();     // 附件 id -> object URL，避免重复下载
+    const maxAssetBytes = (assetPayload && assetPayload.max_bytes) || 8 * 1024 * 1024;
+    const maxAssets = (assetPayload && assetPayload.max_items) || 20;
 
     const wrap = el('div', 'doc-editor mode-edit');
     const head = el('div', 'de-head');
@@ -9522,6 +9659,19 @@
       tabs.appendChild(btn);
     });
     head.appendChild(tabs);
+
+    const tools = el('div', 'de-tools');
+    const imgBtn = el('button', 'tool-btn', '插入图片');
+    const fileBtn = el('button', 'tool-btn', '插入附件');
+    const tableBtn = el('button', 'tool-btn', '插入表格');
+    const assetInfo = el('span', 'de-asset-count');
+    [imgBtn, fileBtn, tableBtn].forEach(b => { b.type = 'button'; });
+    tools.appendChild(imgBtn);
+    tools.appendChild(fileBtn);
+    tools.appendChild(tableBtn);
+    tools.appendChild(assetInfo);
+    const assetBar = el('div', 'de-assets');
+    assetBar.hidden = true;
 
     const body = el('div', 'de-body');
     const paneEdit = el('div', 'de-pane de-pane-edit');
@@ -9565,6 +9715,8 @@
     foot.appendChild(actions);
 
     wrap.appendChild(head);
+    wrap.appendChild(tools);
+    wrap.appendChild(assetBar);
     wrap.appendChild(body);
     wrap.appendChild(foot);
 
@@ -9573,10 +9725,201 @@
       meta.textContent = input.value.length + ' 字 · 保存后重新切分并重建引用';
     }
 
+    function fmtBytes(n) {
+      const size = Number(n) || 0;
+      if (size < 1024) return size + ' B';
+      if (size < 1048576) return (size / 1024).toFixed(size < 10240 ? 1 : 0) + ' KB';
+      return (size / 1048576).toFixed(1) + ' MB';
+    }
+
+    function assetPath(id) {
+      return '/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId) + '/assets/' + encodeURIComponent(id);
+    }
+
+    function authHeaders(extra) {
+      const headers = Object.assign({}, extra || {});
+      if (state.token) headers['X-Access-Token'] = state.token;
+      if (state.account.token) {
+        headers['Authorization'] = 'Bearer ' + state.account.token;
+      }
+      return headers;
+    }
+
+    function assetUrl(asset) {
+      if (assetUrls.has(asset.id)) return Promise.resolve(assetUrls.get(asset.id));
+      return fetch(assetPath(asset.id), {headers: authHeaders()}).then(resp => {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.blob();
+      }).then(blob => {
+        const url = URL.createObjectURL(blob);
+        assetUrls.set(asset.id, url);
+        return url;
+      });
+    }
+
+    function hydratePreview() {
+      preview.querySelectorAll('img[data-asset-name]').forEach(img => {
+        const asset = assetByName.get(img.getAttribute('data-asset-name'));
+        if (!asset || !asset.inline) {
+          img.replaceWith(el('span', 'md-missing', '图片「' +
+            img.getAttribute('alt') + '」不在这里'));
+          return;
+        }
+        assetUrl(asset).then(url => { img.src = url; }).catch(() => {
+          img.replaceWith(el('span', 'md-missing', '图片「' +
+            img.getAttribute('alt') + '」加载失败'));
+        });
+      });
+    }
+
     function renderPreview() {
       if (viewing) return;
-      preview.innerHTML = renderMarkdown(input.value);
+      preview.innerHTML = renderMarkdown(input.value, assetByName);
+      hydratePreview();
     }
+
+    function downloadAsset(name) {
+      const asset = assetByName.get(name);
+      if (!asset) {
+        toast('附件「' + name + '」不在这里', 'err');
+        return;
+      }
+      assetUrl(asset).then(url => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = asset.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }).catch(e => toast('附件下载失败：' + e.message, 'err'));
+    }
+
+    function insertAtCursor(text, block) {
+      if (mode !== 'edit') {
+        setMode('edit');
+        input.selectionStart = input.selectionEnd = input.value.length;
+      }
+      const start = input.selectionStart == null ? input.value.length : input.selectionStart;
+      const end = input.selectionEnd == null ? start : input.selectionEnd;
+      const before = input.value.slice(0, start);
+      const after = input.value.slice(end);
+      // 块级插入单独成段：前后各留一个空行，图片/表格不会黏在上一段文字里
+      const pre = block && before && !before.endsWith('\n\n')
+        ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+      const post = block && after && !after.startsWith('\n\n')
+        ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+      const chunk = pre + text + post;
+      input.value = before + chunk + after;
+      const caret = before.length + chunk.length;
+      input.selectionStart = input.selectionEnd = caret;
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      input.focus();
+    }
+
+    function insertRef(asset) {
+      // 统一用嵌入语法 ![[名]]：图片内嵌，其它文件渲染成下载链接；
+      // 附件被删后引用会显示「不在这里」，不会悄悄退化成资料双链。
+      insertAtCursor('![[' + asset.name + ']]', true);
+    }
+
+    function renderAssetBar() {
+      assetBar.replaceChildren();
+      assetInfo.textContent = assetList.length
+        ? assetList.length + ' / ' + maxAssets + ' 个附件' : '';
+      assetBar.hidden = !assetList.length;
+      assetList.forEach(asset => {
+        const chip = el('span', 'de-asset');
+        const name = el('button', 'de-asset-name', asset.name);
+        name.type = 'button';
+        name.title = asset.inline ? '插入图片引用' : '插入附件引用';
+        name.addEventListener('click', () => insertRef(asset));
+        chip.appendChild(name);
+        chip.appendChild(el('span', 'de-asset-size', fmtBytes(asset.bytes)));
+        const del = el('button', 'de-asset-del', '×');
+        del.type = 'button';
+        del.title = '删除附件';
+        del.setAttribute('aria-label', '删除附件 ' + asset.name);
+        del.addEventListener('click', () => removeAsset(asset));
+        chip.appendChild(del);
+        assetBar.appendChild(chip);
+      });
+    }
+
+    function removeAsset(asset) {
+      if (!window.confirm('删除附件「' + asset.name + '」？正文里的引用会显示为缺失。')) return;
+      api(assetPath(asset.id), {method: 'DELETE'}).then(() => {
+        const i = assetList.indexOf(asset);
+        if (i >= 0) assetList.splice(i, 1);
+        assetByName.delete(asset.name);
+        const url = assetUrls.get(asset.id);
+        if (url) {
+          URL.revokeObjectURL(url);
+          assetUrls.delete(asset.id);
+        }
+        renderAssetBar();
+        renderPreview();
+        toast('已删除附件');
+      }).catch(e => toast('删除失败：' + e.message, 'err'));
+    }
+
+    function uploadAsset(file, forcedName) {
+      if (!file) return;
+      if (file.size > maxAssetBytes) {
+        toast('单个附件最多 ' + fmtBytes(maxAssetBytes), 'err');
+        return;
+      }
+      if (assetList.length >= maxAssets) {
+        toast('一篇资料最多 ' + maxAssets + ' 个附件', 'err');
+        return;
+      }
+      const name = forcedName || file.name ||
+        ((/^image\//.test(file.type) ? '粘贴图片-' : '附件-') +
+          Date.now() + (/^image\//.test(file.type) ? '.png' : ''));
+      meta.className = 'de-meta';
+      meta.textContent = '正在上传 ' + name + '…';
+      api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId) + '/assets', {
+        method: 'POST',
+        raw: true,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-Filename': encodeURIComponent(name)
+        },
+        body: file
+      }).then(row => {
+        const asset = Object.assign({}, row, {
+          inline: row.inline != null ? !!row.inline : /^image\//.test(row.mime)
+        });
+        assetList.push(asset);
+        assetByName.set(asset.name, asset);
+        renderAssetBar();
+        insertRef(asset);
+        meta.textContent = '已上传 ' + asset.name + ' · ' + fmtBytes(asset.bytes);
+      }).catch(e => {
+        meta.className = 'de-meta err';
+        meta.textContent = '上传失败：' + (e.message || '未知错误');
+      });
+    }
+
+    function pickFile(imagesOnly) {
+      const picker = el('input');
+      picker.type = 'file';
+      if (imagesOnly) {
+        picker.accept = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif';
+      }
+      picker.addEventListener('change', () => {
+        const file = picker.files && picker.files[0];
+        if (file) uploadAsset(file);
+      });
+      picker.click();
+    }
+
+    imgBtn.addEventListener('click', () => pickFile(true));
+    fileBtn.addEventListener('click', () => pickFile(false));
+    tableBtn.addEventListener('click', () => insertAtCursor(
+      '| 列 1 | 列 2 | 列 3 |\n| --- | --- | --- |\n|  |  |  |\n', true));
+    renderAssetBar();
 
     function renderHistoryRows(items) {
       historyBox.replaceChildren();
@@ -9645,7 +9988,8 @@
         encodeURIComponent(docId) + '/versions/' + item.id)
         .then(row => {
           viewing = row;
-          preview.innerHTML = renderMarkdown(row.text || '');
+          preview.innerHTML = renderMarkdown(row.text || '', assetByName);
+          hydratePreview();
           oldText.textContent = '历史版本 v' + row.id + ' · ' +
             (docWhen(row.created_at) || '时间未知') +
             (row.author ? ' · ' + row.author : '');
@@ -9699,6 +10043,8 @@
     }
 
     function closeEditor() {
+      assetUrls.forEach(url => URL.revokeObjectURL(url));
+      assetUrls.clear();
       closeModal();
       refreshEditedDoc(cid, docId);
     }
@@ -9753,6 +10099,22 @@
     input.addEventListener('input', () => {
       updateMeta();
       queuePreview();
+    });
+    input.addEventListener('dragover', e => { e.preventDefault(); });
+    input.addEventListener('drop', e => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      e.preventDefault();
+      Array.from(files).forEach(f => uploadAsset(f));
+    });
+    input.addEventListener('paste', e => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (!files || !files.length) return;
+      const images = Array.from(files).filter(f => /^image\//.test(f.type));
+      if (!images.length) return;
+      e.preventDefault();
+      images.forEach(f => uploadAsset(f, f.name || ('粘贴图片-' +
+        Date.now() + '.png')));
     });
     // 照 Obsidian 的手感：Tab 缩进、列表回车自动续号、Ctrl+S 直接保存
     input.addEventListener('keydown', e => {
@@ -9809,7 +10171,20 @@
       closeEditor();
     });
     preview.addEventListener('click', e => {
-      const link = e.target.closest ? e.target.closest('.md-wiki') : null;
+      if (!e.target.closest) return;
+      const file = e.target.closest('.md-file');
+      if (file) {
+        e.preventDefault();
+        downloadAsset(file.getAttribute('data-asset-name') || '');
+        return;
+      }
+      const img = e.target.closest('img.md-img');
+      if (img && img.getAttribute('src')) {
+        e.preventDefault();
+        window.open(img.src, '_blank', 'noopener');
+        return;
+      }
+      const link = e.target.closest('.md-wiki');
       if (!link) return;
       e.preventDefault();
       openWikiTarget(link.getAttribute('data-wiki') || '');
