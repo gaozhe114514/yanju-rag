@@ -522,7 +522,30 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="言据 · 可引用知识库", version="0.15", lifespan=lifespan)
+VERSION_FILE = ROOT / "version.json"
+
+
+def version_info() -> dict:
+    """版本信息只从仓库里的 version.json 读，前后端共用一个事实来源。"""
+    try:
+        data = json.loads(VERSION_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": "0.0", "released": "", "name": "言据", "history": []}
+    if not isinstance(data, dict):
+        return {"version": "0.0", "released": "", "name": "言据", "history": []}
+    history = data.get("history")
+    if not isinstance(history, list):
+        history = []
+    return {
+        "version": str(data.get("version") or "0.0"),
+        "released": str(data.get("released") or ""),
+        "name": str(data.get("name") or "言据"),
+        "history": [h for h in history if isinstance(h, dict)][:20],
+    }
+
+
+app = FastAPI(title="言据 · 可引用知识库", version=version_info()["version"],
+              lifespan=lifespan)
 
 
 # ---------- 请求日志 ----------
@@ -946,10 +969,17 @@ def _cache_store(query: str, payload: dict, style: str = "",
         pass  # 写缓存失败不能影响答题
 
 
+@app.get("/version")
+def version() -> dict:
+    """公开的版本信息：页脚、设置页和排障脚本都看这一份。"""
+    return version_info()
+
+
 @app.get("/health")
 def health() -> dict:
     return {
         "status": "ok",
+        "version": version_info()["version"],
         # chunks 保持“题目数”的含义，新增 knowledge 单独计数，旧前端/脚本不受影响
         "chunks": len(_state.get("questions", [])),
         "knowledge": len(_state.get("knowledge", [])),
