@@ -984,12 +984,23 @@ class Store:
     def get_session(self, token_hash: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT u.id, u.username, u.role, u.created_at, u.last_login_at"
+                "SELECT u.id, u.username, u.role, u.created_at, u.last_login_at,"
+                " s.expires_at"
                 " FROM user_sessions s JOIN users u ON u.id = s.user_id"
                 " WHERE s.token_hash = %s AND s.expires_at > now()"
                 " AND NOT u.disabled",
                 (token_hash,)).fetchone()
         return dict(row) if row else None
+
+    def renew_session(self, token_hash: str, expires_at: datetime) -> bool:
+        """滑动过期：只往后延，不缩短（v0.67）。"""
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE user_sessions SET expires_at = %s"
+                " WHERE token_hash = %s AND expires_at > now()",
+                (expires_at, token_hash))
+            conn.commit()
+            return row.rowcount > 0
 
     def delete_session(self, token_hash: str) -> bool:
         with self.connect() as conn:

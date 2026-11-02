@@ -26,6 +26,9 @@ from db.store import DuplicateUser
 
 PASSWORD_ITERATIONS = 210_000
 SESSION_TTL_SECONDS = 30 * 24 * 3600
+# v0.67：每次使用把过期时间往后顺延，但一天内不重复写库，
+# 否则每个带 token 的请求都会写一次 user_sessions。
+SESSION_RENEW_AFTER = 24 * 3600
 MAX_SYNC_ITEMS = 80
 MAX_SYNC_VALUE = 512 * 1024
 LOGIN_FAIL_MAX = 5
@@ -238,10 +241,17 @@ class AccountService:
         if not raw:
             return None
         hashed = token_hash(raw)
+        now = self._now()
         if self.store is not None:
             row = self.store.get_session(hashed)
-            return self._public(row) if row else None
-        now = self._now()
+            if not row:
+                return None
+            # 滑动过期：用过就往后顺延 30 天，但一天内只写一次库
+            if self._should_renew(row.get("expires_at"), now):
+                self.store.renew_session(
+                    hashed, datetime.fromtimestamp(
+                        now + SESSION_TTL_SECONDS, tz=timezone.utc))
+            return self._public(row)
         with self._lock:
             session = self._sessions.get(hashed)
             if session is None:
@@ -252,6 +262,8 @@ class AccountService:
             user = self._users.get(session["user_id"])
             if not user or user.get("disabled"):
                 return None
+            if self._should_renew(session["expires_at"], now):
+                session["expires_at"] = now + SESSION_TTL_SECONDS
             return self._public(user)
 
     def logout(self, token: str) -> None:
@@ -521,6 +533,17 @@ class AccountService:
 
     def _now(self) -> float:
         return float(self.clock())
+
+    def _should_renew(self, expires_at, now: float) -> bool:
+        """剩余寿命不足「30 天 − 1 天」才续期，正常请求不写库。"""
+        if expires_at is None:
+            return False
+        try:
+            exp = (expires_at.timestamp() if isinstance(expires_at, datetime)
+                   else float(expires_at))
+        except (TypeError, ValueError, OSError):
+            return False
+        return exp < now + SESSION_TTL_SECONDS - SESSION_RENEW_AFTER
 
     def _public(self, user: Dict) -> Dict:
         return {

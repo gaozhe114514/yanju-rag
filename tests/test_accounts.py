@@ -115,12 +115,30 @@ class LoginTest(unittest.TestCase):
         self.svc.logout(out["token"])
         self.assertIsNone(self.svc.authenticate(out["token"]))
 
-    def test_session_expires(self):
+    def test_session_expires_without_use(self):
         out = self.svc.login("alice", "password123", ip="5.5.5.5")
-        self.clock.now += SESSION_TTL_SECONDS - 1
-        self.assertIsNotNone(self.svc.authenticate(out["token"]))
-        self.clock.now += 2
+        self.clock.now += SESSION_TTL_SECONDS + 1
         self.assertIsNone(self.svc.authenticate(out["token"]))
+
+    def test_session_slides_with_use(self):
+        out = self.svc.login("alice", "password123", ip="5.5.5.6")
+        token = out["token"]
+        # 第 20 天用一次，到期日顺延到第 50 天
+        self.clock.now += 20 * 86400
+        self.assertIsNotNone(self.svc.authenticate(token))
+        self.clock.now += 25 * 86400          # 距登录 45 天，原到期日早过了
+        self.assertIsNotNone(self.svc.authenticate(token))
+        self.clock.now += 29 * 86400          # 距上次续期 29 天，还没到 30
+        self.assertIsNotNone(self.svc.authenticate(token))
+
+    def test_renew_is_throttled_to_once_a_day(self):
+        now = self.clock.now
+        ttl = SESSION_TTL_SECONDS
+        # 刚续过（或剩余寿命还长）就不写库
+        self.assertFalse(self.svc._should_renew(now + ttl - 60, now))
+        self.assertFalse(self.svc._should_renew(now + ttl - 86400, now))
+        self.assertTrue(self.svc._should_renew(now + ttl - 86400 - 1, now))
+        self.assertFalse(self.svc._should_renew(None, now))
 
     def test_unknown_token(self):
         self.assertIsNone(self.svc.authenticate("not-a-real-token"))
