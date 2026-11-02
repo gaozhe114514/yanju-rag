@@ -305,5 +305,80 @@ class DataSyncTest(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 400)
 
 
+class AdminTest(unittest.TestCase):
+    def setUp(self):
+        self.svc, self.clock = make_service()
+        self.admin = self.svc.register("Boss", "password123")["user"]
+        self.member = self.svc.register("Alice", "password123")
+        self.uid = self.member["user"]["id"]
+
+    def test_list_users_requires_admin(self):
+        users = self.svc.list_users(self.admin)
+        self.assertEqual([u["username"] for u in users], ["Boss", "Alice"])
+        self.assertEqual([u["role"] for u in users], ["admin", "member"])
+        self.assertFalse(users[1]["disabled"])
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.list_users(self.member["user"])
+        self.assertEqual(ctx.exception.status, 403)
+
+    def test_promote_and_demote(self):
+        out = self.svc.update_user(self.admin, self.uid, role="admin")
+        self.assertEqual(out["role"], "admin")
+        self.assertEqual(self.svc.authenticate(self.member["token"])["role"], "admin")
+        out = self.svc.update_user(self.admin, self.uid, role="member")
+        self.assertEqual(out["role"], "member")
+
+    def test_bad_role_and_unknown_user(self):
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.update_user(self.admin, self.uid, role="owner")
+        self.assertEqual(ctx.exception.status, 400)
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.update_user(self.admin, "u-nope", role="member")
+        self.assertEqual(ctx.exception.status, 404)
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.update_user(self.admin, self.uid)
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_self_protection(self):
+        me = self.admin["id"]
+        for kw in ({"role": "member"}, {"disabled": True}):
+            with self.assertRaises(AccountError) as ctx:
+                self.svc.update_user(self.admin, me, **kw)
+            self.assertEqual(ctx.exception.status, 400)
+        self.assertEqual(self.svc.get_user(me)["role"], "admin")
+        self.assertFalse(self.svc.get_user(me)["disabled"])
+
+    def test_disable_revokes_sessions_and_blocks_login(self):
+        token = self.member["token"]
+        self.assertIsNotNone(self.svc.authenticate(token))
+        out = self.svc.update_user(self.admin, self.uid, disabled=True)
+        self.assertTrue(out["disabled"])
+        self.assertIsNone(self.svc.authenticate(token))
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.login("alice", "password123", ip="6.6.6.6")
+        self.assertEqual(ctx.exception.status, 403)
+        # 启用后旧密码照常登录，数据没动
+        out = self.svc.update_user(self.admin, self.uid, disabled=False)
+        self.assertFalse(out["disabled"])
+        self.assertTrue(self.svc.login("alice", "password123",
+                                       ip="6.6.6.6")["token"])
+
+    def test_disabled_admin_loses_admin_power(self):
+        self.svc.update_user(self.admin, self.uid, role="admin")
+        token = self.svc.login("alice", "password123", ip="7.7.7.7")["token"]
+        alice = self.svc.authenticate(token)
+        self.assertEqual(alice["role"], "admin")
+        self.svc.update_user(self.admin, self.uid, disabled=True)
+        # 停用会踢掉已有会话，再登录也进不来
+        self.assertIsNone(self.svc.authenticate(token))
+        with self.assertRaises(AccountError) as login_ctx:
+            self.svc.login("alice", "password123", ip="7.7.7.8")
+        self.assertEqual(login_ctx.exception.status, 403)
+        # 停用前拿到的身份也不好使：服务端每次都回库查
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.list_users(alice)
+        self.assertEqual(ctx.exception.status, 403)
+
+
 if __name__ == "__main__":
     unittest.main()

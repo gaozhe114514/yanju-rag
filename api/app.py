@@ -306,6 +306,12 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(..., min_length=1, max_length=128)
 
 
+class AdminUserRequest(BaseModel):
+    # 两个都可选，只改传上来的那个；都不传由服务层回 400
+    role: Optional[str] = Field(None, max_length=16)
+    disabled: Optional[bool] = None
+
+
 class SyncItemRequest(BaseModel):
     value: Any = None
     updated_at: int = 0
@@ -995,6 +1001,27 @@ def auth_password(req: PasswordChangeRequest, request: Request,
 def auth_me(user: Dict[str, Any] = Depends(current_user),
             _: None = Depends(enforce_content)) -> dict:
     return {"user": user}
+
+
+@app.get("/admin/users")
+def admin_users(user: Dict[str, Any] = Depends(current_user),
+                _: None = Depends(enforce_content)) -> dict:
+    try:
+        return {"users": _accounts().list_users(user)}
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.patch("/admin/users/{user_id}")
+def admin_user_update(user_id: str, req: AdminUserRequest,
+                      user: Dict[str, Any] = Depends(current_user),
+                      _: None = Depends(enforce_content)) -> dict:
+    try:
+        out = _accounts().update_user(user, user_id, role=req.role,
+                                      disabled=req.disabled)
+        return {"user": out}
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
 
 
 @app.get("/me/data")

@@ -389,13 +389,16 @@ py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 | `POST /auth/register` | 注册并登录：`{"username": "2–24 字", "password": "≥8 位"}`；重名回 409，用户名大小写不敏感 |
 | `POST /auth/login` | 登录：同上，返回 `{"user", "token", "expires_at"}`；连续 5 次密码错误后同 IP + 用户名锁 10 分钟（429） |
 | `POST /auth/logout` | 退出登录，作废当前 `Authorization: Bearer <token>` |
-| `GET /auth/me` | 当前账号：`{"user": {id, username, role, created_at, last_login_at}}`；`role` 为 `admin` / `member`；token 无效回 401 |
+| `POST /auth/password` | 改密码：`{"old_password", "new_password"}`；原密码错走同一套失败计数（429），改完其它设备的会话全部作废、当前 token 保留，返回 `sessions_revoked` |
+| `GET /auth/me` | 当前账号：`{"user": {id, username, role, disabled, created_at, last_login_at}}`；`role` 为 `admin` / `member`；token 无效回 401 |
+| `GET /admin/users` | 管理员列账号：`{"users": [...]}`，按注册时间排列；非管理员回 403，停用账号的 token 直接失效 |
+| `PATCH /admin/users/{id}` | 管理员改角色 / 停用：`{"role": "admin" / "member", "disabled": true / false}`，只改传上来的字段；不能改自己，至少保留一个可用管理员，停用会立刻作废对方所有会话 |
 | `GET /me/data` | 拉取账号下的个人数据：`{"items": {key: {value, updated_at}}}`；`value` 是 localStorage 里的原字符串 |
 | `PUT /me/data` | 按时间戳合并：`{"items": {key: {value, updated_at}}}`，比服务器旧的不覆盖，返回被拒键的服务器时间 |
 | `DELETE /me/data` | 删除同步副本：`{"all": true}` 或 `{"keys": ["408-..."]}`；写墓碑，别的设备下次同步会删本地那份 |
 | `GET /` | 对话优先的前端：默认问答，主导航问答 / 学习 / 学习空间 / 任务清单，质量看板在设置内，可直接在手机上打开 |
 
-设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chat/stream`、`/bank/generate`、`/mastery/turn`、`/feedback`、`/chunks`、`/knowledge`、`/collections` 及其子路径、`/auth/*`、`/me/data`、`/meta`、`/stats/gaps`、`/stats/feedback`、`/stats/overview`）都必须带
+设置 `KB_ACCESS_TOKEN` 后，内容接口（`/ask`、`/chat`、`/chat/stream`、`/bank/generate`、`/mastery/turn`、`/feedback`、`/chunks`、`/knowledge`、`/collections` 及其子路径、`/auth/*`、`/admin/users`、`/me/data`、`/meta`、`/stats/gaps`、`/stats/feedback`、`/stats/overview`）都必须带
 `X-Access-Token`；`/health` 和静态页保持公开。`KB_RATE_MAX` / `KB_RATE_WINDOW` 控制问答接口的每 IP
 限额（刷题库/知识库不占额度），`KB_DAILY_MAX` 是全局每日上限（0 为不限）。公网部署见 [docs/部署.md](docs/部署.md)。
 

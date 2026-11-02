@@ -184,6 +184,7 @@ class AccountService:
                 if key in self._by_key:
                     raise AccountError(409, "这个用户名已经被注册了")
                 has_admin = any(u.get("role") == "admin"
+                                and not u.get("disabled")
                                 for u in self._users.values())
                 role = "admin" if (key in self.admin_names or not has_admin) \
                     else "member"
@@ -191,6 +192,7 @@ class AccountService:
                     "id": user_id,
                     "username": name,
                     "role": role,
+                    "disabled": False,
                     "created_at": now,
                     "last_login_at": now,
                 }
@@ -210,6 +212,8 @@ class AccountService:
         if not verify_password(str(password or ""), stored) or user is None:
             self._record_fail(ip, key)
             raise AccountError(401, "用户名或密码不对")
+        if user.get("disabled"):
+            raise AccountError(403, "这个账号已被停用，请联系管理员")
 
         if self.store is not None:
             self._store_clear_fails(ip, key)
@@ -246,7 +250,9 @@ class AccountService:
                 self._sessions.pop(hashed, None)
                 return None
             user = self._users.get(session["user_id"])
-            return self._public(user) if user else None
+            if not user or user.get("disabled"):
+                return None
+            return self._public(user)
 
     def logout(self, token: str) -> None:
         raw = str(token or "").strip()
@@ -294,6 +300,81 @@ class AccountService:
                         revoked += 1
         return {"ok": True, "sessions_revoked": int(revoked)}
 
+    # ---------- 管理员：账号管理 ----------
+
+    def _require_admin(self, actor: Dict) -> Dict:
+        """确认调用者还是可用的管理员；停用的账号立刻失去管理权限。"""
+        if not actor or actor.get("role") != "admin":
+            raise AccountError(403, "只有管理员能管理账号")
+        fresh = self.get_user(str(actor.get("id") or ""))
+        if fresh is None or fresh.get("disabled"):
+            raise AccountError(403, "只有管理员能管理账号")
+        return fresh
+
+    def list_users(self, actor: Dict) -> List[Dict]:
+        self._require_admin(actor)
+        if self.store is not None:
+            rows = self.store.list_users()
+        else:
+            # 内存模式按注册顺序返回（dict 保持插入序）；同一秒注册的账号
+            # 用 id 排会乱，这里不排。
+            with self._lock:
+                rows = [dict(u) for u in self._users.values()]
+        return [self._public(r) for r in rows]
+
+    def _active_admin_count(self, exclude_id: str = "") -> int:
+        if self.store is not None:
+            return self.store.count_admins(exclude_id)
+        with self._lock:
+            return sum(1 for u in self._users.values()
+                       if u.get("role") == "admin" and not u.get("disabled")
+                       and u.get("id") != exclude_id)
+
+    def update_user(self, actor: Dict, user_id: str, role: Optional[str] = None,
+                    disabled: Optional[bool] = None) -> Dict:
+        """改角色或停用/启用账号。
+
+        两条红线：不能动自己（免得把自己锁在门外），也不能把最后一个可用
+        管理员降级或停用。停用不删数据，会话立即失效，重新启用就回来。
+        """
+        me = self._require_admin(actor)
+        target = self.get_user(user_id)
+        if target is None:
+            raise AccountError(404, "账号不存在")
+        if role is None and disabled is None:
+            raise AccountError(400, "没有要改的东西")
+        is_self = target["id"] == me["id"]
+        if is_self and (role is not None or disabled):
+            raise AccountError(400, "不能修改自己的角色或停用自己")
+
+        if role is not None:
+            role = str(role or "").strip()
+            if role not in ("admin", "member"):
+                raise AccountError(400, "角色只能是 admin 或 member")
+            if role != "admin" and target["role"] == "admin" \
+                    and self._active_admin_count(exclude_id=target["id"]) == 0:
+                raise AccountError(400, "至少保留一个可用的管理员")
+
+        if self.store is not None:
+            if role is not None:
+                self.store.set_user_role(target["id"], role)
+            if disabled is not None:
+                self.store.set_user_disabled(target["id"], bool(disabled))
+                if disabled:
+                    self.store.delete_user_sessions(target["id"])
+        else:
+            with self._lock:
+                row = self._users[target["id"]]
+                if role is not None:
+                    row["role"] = role
+                if disabled is not None:
+                    row["disabled"] = bool(disabled)
+                    if disabled:
+                        for hashed, session in list(self._sessions.items()):
+                            if session["user_id"] == target["id"]:
+                                self._sessions.pop(hashed, None)
+        return self.get_user(target["id"]) or target
+
     def find_user(self, username: str) -> Optional[Dict]:
         key = username_key(username)
         if not key:
@@ -323,9 +404,10 @@ class AccountService:
             self.store.promote_admins(sorted(self.admin_names))
         else:
             with self._lock:
-                if not any(u.get("role") == "admin"
+                if not any(u.get("role") == "admin" and not u.get("disabled")
                            for u in self._users.values()):
-                    first = next(iter(self._users.values()), None)
+                    first = next((u for u in self._users.values()
+                                  if not u.get("disabled")), None)
                     if first is not None:
                         first["role"] = "admin"
                         promoted.append(first["username"])
@@ -445,6 +527,7 @@ class AccountService:
             "id": user.get("id", ""),
             "username": user.get("username", ""),
             "role": user.get("role") or "member",
+            "disabled": bool(user.get("disabled")),
             "created_at": _iso(user.get("created_at")),
             "last_login_at": _iso(user.get("last_login_at")) or None,
         }

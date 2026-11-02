@@ -866,7 +866,7 @@ class Store:
                 row = conn.execute(
                     "INSERT INTO users (id, username, username_key, password_hash,"
                     " role, last_login_at) VALUES (%s, %s, %s, %s, %s, now())"
-                    " RETURNING id, username, role, created_at, last_login_at",
+                    " RETURNING id, username, role, disabled, created_at, last_login_at",
                     (user_id, username, username_key,
                      password_hash, role)).fetchone()
                 conn.commit()
@@ -877,7 +877,7 @@ class Store:
     def get_user_by_key(self, username_key: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, username, password_hash, role, created_at,"
+                "SELECT id, username, password_hash, role, disabled, created_at,"
                 " last_login_at FROM users WHERE username_key = %s",
                 (username_key,)).fetchone()
         return dict(row) if row else None
@@ -885,15 +885,15 @@ class Store:
     def get_user_by_id(self, user_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, username, password_hash, role, created_at, last_login_at"
-                " FROM users WHERE id = %s", (user_id,)).fetchone()
+                "SELECT id, username, password_hash, role, disabled, created_at,"
+                " last_login_at FROM users WHERE id = %s", (user_id,)).fetchone()
         return dict(row) if row else None
 
     def touch_login(self, user_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
                 "UPDATE users SET last_login_at = now() WHERE id = %s"
-                " RETURNING id, username, role, created_at, last_login_at",
+                " RETURNING id, username, role, disabled, created_at, last_login_at",
                 (user_id,)).fetchone()
             conn.commit()
         return dict(row) if row else None
@@ -909,8 +909,32 @@ class Store:
     def has_admin(self) -> bool:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+                "SELECT 1 FROM users WHERE role = 'admin'"
+                " AND NOT disabled LIMIT 1").fetchone()
         return row is not None
+
+    def list_users(self) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, username, role, disabled, created_at, last_login_at"
+                " FROM users ORDER BY created_at, id").fetchall()
+        return [dict(r) for r in rows]
+
+    def count_admins(self, exclude_id: str = "") -> int:
+        """还能干活的管理员数（停用的不算）。"""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT count(*)::int AS n FROM users WHERE role = 'admin'"
+                " AND NOT disabled AND id <> %s", (exclude_id or "",)).fetchone()
+        return int(row["n"])
+
+    def set_user_disabled(self, user_id: str, disabled: bool) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET disabled = %s WHERE id = %s",
+                (bool(disabled), user_id))
+            conn.commit()
+            return row.rowcount > 0
 
     def set_user_role(self, user_id: str, role: str) -> bool:
         with self.connect() as conn:
@@ -929,8 +953,10 @@ class Store:
         with self.connect() as conn:
             row = conn.execute(
                 "UPDATE users SET role = 'admin'"
-                " WHERE id = (SELECT id FROM users ORDER BY created_at, id LIMIT 1)"
-                " AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')"
+                " WHERE id = (SELECT id FROM users WHERE NOT disabled"
+                "             ORDER BY created_at, id LIMIT 1)"
+                " AND NOT EXISTS (SELECT 1 FROM users"
+                "                 WHERE role = 'admin' AND NOT disabled)"
                 " RETURNING username").fetchone()
             conn.commit()
         return str(row["username"]) if row else None
@@ -960,7 +986,8 @@ class Store:
             row = conn.execute(
                 "SELECT u.id, u.username, u.role, u.created_at, u.last_login_at"
                 " FROM user_sessions s JOIN users u ON u.id = s.user_id"
-                " WHERE s.token_hash = %s AND s.expires_at > now()",
+                " WHERE s.token_hash = %s AND s.expires_at > now()"
+                " AND NOT u.disabled",
                 (token_hash,)).fetchone()
         return dict(row) if row else None
 

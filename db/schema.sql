@@ -195,6 +195,10 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 CREATE INDEX IF NOT EXISTS user_sessions_user_idx
     ON user_sessions (user_id, expires_at DESC);
 
+-- v0.67：管理员可以停用账号。停用后登录与已有会话都失效，
+-- 数据不删，重新启用就恢复。
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled boolean NOT NULL DEFAULT false;
+
 -- 登录后的个人数据：一个 localStorage 键一行，值与浏览器里一一对应。
 -- 访问口令、账号 token、同步元数据不进这张表（服务端也会再挡一次）。
 CREATE TABLE IF NOT EXISTS user_data (

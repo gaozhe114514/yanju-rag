@@ -3137,6 +3137,30 @@
     .set-danger:hover {
       color: var(--danger); border-color: var(--danger); background: var(--danger-surface);
     }
+    /* 成员列表（v0.67）：一行一个账号，动作用右侧次按钮；状态只做小徽标 */
+    .set-users-ctrl { flex-direction: column; align-items: stretch; }
+    .set-users { display: flex; flex-direction: column; }
+    .set-user {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 0;
+      border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+    }
+    .set-user:first-child { border-top: 0; }
+    .set-user-main { min-width: 0; }
+    .set-user-name {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      color: var(--ink); font-size: 14px; font-weight: 500; line-height: 1.5;
+    }
+    .set-user-meta { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .set-user-actions { display: flex; flex: none; gap: 6px; }
+    .set-user-actions button { padding: 7px 12px; font-size: 12px; white-space: nowrap; }
+    .set-badge {
+      display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
+      background: var(--muted-surface); color: var(--muted);
+      font-size: 11px; font-weight: 500; line-height: 1.6;
+    }
+    .set-badge.admin { background: var(--brand-soft); color: var(--brand); }
+    .set-badge.off { background: var(--danger-surface); color: var(--danger); }
     /* 底部应用条：有未保存的改动才出现 */
     .set-toolbar {
       position: sticky; bottom: 0; z-index: 5; flex: none;
@@ -3175,6 +3199,8 @@
       .set-ctrl input[type="password"] { min-width: 0; }
       .set-account { width: 100%; }
       .set-themes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .set-user { flex-direction: column; align-items: stretch; gap: 10px; }
+      .set-user-actions button { flex: 1; min-height: 44px; }
       .set-token .set-ctrl { width: 100%; }
       .set-toolbar { padding: 10px 0 12px; }
       .set-toolbar-text span { display: none; }
@@ -4306,9 +4332,15 @@
     } catch (e) {
       const detail = String((e.data && e.data.detail) || '');
       // 访问口令没配时的 401 不要当成登录过期，否则一进站就被登出
-      if (e.status === 401 && detail.indexOf('登录') >= 0) clearAccountToken();
+      if (e.status === 401 && detail.indexOf('登录') >= 0) {
+        clearAccountToken();
+        renderSettings();
+      }
       return;
     }
+    // 设置页可能在账号信息回来之前就画好了：身份变了要重画左栏
+    // （管理员多一项「成员」，退出后这一项要消失）
+    renderSettings();
     await syncNow({reload: true});
   }
 
@@ -12604,7 +12636,9 @@
     {key: 'tools', group: '服务', icon: 'i-tool', label: '工具',
      lede: '日常模式可以调用的实时工具。资料模式不调用工具，仍只按原文回答。'},
     {key: 'connection', group: '服务', icon: 'i-key', label: '连接',
-     lede: '访问本站需要的口令，以及后端当前的运行状态。'}
+     lede: '访问本站需要的口令，以及后端当前的运行状态。'},
+    {key: 'users', group: '服务', icon: 'i-users', label: '成员', adminOnly: true,
+     lede: '只有管理员能看到这一页。停用会立即踢掉对方的登录，数据保留，重新启用就恢复。'}
   ];
 
   /* 偏好类的改动先进草稿，底部「应用更改」才写进 408-prefs-v1（照 DeepTutor 的草稿 + Apply） */
@@ -13277,6 +13311,101 @@
     body.appendChild(secClear.sec);
   }
 
+  /* 成员管理（v0.67）：列表只读服务端，改角色 / 停用后整页重拉，避免本地和服务端打架 */
+  function settingsUsers(body) {
+    const sec = setSection('成员列表',
+      '按注册时间排列。停用不删数据，重新启用后原密码照常登录。');
+    const row = setRow('全部账号', '不能修改自己的角色或停用自己；系统里至少保留一个可用的管理员。');
+    row.row.classList.add('set-row-block');
+    const list = el('div', 'set-users');
+    const status = el('div', 'settings-status');
+    row.ctrl.classList.add('set-users-ctrl');
+    row.ctrl.appendChild(list);
+    row.ctrl.appendChild(status);
+    sec.body.appendChild(row.row);
+    body.appendChild(sec.sec);
+
+    const me = (state.account.user && state.account.user.id) || '';
+
+    function when(value) {
+      return value ? String(value).replace('T', ' ').slice(0, 16) : '—';
+    }
+
+    function showError(e) {
+      const detail = String((e && e.data && e.data.detail) || (e && e.message) || '');
+      status.className = 'settings-status err';
+      status.textContent = detail || '读取成员失败';
+    }
+
+    function load() {
+      status.className = 'settings-status';
+      status.textContent = '正在读取…';
+      return accountApi('/admin/users').then(out => {
+        const users = (out && out.users) || [];
+        list.replaceChildren();
+        users.forEach(u => list.appendChild(userRow(u)));
+        status.textContent = users.length + ' 个账号';
+      }).catch(showError);
+    }
+
+    function patch(id, change) {
+      status.className = 'settings-status';
+      status.textContent = '正在保存…';
+      accountApi('/admin/users/' + encodeURIComponent(id),
+        {method: 'PATCH', body: change})
+        .then(() => { toast('成员已更新'); return load(); })
+        .catch(showError);
+    }
+
+    function userRow(u) {
+      const item = el('div', 'set-user');
+      const main = el('div', 'set-user-main');
+      const name = el('div', 'set-user-name');
+      name.appendChild(el('span', null, u.username));
+      name.appendChild(el('span', 'set-badge' + (u.role === 'admin' ? ' admin' : ''),
+        u.role === 'admin' ? '管理员' : '成员'));
+      if (u.id === me) name.appendChild(el('span', 'set-badge', '当前登录'));
+      if (u.disabled) name.appendChild(el('span', 'set-badge off', '已停用'));
+      main.appendChild(name);
+      const meta = ['注册 ' + when(u.created_at),
+        u.last_login_at ? '上次登录 ' + when(u.last_login_at) : '从未登录'];
+      main.appendChild(el('div', 'set-user-meta', meta.join(' · ')));
+      item.appendChild(main);
+
+      // 自己那一行只读：降级或停用自己会把管理员锁在门外
+      if (u.id !== me) {
+        const actions = el('div', 'set-user-actions');
+        const roleBtn = el('button', 'ghost',
+          u.role === 'admin' ? '取消管理员' : '设为管理员');
+        roleBtn.addEventListener('click', () => {
+          const next = u.role === 'admin' ? 'member' : 'admin';
+          const ask = next === 'admin'
+            ? '把「' + u.username + '」设为管理员？管理员可以管理所有资料库和账号。'
+            : '取消「' + u.username + '」的管理员权限？';
+          if (!window.confirm(ask)) return;
+          patch(u.id, {role: next});
+        });
+        actions.appendChild(roleBtn);
+
+        const offBtn = el('button', 'ghost' + (u.disabled ? '' : ' set-danger'),
+          u.disabled ? '启用' : '停用');
+        offBtn.addEventListener('click', () => {
+          const next = !u.disabled;
+          const ask = next
+            ? '停用「' + u.username + '」？对方会立即被登出，数据保留，之后可以再启用。'
+            : '启用「' + u.username + '」？对方可以用原来的密码登录。';
+          if (!window.confirm(ask)) return;
+          patch(u.id, {disabled: next});
+        });
+        actions.appendChild(offBtn);
+        item.appendChild(actions);
+      }
+      return item;
+    }
+
+    load();
+  }
+
   const SETTINGS_RENDERERS = {
     account: settingsAccount,
     general: settingsGeneral,
@@ -13284,8 +13413,20 @@
     learning: settingsLearning,
     tools: settingsTools,
     connection: settingsConnection,
-    data: settingsData
+    data: settingsData,
+    users: settingsUsers
   };
+
+  function accountIsAdmin() {
+    const user = state.account && state.account.user;
+    return !!(user && user.role === 'admin');
+  }
+
+  /* 成员页只给管理员看；换号或退出后，左栏这一项要跟着消失 */
+  function visibleSettingsSections() {
+    const admin = accountIsAdmin();
+    return SETTINGS_SECTIONS.filter(sec => !sec.adminOnly || admin);
+  }
 
   function renderSettings() {
     const nav = $('#set-nav');
@@ -13293,7 +13434,11 @@
     if (!nav || !body) return;
     nav.replaceChildren();
     body.replaceChildren();
-    if (!SETTINGS_RENDERERS[state.settingsSection]) state.settingsSection = 'general';
+    const sections = visibleSettingsSections();
+    if (!SETTINGS_RENDERERS[state.settingsSection] ||
+        !sections.some(sec => sec.key === state.settingsSection)) {
+      state.settingsSection = 'general';
+    }
 
     const search = $('#set-search');
     if (search) {
@@ -13312,7 +13457,7 @@
     const q = settingsQuery.trim().toLowerCase();
     let lastGroup = '';
     let shown = 0;
-    SETTINGS_SECTIONS.forEach(sec => {
+    sections.forEach(sec => {
       if (q && (sec.label + ' ' + sec.key).toLowerCase().indexOf(q) < 0) return;
       shown++;
       if (sec.group !== lastGroup) {
@@ -13338,7 +13483,7 @@
       nav.appendChild(el('div', 'set-empty', '没有找到「' + settingsQuery.trim() + '」。'));
     }
 
-    const cur = SETTINGS_SECTIONS.filter(x => x.key === state.settingsSection)[0];
+    const cur = sections.filter(x => x.key === state.settingsSection)[0];
     const head = el('header', 'set-head');
     head.appendChild(el('h2', 'set-title', cur.label));
     head.appendChild(el('p', 'set-lede', cur.lede));
