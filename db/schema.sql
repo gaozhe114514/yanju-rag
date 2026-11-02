@@ -90,6 +90,22 @@ CREATE INDEX IF NOT EXISTS doc_chunks_collection_idx
 CREATE INDEX IF NOT EXISTS doc_chunks_embedding_idx
     ON doc_chunks USING hnsw (embedding vector_cosine_ops);
 
+-- v0.71：整篇资料的编辑历史。每次保存前先把旧版本存一行，
+-- 恢复旧版也走同一套保存流程（当前版会变成新的一行），可按时间回退。
+CREATE TABLE IF NOT EXISTS document_versions (
+    id            bigserial PRIMARY KEY,
+    collection_id text NOT NULL,
+    document_id   text NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    title         text NOT NULL DEFAULT '',
+    text          text NOT NULL,
+    sha256        text NOT NULL DEFAULT '',
+    author        text NOT NULL DEFAULT '',
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS document_versions_doc_idx
+    ON document_versions (document_id, id DESC);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   text PRIMARY KEY,
     value text NOT NULL

@@ -228,6 +228,85 @@ class DocumentTest(unittest.TestCase):
             self.assertEqual(len(again.list_documents(cid)), 1)
 
 
+class DocumentEditTest(unittest.TestCase):
+    def setUp(self):
+        self.lib = make_library()
+        self.coll = self.lib.create_collection("可编辑库")
+        self.doc = self.lib.add_document(self.coll["id"], SAMPLE, "原始资料")
+
+    def test_update_changes_text_title_and_chunks(self):
+        new_text = SAMPLE.replace("快速排序", "归并排序")
+        out = self.lib.update_document(self.coll["id"], self.doc["id"], new_text,
+                                       title="改过的标题", author="alice")
+        self.assertEqual(out["title"], "改过的标题")
+        self.assertGreater(out["chunks"], 0)
+        row = self.lib.get_document(self.coll["id"], self.doc["id"])
+        self.assertIn("归并排序", row["text"])
+        self.assertEqual(row["title"], "改过的标题")
+        self.assertEqual(len(self.lib.document_chunks(self.coll["id"],
+                                                      self.doc["id"])),
+                         out["chunks"])
+
+    def test_snapshot_keeps_old_text(self):
+        old = SAMPLE
+        new_text = SAMPLE.replace("快速排序", "堆排序")
+        out = self.lib.update_document(self.coll["id"], self.doc["id"], new_text,
+                                       author="alice")
+        versions = self.lib.list_document_versions(self.coll["id"], self.doc["id"])
+        self.assertEqual(len(versions), 1)
+        self.assertEqual(versions[0]["id"], out["version_id"])
+        self.assertEqual(versions[0]["author"], "alice")
+        self.assertEqual(versions[0]["chars"], len(old.strip()))
+        snap = self.lib.get_document_version(self.coll["id"], self.doc["id"],
+                                             out["version_id"])
+        self.assertIn("快速排序", snap["text"])
+
+    def test_restore_old_version_and_keep_current_as_history(self):
+        current = SAMPLE.replace("快速排序", "冒泡排序")
+        first = self.lib.update_document(self.coll["id"], self.doc["id"], current,
+                                         author="alice")
+        out = self.lib.restore_document_version(self.coll["id"], self.doc["id"],
+                                                first["version_id"], author="bob")
+        self.assertEqual(out["restored_from"], first["version_id"])
+        row = self.lib.get_document(self.coll["id"], self.doc["id"])
+        self.assertIn("快速排序", row["text"])
+        versions = self.lib.list_document_versions(self.coll["id"], self.doc["id"])
+        self.assertEqual(len(versions), 2)
+        # 恢复出来的那一版（冒泡排序）也留在历史里，不会再被覆盖
+        self.assertIn("冒泡排序",
+                      self.lib.get_document_version(self.coll["id"], self.doc["id"],
+                                                    versions[0]["id"])["text"])
+
+    def test_duplicate_and_short_rejected(self):
+        other_text = SAMPLE.replace("快速排序", "二分查找")
+        self.lib.add_document(self.coll["id"], other_text, "另一份资料")
+        with self.assertRaises(LibraryError):
+            self.lib.update_document(self.coll["id"], self.doc["id"], other_text,
+                                     title="想改成和别的资料一样")
+        with self.assertRaises(LibraryError):
+            self.lib.update_document(self.coll["id"], self.doc["id"], "太短了")
+        # 失败时不动原文，也不留历史
+        self.assertEqual(self.lib.list_document_versions(self.coll["id"],
+                                                         self.doc["id"]), [])
+
+    def test_history_is_capped(self):
+        text = SAMPLE
+        for i in range(25):
+            text = text + "\n第%d次修改。" % i
+            self.lib.update_document(self.coll["id"], self.doc["id"], text,
+                                     author="alice")
+        versions = self.lib.list_document_versions(self.coll["id"], self.doc["id"],
+                                                   limit=50)
+        self.assertEqual(len(versions), self.lib.MAX_VERSIONS)
+
+    def test_delete_document_drops_versions(self):
+        self.lib.update_document(self.coll["id"], self.doc["id"],
+                                 SAMPLE.replace("快速排序", "希尔排序"))
+        self.assertTrue(self.lib.delete_document(self.coll["id"], self.doc["id"]))
+        self.assertEqual(self.lib.list_document_versions(self.coll["id"],
+                                                         self.doc["id"]), [])
+
+
 class SearchTest(unittest.TestCase):
     def setUp(self):
         self.lib = make_library()

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fdfcf9">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.70">
+  <meta name="app-version" content="0.71">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1615,6 +1615,118 @@
     }
     .row-btn:hover { border-color: var(--line-strong); color: var(--brand); }
     .row-btn.danger:hover { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); }
+
+    /* ---------- 资料编辑器：Markdown / 预览 / 历史（v0.71） ---------- */
+    .modal-card.modal-wide { width: min(1080px, 100%); max-height: min(90vh, 920px); }
+    .doc-editor {
+      display: flex; flex-direction: column; gap: 12px;
+      height: min(70vh, 640px);
+    }
+    .de-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: none; }
+    .de-title {
+      flex: 1; min-width: 200px; height: 38px; padding: 0 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+      color: var(--ink); font-size: 14.5px; font-weight: 600;
+    }
+    .de-title:focus {
+      border-color: var(--line-strong); outline: none;
+      box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+    .de-tabs {
+      display: flex; gap: 2px; padding: 3px; flex: none;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+    }
+    .de-tabs button {
+      padding: 4px 13px; border: 0; border-radius: 7px;
+      background: transparent; color: var(--muted); font-size: 12px;
+    }
+    .de-tabs button:hover { color: var(--ink); }
+    .de-tabs button.active {
+      background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm);
+    }
+    .de-body { flex: 1; min-height: 0; display: flex; }
+    .de-pane { display: none; flex: 1; min-width: 0; min-height: 0; }
+    .doc-editor.mode-edit .de-pane-edit,
+    .doc-editor.mode-preview .de-pane-preview,
+    .doc-editor.mode-history .de-pane-history {
+      display: flex; flex-direction: column;
+    }
+    .de-input {
+      flex: 1; width: 100%; min-height: 0; resize: none; padding: 15px 17px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--bg);
+      color: var(--ink); font-family: var(--sans); font-size: 13.5px;
+      line-height: 1.85; tab-size: 2;
+    }
+    .de-input:focus { border-color: var(--line-strong); outline: none; }
+    .de-pane-preview { min-height: 0; }
+    .de-preview {
+      flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    }
+    .doc-md { color: var(--ink); font-size: 13.8px; line-height: 1.85; }
+    .doc-md > :first-child { margin-top: 0; }
+    .doc-md h1 { margin: 22px 0 10px; font-size: 19px; font-weight: 640; line-height: 1.4; }
+    .doc-md h2 { margin: 20px 0 8px; font-size: 16px; font-weight: 600; line-height: 1.45; }
+    .doc-md h3, .doc-md h4, .doc-md h5, .doc-md h6 {
+      margin: 16px 0 6px; font-size: 14px; font-weight: 600; line-height: 1.5;
+    }
+    .doc-md p { margin: 0 0 10px; }
+    .doc-md ul, .doc-md ol { margin: 0 0 10px; padding-left: 22px; }
+    .doc-md li { margin: 3px 0; }
+    .doc-md blockquote {
+      margin: 0 0 10px; padding: 8px 14px;
+      border-left: 3px solid var(--line-strong); border-radius: 0 8px 8px 0;
+      background: var(--surface-2); color: var(--ink-3);
+    }
+    .doc-md code {
+      padding: 1px 5px; border-radius: 5px; background: var(--muted-surface);
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px;
+    }
+    .doc-md pre {
+      margin: 0 0 12px; padding: 12px 14px; overflow-x: auto;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+    }
+    .doc-md pre code { padding: 0; background: transparent; font-size: 12.5px; line-height: 1.7; }
+    .doc-md hr { margin: 18px 0; border: 0; border-top: 1px solid var(--line); }
+    .doc-md a { color: var(--brand); text-decoration: none; }
+    .doc-md a:hover { text-decoration: underline; }
+    .doc-md .md-wiki {
+      color: var(--brand); border-bottom: 1px dashed var(--line-strong); text-decoration: none;
+    }
+    .doc-md .de-md-empty { color: var(--muted); font-size: 12.5px; }
+    .de-old {
+      display: flex; align-items: center; gap: 10px; flex: none;
+      margin: 0 0 12px; padding: 7px 11px; border-radius: 9px;
+      background: var(--warn-surface); color: var(--warn); font-size: 11.5px;
+    }
+    .de-old > span:first-child { flex: 1; min-width: 0; }
+    .de-old .link-btn { flex: none; color: var(--warn); font-size: 11.5px; }
+    .de-pane-history { overflow-y: auto; padding: 1px; }
+    .de-ver {
+      display: flex; align-items: flex-start; gap: 12px; padding: 11px 13px;
+      border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+    }
+    .de-ver + .de-ver { margin-top: 7px; }
+    .de-ver-main { flex: 1; min-width: 0; }
+    .de-ver-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .de-ver-id {
+      color: var(--brand); font-size: 11.5px; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .de-ver-when { color: var(--muted-soft); font-size: 11.5px; }
+    .de-ver-title { margin-top: 2px; color: var(--ink); font-size: 13px; font-weight: 600; }
+    .de-ver-meta { color: var(--muted); font-size: 11.5px; }
+    .de-ver-acts { display: flex; gap: 4px; flex: none; }
+    .de-ver-acts button {
+      padding: 4px 9px; border: 1px solid var(--line); border-radius: 7px;
+      background: var(--card); color: var(--muted); font-size: 11.5px;
+    }
+    .de-ver-acts button:hover { border-color: var(--line-strong); color: var(--brand); }
+    .de-empty { padding: 18px 4px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+    .de-foot { display: flex; align-items: center; gap: 12px; flex: none; }
+    .de-meta { flex: 1; min-width: 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .de-meta.err { color: var(--danger); }
+    .de-actions { display: flex; gap: 8px; flex: none; }
     .toolbar {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
       margin-bottom: 14px;
@@ -1786,6 +1898,20 @@
       .list-row { flex-direction: column; gap: 8px; }
       .list-actions { width: 100%; justify-content: flex-start; }
       .toolbar .grow { min-width: 0; }
+      .modal-card.modal-wide { width: 100%; }
+      .doc-editor { height: auto; min-height: 0; }
+      .de-input { min-height: 46vh; }
+      .de-preview { flex: none; max-height: 52vh; }
+      .de-head { gap: 8px; }
+      .de-title { min-width: 0; font-size: 14px; }
+      .de-tabs { width: 100%; }
+      .de-tabs button { flex: 1; min-height: 34px; }
+      .de-ver { flex-direction: column; gap: 8px; }
+      .de-ver-acts { width: 100%; }
+      .de-ver-acts button { flex: 1; min-height: 36px; }
+      .de-foot { flex-wrap: wrap; }
+      .de-actions { width: 100%; }
+      .de-actions button { flex: 1; min-height: 40px; }
       .module { padding: 14px; }
       .space-groups { gap: 24px; }
     }
@@ -8531,7 +8657,9 @@
   }
 
   /* ---------- modal / settings ---------- */
-  function openModal(title, bodyNode) {
+  function openModal(title, bodyNode, opts) {
+    const card = $('#modal').querySelector('.modal-card');
+    if (card) card.classList.toggle('modal-wide', !!(opts && opts.wide));
     $('#modal-title').textContent = title;
     $('#modal-body').replaceChildren(bodyNode);
     $('#modal').hidden = false;
@@ -9229,6 +9357,11 @@
       if (d.error) main.appendChild(el('div', 'list-meta err', d.error));
       row.appendChild(main);
       const acts = el('div', 'list-actions');
+      if (canWrite && !c.weknora && status === 'completed') {
+        const edit = el('button', 'row-btn', '编辑');
+        edit.addEventListener('click', () => openDocumentEditor(c, d));
+        acts.appendChild(edit);
+      }
       const chunks = el('button', 'row-btn', '片段');
       chunks.addEventListener('click', () => openChunkManager(c, d));
       acts.appendChild(chunks);
@@ -9245,6 +9378,464 @@
       row.appendChild(acts);
       box.appendChild(row);
     });
+  }
+
+  /* ---------- 资料编辑器：Markdown 编辑 / 预览 / 历史版本 ---------- */
+  function mdEscape(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
+  function mdInline(escaped) {
+    const codes = [];
+    let out = escaped.replace(/`([^`\n]+)`/g, (m, code) => {
+      codes.push(code);
+      return '\u0000C' + (codes.length - 1) + '\u0000';
+    });
+    out = out.replace(/\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g,
+      (m, target, alias) => {
+        const name = target.trim();
+        const label = (alias || target).trim();
+        return '<a class="md-wiki" href="#" data-wiki="' + name + '">' +
+          label + '</a>';
+      });
+    out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+    out = out.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    out = out.replace(/\u0000C(\d+)\u0000/g,
+      (m, i) => '<code>' + codes[Number(i)] + '</code>');
+    return out;
+  }
+
+  /* 只认白名单语法；先整体转义再拼标签，输入里的 HTML 一律当文字 */
+  function renderMarkdown(src) {
+    const lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let list = null;
+    let i = 0;
+    const closeList = () => {
+      if (list) { out.push('</' + list + '>'); list = null; }
+    };
+    const isBlockStart = line =>
+      /^(#{1,6})\s|^```|^>\s?|^\s*[-*+]\s|^\s*\d+[.)]\s|^\s*([-*_])(\s*\1){2,}\s*$/.test(line);
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        closeList();
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) {
+          buf.push(mdEscape(lines[i]));
+          i++;
+        }
+        i++;
+        out.push('<pre><code>' + buf.join('\n') + '</code></pre>');
+        continue;
+      }
+      if (!line.trim()) { closeList(); i++; continue; }
+      const head = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (head) {
+        closeList();
+        const n = head[1].length;
+        out.push('<h' + n + '>' + mdInline(mdEscape(head[2])) + '</h' + n + '>');
+        i++;
+        continue;
+      }
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+        closeList(); out.push('<hr>'); i++; continue;
+      }
+      if (/^>\s?/.test(line)) {
+        closeList();
+        const buf = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) {
+          buf.push(mdInline(mdEscape(lines[i].replace(/^>\s?/, ''))));
+          i++;
+        }
+        out.push('<blockquote>' + buf.join('<br>') + '</blockquote>');
+        continue;
+      }
+      const ul = /^\s*[-*+]\s+(.*)$/.exec(line);
+      const ol = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+      if (ul || ol) {
+        const tag = ul ? 'ul' : 'ol';
+        if (list !== tag) { closeList(); out.push('<' + tag + '>'); list = tag; }
+        out.push('<li>' + mdInline(mdEscape((ul || ol)[1])) + '</li>');
+        i++;
+        continue;
+      }
+      closeList();
+      const buf = [line];
+      i++;
+      while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      out.push('<p>' + buf.map(l => mdInline(mdEscape(l))).join('<br>') + '</p>');
+    }
+    closeList();
+    return out.join('\n') ||
+      '<p class="de-md-empty">还没有内容。左边写 Markdown，这里会实时预览。</p>';
+  }
+
+  function docWhen(value) {
+    const text = String(value || '');
+    if (!text) return '';
+    return text.replace('T', ' ').slice(0, 16);
+  }
+
+  function openDocumentEditor(c, d) {
+    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id))
+      .then(doc => buildDocumentEditor(c, d, doc))
+      .catch(e => toast('打不开资料：' + e.message, 'err'));
+  }
+
+  function buildDocumentEditor(c, d, doc) {
+    const cid = c.id;
+    const docId = d.id;
+    let mode = 'edit';
+    let savedText = doc.text || '';
+    let savedTitle = doc.title || '';
+    let viewing = null;       // 正在查看的历史版本
+    let saving = false;
+    let previewTimer = null;
+
+    const wrap = el('div', 'doc-editor mode-edit');
+    const head = el('div', 'de-head');
+    const title = el('input', 'de-title');
+    title.value = savedTitle;
+    title.maxLength = 80;
+    title.placeholder = '资料标题';
+    title.setAttribute('aria-label', '资料标题');
+    head.appendChild(title);
+
+    const tabs = el('div', 'de-tabs');
+    const modeButtons = {};
+    [['edit', '编辑'], ['preview', '预览'], ['history', '历史']].forEach(pair => {
+      const btn = el('button', null, pair[1]);
+      btn.type = 'button';
+      btn.addEventListener('click', () => setMode(pair[0]));
+      modeButtons[pair[0]] = btn;
+      tabs.appendChild(btn);
+    });
+    head.appendChild(tabs);
+
+    const body = el('div', 'de-body');
+    const paneEdit = el('div', 'de-pane de-pane-edit');
+    const input = el('textarea', 'de-input');
+    input.value = savedText;
+    input.spellcheck = false;
+    input.setAttribute('aria-label', '资料正文（Markdown）');
+    paneEdit.appendChild(input);
+
+    const panePreview = el('div', 'de-pane de-pane-preview');
+    const oldBar = el('div', 'de-old');
+    oldBar.hidden = true;
+    const oldText = el('span');
+    const backBtn = el('button', 'link-btn', '回到当前');
+    const restoreBtn = el('button', 'link-btn', '恢复这一版');
+    oldBar.appendChild(oldText);
+    oldBar.appendChild(backBtn);
+    oldBar.appendChild(restoreBtn);
+    const preview = el('div', 'de-preview doc-md');
+    panePreview.appendChild(oldBar);
+    panePreview.appendChild(preview);
+
+    const paneHistory = el('div', 'de-pane de-pane-history');
+    const historyBox = el('div');
+    paneHistory.appendChild(historyBox);
+
+    body.appendChild(paneEdit);
+    body.appendChild(panePreview);
+    body.appendChild(paneHistory);
+
+    const foot = el('div', 'de-foot');
+    const meta = el('span', 'de-meta');
+    const actions = el('div', 'de-actions');
+    const cancel = el('button', 'ghost', '取消');
+    const save = el('button', 'primary', '保存');
+    cancel.type = 'button';
+    save.type = 'button';
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    foot.appendChild(meta);
+    foot.appendChild(actions);
+
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    wrap.appendChild(foot);
+
+    function updateMeta() {
+      meta.className = 'de-meta';
+      meta.textContent = input.value.length + ' 字 · 保存后重新切分并重建引用';
+    }
+
+    function renderPreview() {
+      if (viewing) return;
+      preview.innerHTML = renderMarkdown(input.value);
+    }
+
+    function renderHistoryRows(items) {
+      historyBox.replaceChildren();
+      if (!items.length) {
+        historyBox.appendChild(el('div', 'de-empty', '还没有历史版本。第一次保存后，旧内容会留在这里。'));
+        return;
+      }
+      items.forEach(item => {
+        const row = el('div', 'de-ver');
+        const main = el('div', 'de-ver-main');
+        const line = el('div', 'de-ver-head');
+        line.appendChild(el('span', 'de-ver-id', 'v' + item.id));
+        line.appendChild(el('span', 'de-ver-when', docWhen(item.created_at)));
+        if (item.author) line.appendChild(el('span', 'de-ver-when', item.author));
+        main.appendChild(line);
+        main.appendChild(el('div', 'de-ver-title', item.title || '未命名资料'));
+        main.appendChild(el('div', 'de-ver-meta', (item.chars || 0) + ' 字'));
+        row.appendChild(main);
+        const acts = el('div', 'de-ver-acts');
+        const view = el('button', null, '查看');
+        view.type = 'button';
+        view.addEventListener('click', () => viewVersion(item));
+        const back = el('button', null, '恢复');
+        back.type = 'button';
+        back.addEventListener('click', () => restoreVersion(item));
+        acts.appendChild(view);
+        acts.appendChild(back);
+        row.appendChild(acts);
+        historyBox.appendChild(row);
+      });
+    }
+
+    function loadHistory() {
+      historyBox.replaceChildren(el('div', 'de-empty', '正在读取历史…'));
+      return api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId) + '/versions')
+        .then(out => renderHistoryRows((out && out.items) || []))
+        .catch(e => {
+          historyBox.replaceChildren(el('div', 'de-empty',
+            '历史版本读取失败：' + e.message));
+        });
+    }
+
+    function setMode(next) {
+      mode = next;
+      wrap.className = 'doc-editor mode-' + mode;
+      Object.keys(modeButtons).forEach(key => {
+        modeButtons[key].classList.toggle('active', key === mode);
+        modeButtons[key].setAttribute('aria-pressed', key === mode ? 'true' : 'false');
+      });
+      if (mode === 'preview') {
+        viewing = null;
+        oldBar.hidden = true;
+        renderPreview();
+      } else if (mode === 'history') {
+        loadHistory();
+      } else {
+        viewing = null;
+        oldBar.hidden = true;
+        input.focus();
+      }
+    }
+
+    function viewVersion(item) {
+      api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId) + '/versions/' + item.id)
+        .then(row => {
+          viewing = row;
+          preview.innerHTML = renderMarkdown(row.text || '');
+          oldText.textContent = '历史版本 v' + row.id + ' · ' +
+            (docWhen(row.created_at) || '时间未知') +
+            (row.author ? ' · ' + row.author : '');
+          oldBar.hidden = false;
+          mode = 'preview';
+          wrap.className = 'doc-editor mode-preview';
+          Object.keys(modeButtons).forEach(key => {
+            modeButtons[key].classList.toggle('active', key === 'preview');
+            modeButtons[key].setAttribute('aria-pressed',
+              key === 'preview' ? 'true' : 'false');
+          });
+        })
+        .catch(e => toast('打不开历史版本：' + e.message, 'err'));
+    }
+
+    function restoreVersion(item) {
+      if (!window.confirm('恢复到 v' + item.id + '？当前内容会先存成一个新的历史版本。')) return;
+      restoreBtn.disabled = true;
+      api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId) + '/versions/' + item.id + '/restore',
+        {method: 'POST'})
+        .then(() => {
+          restoreBtn.disabled = false;
+          toast('已恢复到 v' + item.id);
+          return api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+            encodeURIComponent(docId));
+        })
+        .then(row => {
+          savedText = row.text || '';
+          savedTitle = row.title || '';
+          input.value = savedText;
+          title.value = savedTitle;
+          viewing = null;
+          oldBar.hidden = true;
+          updateMeta();
+          setMode('edit');
+          loadHistory();
+          refreshEditedDoc(cid, docId);
+        })
+        .catch(e => {
+          restoreBtn.disabled = false;
+          toast('恢复失败：' + e.message, 'err');
+        });
+    }
+
+    function refreshEditedDoc(collectionId, id) {
+      state.collectionsLoaded = false;
+      if (state.page === 'collection' && state.collectionId === collectionId) {
+        renderCollectionPage(collectionId);
+      }
+    }
+
+    function closeEditor() {
+      closeModal();
+      refreshEditedDoc(cid, docId);
+    }
+
+    function saveDocument() {
+      if (saving) return;
+      const text = input.value.replace(/\r\n?/g, '\n').trim();
+      const nextTitle = title.value.trim();
+      if (text.length < 20) {
+        meta.className = 'de-meta err';
+        meta.textContent = '正文至少 20 字再保存。';
+        setMode('edit');
+        input.focus();
+        return;
+      }
+      saving = true;
+      save.disabled = true;
+      meta.className = 'de-meta';
+      meta.textContent = '正在保存并重建索引…';
+      api('/collections/' + encodeURIComponent(cid) + '/documents/' +
+        encodeURIComponent(docId), {
+        method: 'PATCH', body: {title: nextTitle, text}
+      }).then(out => {
+        saving = false;
+        save.disabled = false;
+        savedText = text;
+        savedTitle = out.title || nextTitle;
+        input.value = text;
+        title.value = savedTitle;
+        viewing = null;
+        oldBar.hidden = true;
+        updateMeta();
+        meta.textContent = '已保存，重新切出 ' + (out.chunks || 0) + ' 段。' +
+          (out.version_id ? ' 旧版是 v' + out.version_id + '。' : '');
+        toast('资料已保存');
+        if (mode === 'history') loadHistory();
+        else renderPreview();
+        refreshEditedDoc(cid, docId);
+      }).catch(e => {
+        saving = false;
+        save.disabled = false;
+        meta.className = 'de-meta err';
+        meta.textContent = '保存失败：' + (e.message || '未知错误');
+      });
+    }
+
+    function queuePreview() {
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(renderPreview, 120);
+    }
+
+    input.addEventListener('input', () => {
+      updateMeta();
+      queuePreview();
+    });
+    // 照 Obsidian 的手感：Tab 缩进、列表回车自动续号、Ctrl+S 直接保存
+    input.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 's') {
+        e.preventDefault();
+        saveDocument();
+        return;
+      }
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        const pad = '  ';
+        input.value = input.value.slice(0, start) + pad + input.value.slice(end);
+        input.selectionStart = input.selectionEnd = start + pad.length;
+        updateMeta();
+        queuePreview();
+        return;
+      }
+      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (start !== end) return;
+      const upto = input.value.slice(0, start);
+      const lineStart = upto.lastIndexOf('\n') + 1;
+      const line = upto.slice(lineStart);
+      const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+      if (!item) return;
+      e.preventDefault();
+      if (!item[3].trim()) {
+        // 空列表项回车：关掉这一项，回到普通行
+        const lineEnd = input.value.indexOf('\n', start);
+        const tail = lineEnd === -1 ? '' : input.value.slice(lineEnd);
+        input.value = input.value.slice(0, lineStart) + tail;
+        input.selectionStart = input.selectionEnd = lineStart;
+      } else {
+        let marker = item[2];
+        if (/\d/.test(marker)) {
+          marker = (parseInt(marker, 10) + 1) + marker.slice(-1);
+        }
+        const insert = '\n' + item[1] + marker + ' ';
+        input.value = input.value.slice(0, start) + insert + input.value.slice(end);
+        input.selectionStart = input.selectionEnd = start + insert.length;
+      }
+      updateMeta();
+      queuePreview();
+    });
+    backBtn.addEventListener('click', () => setMode('preview'));
+    restoreBtn.addEventListener('click', () => {
+      if (viewing) restoreVersion(viewing);
+    });
+    save.addEventListener('click', saveDocument);
+    cancel.addEventListener('click', () => {
+      const dirty = input.value !== savedText || title.value.trim() !== savedTitle;
+      if (dirty && !window.confirm('放弃这次修改？')) return;
+      closeEditor();
+    });
+    preview.addEventListener('click', e => {
+      const link = e.target.closest ? e.target.closest('.md-wiki') : null;
+      if (!link) return;
+      e.preventDefault();
+      openWikiTarget(link.getAttribute('data-wiki') || '');
+    });
+
+    function openWikiTarget(name) {
+      if (!name) return;
+      api('/collections/' + encodeURIComponent(cid))
+        .then(full => {
+          const hit = (full.documents || []).find(x =>
+            String(x.title || '').toLowerCase() === name.toLowerCase());
+          if (!hit) {
+            toast('这个库里没有叫「' + name + '」的资料', 'err');
+            return;
+          }
+          if (hit.id === docId) return;
+          closeEditor();
+          openDocumentEditor(full, hit);
+        })
+        .catch(e => toast('跳转失败：' + e.message, 'err'));
+    }
+
+    updateMeta();
+    renderPreview();
+    setMode('edit');
+    openModal('编辑资料', wrap, {wide: true});
   }
 
   function addLibraryDoc() {

@@ -63,7 +63,7 @@ class Library:
         self.reranker_model = reranker_model
         self._searchers: Dict[str, tuple] = {}
         self._mem = {"collections": [], "documents": [], "chunks": [],
-                     "members": []}
+                     "members": [], "document_versions": []}
         self._state_path = Path(state_path) if (state_path and store is None) else None
         if self._state_path is not None:
             self._load_state()
@@ -79,7 +79,8 @@ class Library:
             data = json.loads(raw)
         except ValueError:
             return
-        for key in ("collections", "documents", "chunks", "members"):
+        for key in ("collections", "documents", "chunks", "members",
+                    "document_versions"):
             if isinstance(data.get(key), list):
                 self._mem[key] = data[key]
 
@@ -214,6 +215,9 @@ class Library:
                 k for k in self._mem["chunks"] if k["collection_id"] != cid]
             self._mem["members"] = [
                 m for m in self._mem["members"] if m["collection_id"] != cid]
+            self._mem["document_versions"] = [
+                v for v in self._mem["document_versions"]
+                if v["collection_id"] != cid]
             ok = len(self._mem["collections"]) != before
             if ok:
                 self._save_state()
@@ -372,6 +376,10 @@ class Library:
             self._mem["chunks"] = [
                 k for k in self._mem["chunks"]
                 if not (k["document_id"] == doc_id and k["collection_id"] == cid)]
+            self._mem["document_versions"] = [
+                v for v in self._mem["document_versions"]
+                if not (v["document_id"] == doc_id
+                        and v["collection_id"] == cid)]
             ok = len(self._mem["documents"]) != before
             if ok:
                 self._save_state()
@@ -389,6 +397,123 @@ class Library:
     def document_text(self, cid: str, doc_id: str) -> Optional[str]:
         row = self.get_document(cid, doc_id)
         return row["text"] if row else None
+
+    # ---------- 整篇编辑与历史版本 ----------
+
+    MAX_VERSIONS = 20
+
+    def update_document(self, cid: str, doc_id: str, text: str,
+                        title: str = "", author: str = "") -> Dict:
+        """保存整篇资料：旧版进历史、正文重切分、向量重建、检索器失效。"""
+        doc = self.get_document(cid, doc_id)
+        if doc is None:
+            raise LibraryError("资料不存在")
+        text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        if len(text) < 20:
+            raise LibraryError("资料太短（至少 20 字）")
+        if len(text) > MAX_DOC_CHARS:
+            raise LibraryError("单篇资料最多 %d 字，当前 %d 字"
+                               % (MAX_DOC_CHARS, len(text)))
+        title = _clean(title, MAX_TITLE) or _clean(text.split("\n")[0], MAX_TITLE) \
+            or "未命名资料"
+        sha = _sha(text)
+        for d in self.list_documents(cid):
+            if d["id"] != doc_id and d.get("sha256") == sha:
+                raise LibraryError("这篇资料已经在库里了：%s" % d["title"])
+        pieces = split_text(text)
+        if not pieces:
+            raise LibraryError("没有切出可用片段，检查一下资料内容")
+        chunks = [{"id": "%s-%03d" % (doc_id, p["seq"]), "seq": p["seq"],
+                   "text": p["text"], "start": p["start"], "end": p["end"]}
+                  for p in pieces]
+        vectors: Dict[str, str] = {}
+        if self.store is not None and self.embedder is not None:
+            arr = self.embedder.embed([c["text"] for c in chunks])
+            vectors = {c["id"]: vector_literal(v) for c, v in zip(chunks, arr)}
+
+        if self.store is not None:
+            row = self.store.update_document(
+                cid, doc_id, title, text, sha, chunks, vectors,
+                author=author, keep_versions=self.MAX_VERSIONS)
+            if row is None:
+                raise LibraryError("资料不存在")
+            version_id = int(row["version_id"])
+        else:
+            now = _now()
+            versions = [v for v in self._mem["document_versions"]
+                        if v["document_id"] == doc_id
+                        and v["collection_id"] == cid]
+            version_id = max([int(v["id"]) for v in versions] or [0]) + 1
+            self._mem["document_versions"].append({
+                "id": version_id, "collection_id": cid,
+                "document_id": doc_id, "title": doc.get("title") or "",
+                "text": doc.get("text") or "",
+                "sha256": doc.get("sha256") or "",
+                "author": author or "", "created_at": now})
+            for d in self._mem["documents"]:
+                if d["id"] == doc_id and d["collection_id"] == cid:
+                    d.update({"title": title, "text": text, "sha256": sha,
+                              "status": "completed", "error": "",
+                              "updated_at": now, "tables": []})
+            self._mem["chunks"] = [
+                k for k in self._mem["chunks"] if k["document_id"] != doc_id]
+            for c in chunks:
+                self._mem["chunks"].append({**c, "collection_id": cid,
+                                            "document_id": doc_id,
+                                            "revision": 0})
+            keep = {v["id"] for v in self._mem["document_versions"]
+                    if v["document_id"] == doc_id and v["collection_id"] == cid}
+            ordered = sorted(keep, reverse=True)
+            drop = set(ordered[self.MAX_VERSIONS:])
+            self._mem["document_versions"] = [
+                v for v in self._mem["document_versions"]
+                if not (v["document_id"] == doc_id and v["id"] in drop)]
+            self._save_state()
+
+        self._searchers.pop(cid, None)
+        return {"id": doc_id, "title": title, "chars": len(text),
+                "chunks": len(chunks), "version_id": version_id,
+                "updated_at": _now()}
+
+    def list_document_versions(self, cid: str, doc_id: str,
+                               limit: int = 20) -> List[Dict]:
+        limit = max(1, min(int(limit or 20), self.MAX_VERSIONS))
+        if self.store is not None:
+            return self.store.list_document_versions(cid, doc_id, limit)
+        rows = [v for v in self._mem["document_versions"]
+                if v["document_id"] == doc_id and v["collection_id"] == cid]
+        rows.sort(key=lambda v: int(v["id"]), reverse=True)
+        return [{
+            "id": int(v["id"]),
+            "title": v.get("title") or "",
+            "sha256": v.get("sha256") or "",
+            "author": v.get("author") or "",
+            "created_at": str(v.get("created_at") or ""),
+            "chars": len(v.get("text") or ""),
+        } for v in rows[:limit]]
+
+    def get_document_version(self, cid: str, doc_id: str,
+                             version_id: int) -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.get_document_version(cid, doc_id, version_id)
+        for v in self._mem["document_versions"]:
+            if (v["document_id"] == doc_id and v["collection_id"] == cid
+                    and int(v["id"]) == int(version_id)):
+                out = dict(v)
+                out["id"] = int(out["id"])
+                return out
+        return None
+
+    def restore_document_version(self, cid: str, doc_id: str,
+                                 version_id: int, author: str = "") -> Dict:
+        version = self.get_document_version(cid, doc_id, version_id)
+        if version is None:
+            raise LibraryError("历史版本不存在")
+        out = self.update_document(cid, doc_id, version.get("text") or "",
+                                   title=version.get("title") or "",
+                                   author=author)
+        out["restored_from"] = int(version["id"])
+        return out
 
     # ---------- 文件进料：先占位（processing），解析完再切分入库 ----------
 

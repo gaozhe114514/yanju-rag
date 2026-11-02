@@ -506,6 +506,89 @@ class Store:
                 "UPDATE collections SET updated_at = now() WHERE id = %s", (cid,))
             conn.commit()
 
+    def update_document(self, cid: str, doc_id: str, title: str, text: str,
+                        sha: str, chunks: Sequence[Dict],
+                        vectors: Optional[Dict[str, str]] = None,
+                        author: str = "", keep_versions: int = 20) -> Optional[Dict]:
+        """整篇编辑：旧版进历史、正文/标题/摘要更新、片段整批替换。
+
+        一次事务提交，检索器看到的要么是旧版，要么是新版。手工编辑后
+        导入时抽出的结构化表格不再可信，一并清空，统计改按新正文推断。
+        """
+        vectors = vectors or {}
+        with self.connect() as conn:
+            snap = conn.execute(
+                "INSERT INTO document_versions"
+                " (collection_id, document_id, title, text, sha256, author)"
+                " SELECT collection_id, id, title, text, sha256, %s"
+                " FROM documents WHERE collection_id = %s AND id = %s"
+                " RETURNING id",
+                (author, cid, doc_id)).fetchone()
+            if snap is None:
+                return None
+            version_id = int(snap["id"])
+            conn.execute("DELETE FROM doc_chunks WHERE document_id = %s",
+                         (doc_id,))
+            for c in chunks:
+                conn.execute(
+                    "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
+                    " text, start_off, end_off, embedding)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)",
+                    (c["id"], cid, doc_id, c["seq"], c["text"],
+                     c["start"], c["end"], vectors.get(c["id"])))
+            conn.execute(
+                "UPDATE documents SET title = %s, text = %s, sha256 = %s,"
+                " status = 'completed', error = '', tables = '[]'::jsonb,"
+                " updated_at = now()"
+                " WHERE collection_id = %s AND id = %s",
+                (title, text, sha, cid, doc_id))
+            conn.execute(
+                "DELETE FROM document_versions WHERE document_id = %s"
+                " AND id NOT IN (SELECT id FROM document_versions"
+                " WHERE document_id = %s ORDER BY id DESC LIMIT %s)",
+                (doc_id, doc_id, int(keep_versions)))
+            conn.execute(
+                "UPDATE collections SET updated_at = now() WHERE id = %s", (cid,))
+            conn.commit()
+        return {"id": doc_id, "version_id": version_id}
+
+    def list_document_versions(self, cid: str, doc_id: str,
+                               limit: int = 20) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, title, sha256, author, created_at,"
+                " length(text) AS chars"
+                " FROM document_versions"
+                " WHERE collection_id = %s AND document_id = %s"
+                " ORDER BY id DESC LIMIT %s",
+                (cid, doc_id, int(limit))).fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "id": int(r["id"]),
+                "title": r["title"] or "",
+                "sha256": r["sha256"] or "",
+                "author": r["author"] or "",
+                "created_at": str(r["created_at"] or ""),
+                "chars": int(r["chars"] or 0),
+            })
+        return out
+
+    def get_document_version(self, cid: str, doc_id: str,
+                             version_id: int) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, title, text, sha256, author, created_at"
+                " FROM document_versions"
+                " WHERE collection_id = %s AND document_id = %s AND id = %s",
+                (cid, doc_id, int(version_id))).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        out["id"] = int(out["id"])
+        out["created_at"] = str(out.get("created_at") or "")
+        return out
+
     def vector_search_docs(self, query_vec: Sequence[float], top_k: int,
                            cid: str) -> List[Tuple[str, float]]:
         lit = vector_literal(query_vec)

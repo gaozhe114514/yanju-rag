@@ -263,6 +263,12 @@ class DocumentRequest(BaseModel):
     title: str = Field("", max_length=80)
 
 
+class DocumentEditRequest(BaseModel):
+    # 整篇编辑：标题可改，正文至少 20 字；保存后重新切分并重建引用
+    text: str = Field(..., min_length=20, max_length=50000)
+    title: str = Field("", max_length=80)
+
+
 class ChunkUpdateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=200000)
     # WeKnora 的乐观并发版本号；不传就不做版本校验
@@ -2165,6 +2171,73 @@ def document_detail(cid: str, doc_id: str, request: Request,
         raise HTTPException(status_code=404, detail="资料不存在")
     return {"id": row["id"], "title": row["title"], "text": row["text"],
             "created_at": str(row.get("created_at") or "")}
+
+
+@app.patch("/collections/{cid}/documents/{doc_id}")
+def document_edit(cid: str, doc_id: str, req: DocumentEditRequest,
+                  request: Request,
+                  _: None = Depends(enforce_content)) -> dict:
+    """整篇改标题 / 正文：保存前先留旧版，保存后重新切分与建索引。"""
+    user, coll, _role = _guard_collection(cid, request, write=True)
+    if coll.get("weknora"):
+        raise HTTPException(status_code=400,
+                            detail="这个知识库由 WeKnora 托管，暂不支持在线编辑")
+    author = str((user or {}).get("username") or "")
+    try:
+        out = _library().update_document(cid, doc_id, req.text,
+                                         title=req.title, author=author)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    out["author"] = author
+    return out
+
+
+@app.get("/collections/{cid}/documents/{doc_id}/versions")
+def document_versions(cid: str, doc_id: str, request: Request,
+                      limit: int = 20,
+                      _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    lib = _library()
+    if lib.get_document(cid, doc_id) is None:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    items = lib.list_document_versions(cid, doc_id, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@app.get("/collections/{cid}/documents/{doc_id}/versions/{version_id}")
+def document_version_detail(cid: str, doc_id: str, version_id: int,
+                            request: Request,
+                            _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    lib = _library()
+    if lib.get_document(cid, doc_id) is None:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    row = lib.get_document_version(cid, doc_id, version_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="历史版本不存在")
+    return {"id": int(row["id"]), "title": row.get("title") or "",
+            "text": row.get("text") or "", "author": row.get("author") or "",
+            "created_at": str(row.get("created_at") or "")}
+
+
+@app.post("/collections/{cid}/documents/{doc_id}/versions/{version_id}/restore")
+def document_version_restore(cid: str, doc_id: str, version_id: int,
+                             request: Request,
+                             _: None = Depends(enforce_content)) -> dict:
+    user, coll, _role = _guard_collection(cid, request, write=True)
+    if coll.get("weknora"):
+        raise HTTPException(status_code=400,
+                            detail="这个知识库由 WeKnora 托管，暂不支持在线编辑")
+    author = str((user or {}).get("username") or "")
+    try:
+        out = _library().restore_document_version(cid, doc_id, version_id,
+                                                  author=author)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    out["author"] = author
+    return out
 
 
 @app.delete("/collections/{cid}/documents/{doc_id}")
