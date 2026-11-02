@@ -381,6 +381,44 @@ class AdminTest(unittest.TestCase):
         self.assertTrue(self.svc.login("alice", "password123",
                                        ip="6.6.6.6")["token"])
 
+    def test_reset_password_generates_temp_and_revokes(self):
+        token = self.member["token"]
+        out = self.svc.reset_password(self.admin, self.uid)
+        temp = out["temp_password"]
+        self.assertGreaterEqual(len(temp), 8)
+        self.assertNotEqual(temp, "password123")
+        # 临时密码只在响应里出现，不在用户记录里
+        self.assertNotIn("temp_password", out["user"])
+        self.assertNotIn("password", str(self.svc.get_user(self.uid)))
+        # 旧会话立即失效，旧密码也登不进来
+        self.assertIsNone(self.svc.authenticate(token))
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.login("alice", "password123", ip="8.8.8.8")
+        self.assertEqual(ctx.exception.status, 401)
+        # 新临时密码可以登录
+        self.assertTrue(self.svc.login("alice", temp, ip="8.8.8.9")["token"])
+
+    def test_reset_with_chosen_password(self):
+        out = self.svc.reset_password(self.admin, self.uid,
+                                      new_password="Chosenpass123")
+        self.assertEqual(out["temp_password"], "Chosenpass123")
+        self.assertTrue(self.svc.login("alice", "Chosenpass123",
+                                       ip="8.8.8.10")["token"])
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.reset_password(self.admin, self.uid, new_password="short")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_reset_self_or_by_member_is_refused(self):
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.reset_password(self.admin, self.admin["id"])
+        self.assertEqual(ctx.exception.status, 400)
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.reset_password(self.member["user"], self.admin["id"])
+        self.assertEqual(ctx.exception.status, 403)
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.reset_password(self.admin, "u-nope")
+        self.assertEqual(ctx.exception.status, 404)
+
     def test_disabled_admin_loses_admin_power(self):
         self.svc.update_user(self.admin, self.uid, role="admin")
         token = self.svc.login("alice", "password123", ip="7.7.7.7")["token"]

@@ -120,6 +120,14 @@ def new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+# 临时密码：去掉 I / l / O / 0 这类容易看错的字符，管理员念给用户也不容易错
+TEMP_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+
+
+def temp_password(length: int = 12) -> str:
+    return "".join(secrets.choice(TEMP_ALPHABET) for _ in range(int(length)))
+
+
 def token_hash(token: str) -> str:
     return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
 
@@ -386,6 +394,34 @@ class AccountService:
                             if session["user_id"] == target["id"]:
                                 self._sessions.pop(hashed, None)
         return self.get_user(target["id"]) or target
+
+    def reset_password(self, actor: Dict, user_id: str,
+                       new_password: Optional[str] = None) -> Dict:
+        """管理员重置别人的密码（找回密码的唯一入口）。
+
+        不传 ``new_password`` 就生成 12 位临时密码，只在这次响应里返回一次，
+        不落库、不写日志。重置会把对方所有设备的登录踢掉，数据不动。
+        自己的密码只能自己用「账号」页改，这里不代劳。
+        """
+        me = self._require_admin(actor)
+        target = self.get_user(user_id)
+        if target is None:
+            raise AccountError(404, "账号不存在")
+        if target["id"] == me["id"]:
+            raise AccountError(400, "改自己的密码请用「账号」页")
+        password = clean_password(new_password) if new_password else temp_password()
+        pw_hash = hash_password(password)
+        if self.store is not None:
+            self.store.update_password(target["id"], pw_hash)
+            self.store.delete_user_sessions(target["id"])
+        else:
+            with self._lock:
+                self._users[target["id"]]["password_hash"] = pw_hash
+                for hashed, session in list(self._sessions.items()):
+                    if session["user_id"] == target["id"]:
+                        self._sessions.pop(hashed, None)
+        return {"user": self.get_user(target["id"]) or target,
+                "temp_password": password}
 
     def find_user(self, username: str) -> Optional[Dict]:
         key = username_key(username)

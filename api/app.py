@@ -312,6 +312,11 @@ class AdminUserRequest(BaseModel):
     disabled: Optional[bool] = None
 
 
+class AdminResetRequest(BaseModel):
+    # 不传就由服务端生成 12 位临时密码
+    new_password: Optional[str] = Field(None, max_length=128)
+
+
 class SyncItemRequest(BaseModel):
     value: Any = None
     updated_at: int = 0
@@ -1020,6 +1025,18 @@ def admin_user_update(user_id: str, req: AdminUserRequest,
         out = _accounts().update_user(user, user_id, role=req.role,
                                       disabled=req.disabled)
         return {"user": out}
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+def admin_user_reset_password(user_id: str,
+                              req: Optional[AdminResetRequest] = None,
+                              user: Dict[str, Any] = Depends(current_user),
+                              _: None = Depends(enforce_content)) -> dict:
+    try:
+        return _accounts().reset_password(
+            user, user_id, new_password=(req.new_password if req else None))
     except AccountError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
 

@@ -3067,6 +3067,8 @@
     .set-account input { width: 100%; min-width: 0; }
     .set-account .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
     .set-account .settings-status { margin-top: 2px; }
+    .set-account .link-btn { align-self: flex-start; }
+    .set-account .set-note { margin-top: 0; }
     .set-ctrl select:focus, .set-ctrl input:focus {
       outline: 0; border-color: var(--brand);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
@@ -3137,8 +3139,52 @@
     .set-danger:hover {
       color: var(--danger); border-color: var(--danger); background: var(--danger-surface);
     }
-    /* 成员列表（v0.67）：一行一个账号，动作用右侧次按钮；状态只做小徽标 */
+    /* 成员列表（v0.67 / v0.68）：一行一个账号，动作用右侧次按钮；状态只做小徽标 */
     .set-users-ctrl { flex-direction: column; align-items: stretch; }
+    .set-user-tools {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+      padding-bottom: 4px;
+    }
+    .set-user-tools input[type="search"] {
+      flex: 1 1 180px; min-width: 0; min-height: 38px; padding: 7px 12px;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: var(--card); color: var(--ink); font-size: 13px;
+    }
+    .set-user-tools input[type="search"]::placeholder { color: var(--muted); }
+    .set-user-tools input[type="search"]:focus {
+      outline: 0; border-color: var(--brand);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 16%, transparent);
+    }
+    .set-user-tools select {
+      min-height: 38px; padding: 7px 11px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--card); color: var(--ink); font-size: 13px;
+    }
+    .set-user-filter { display: flex; gap: 4px; }
+    .set-user-filter button {
+      padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--card); color: var(--muted); font-size: 12px;
+    }
+    .set-user-filter button.on {
+      background: var(--wash); border-color: transparent;
+      color: var(--ink); font-weight: 500;
+    }
+    /* 重置密码后的临时密码条：只出现一次，可复制 */
+    .set-reset {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+      margin: 4px 0 6px; padding: 12px 14px;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: var(--muted-surface);
+    }
+    .set-reset[hidden] { display: none; }
+    .set-reset-head { color: var(--ink); font-size: 13px; font-weight: 600; }
+    .set-reset-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .set-reset-code {
+      padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--card); color: var(--ink); user-select: all;
+      font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+      letter-spacing: .04em;
+    }
+    .set-reset-note { color: var(--muted); font-size: 12px; line-height: 1.7; }
     .set-users { display: flex; flex-direction: column; }
     .set-user {
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -3152,7 +3198,9 @@
       color: var(--ink); font-size: 14px; font-weight: 500; line-height: 1.5;
     }
     .set-user-meta { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.7; }
-    .set-user-actions { display: flex; flex: none; gap: 6px; }
+    .set-user-actions {
+      display: flex; flex: none; flex-wrap: wrap; justify-content: flex-end; gap: 6px;
+    }
     .set-user-actions button { padding: 7px 12px; font-size: 12px; white-space: nowrap; }
     .set-badge {
       display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
@@ -3200,6 +3248,7 @@
       .set-account { width: 100%; }
       .set-themes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .set-user { flex-direction: column; align-items: stretch; gap: 10px; }
+      .set-user-tools input[type="search"] { flex: 1 1 100%; }
       .set-user-actions button { flex: 1; min-height: 44px; }
       .set-token .set-ctrl { width: 100%; }
       .set-toolbar { padding: 10px 0 12px; }
@@ -12816,6 +12865,19 @@
       }
       form.appendChild(status);
 
+      // 找回密码的入口放在登录表单里：本站没有邮箱服务，只能找管理员重置
+      const forgot = el('button', 'link-btn', '忘记密码？');
+      forgot.type = 'button';
+      const forgotHint = el('div', 'set-note');
+      forgotHint.hidden = true;
+      forgotHint.textContent = '本站不收集邮箱，没有自动找回。请联系管理员，在「设置 › 服务 › 成员」里为你重置密码；管理员会给你一个临时密码，登录后到「账号」页改成自己的。';
+      forgot.addEventListener('click', () => {
+        forgotHint.hidden = !forgotHint.hidden;
+        forgot.textContent = forgotHint.hidden ? '忘记密码？' : '收起说明';
+      });
+      form.appendChild(forgot);
+      form.appendChild(forgotHint);
+
       async function send() {
         const username = name.value.trim();
         const password = pw.value;
@@ -13314,18 +13376,67 @@
   /* 成员管理（v0.67）：列表只读服务端，改角色 / 停用后整页重拉，避免本地和服务端打架 */
   function settingsUsers(body) {
     const sec = setSection('成员列表',
-      '按注册时间排列。停用不删数据，重新启用后原密码照常登录。');
+      '按注册时间排列。停用不删数据，重新启用后原密码照常登录；忘记密码的人也在这一页重置。');
     const row = setRow('全部账号', '不能修改自己的角色或停用自己；系统里至少保留一个可用的管理员。');
     row.row.classList.add('set-row-block');
+    row.ctrl.classList.add('set-users-ctrl');
+
+    // 搜索 / 筛选 / 排序工具栏：只重画列表，不整页重渲染，输入框不会丢焦点
+    const tools = el('div', 'set-user-tools');
+    const search = el('input');
+    search.type = 'search';
+    search.placeholder = '搜用户名';
+    search.setAttribute('aria-label', '搜用户名');
+    const chips = el('div', 'set-user-filter');
+    const sortSel = el('select');
+    sortSel.setAttribute('aria-label', '排序方式');
+    [['created', '注册时间'], ['login', '最近登录']].forEach(([v, label]) => {
+      const opt = el('option', null, label);
+      opt.value = v;
+      sortSel.appendChild(opt);
+    });
+    sortSel.value = 'created';
+    tools.appendChild(search);
+    tools.appendChild(chips);
+    tools.appendChild(sortSel);
+
+    const resetBox = el('div', 'set-reset');
+    resetBox.hidden = true;
     const list = el('div', 'set-users');
     const status = el('div', 'settings-status');
-    row.ctrl.classList.add('set-users-ctrl');
+    row.ctrl.appendChild(tools);
+    row.ctrl.appendChild(resetBox);
     row.ctrl.appendChild(list);
     row.ctrl.appendChild(status);
     sec.body.appendChild(row.row);
     body.appendChild(sec.sec);
 
     const me = (state.account.user && state.account.user.id) || '';
+    let users = [];
+    let query = '';
+    let filter = 'all';
+    let sortBy = 'created';
+    [['all', '全部'], ['admin', '管理员'], ['disabled', '已停用']].forEach(([key, label]) => {
+      const chip = el('button', filter === key ? 'on' : '', label);
+      chip.type = 'button';
+      chip.dataset.filter = key;
+      chip.addEventListener('click', () => {
+        filter = key;
+        chips.querySelectorAll('button').forEach(b => {
+          b.className = b.dataset.filter === key ? 'on' : '';
+        });
+        renderList();
+      });
+      chips.appendChild(chip);
+    });
+    search.addEventListener('input', () => {
+      query = search.value;
+      renderList();
+    });
+    sortSel.addEventListener('change', () => {
+      sortBy = sortSel.value;
+      renderList();
+    });
 
     function when(value) {
       return value ? String(value).replace('T', ' ').slice(0, 16) : '—';
@@ -13337,15 +13448,90 @@
       status.textContent = detail || '读取成员失败';
     }
 
+    function visibleUsers() {
+      const q = query.trim().toLowerCase();
+      let rows = users.filter(u => {
+        if (q && u.username.toLowerCase().indexOf(q) < 0) return false;
+        if (filter === 'admin' && u.role !== 'admin') return false;
+        if (filter === 'disabled' && !u.disabled) return false;
+        return true;
+      });
+      if (sortBy === 'login') {
+        // 最近登录在前；从没登录过的排最后
+        rows = rows.slice().sort((a, b) => String(b.last_login_at || '')
+          .localeCompare(String(a.last_login_at || '')));
+      }
+      return rows;
+    }
+
+    function renderList() {
+      const rows = visibleUsers();
+      list.replaceChildren();
+      if (!rows.length) {
+        list.appendChild(el('div', 'set-empty', users.length
+          ? '没有匹配的账号。' : '还没有账号。'));
+      }
+      rows.forEach(u => list.appendChild(userRow(u)));
+      const admins = users.filter(u => u.role === 'admin').length;
+      const off = users.filter(u => u.disabled).length;
+      status.className = 'settings-status';
+      status.textContent = '共 ' + users.length + ' 个账号 · 管理员 ' + admins +
+        ' · 已停用 ' + off +
+        (rows.length !== users.length ? '　当前显示 ' + rows.length + ' 个' : '');
+    }
+
     function load() {
       status.className = 'settings-status';
       status.textContent = '正在读取…';
       return accountApi('/admin/users').then(out => {
-        const users = (out && out.users) || [];
-        list.replaceChildren();
-        users.forEach(u => list.appendChild(userRow(u)));
-        status.textContent = users.length + ' 个账号';
+        users = (out && out.users) || [];
+        renderList();
       }).catch(showError);
+    }
+
+    // 临时密码只在响应里出现一次：贴在小提示条里，可复制，离开就没了
+    function showTemp(username, password) {
+      resetBox.hidden = false;
+      resetBox.replaceChildren();
+      resetBox.appendChild(el('div', 'set-reset-head',
+        '「' + username + '」的临时密码'));
+      const line = el('div', 'set-reset-line');
+      line.appendChild(el('code', 'set-reset-code', password));
+      const copy = el('button', 'ghost', '复制');
+      copy.type = 'button';
+      copy.addEventListener('click', () => {
+        const done = () => toast('临时密码已复制');
+        // 非 https 的线上环境没有 navigator.clipboard，退回手动选择
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(password).then(done, () => {
+            window.prompt('手动复制这段临时密码', password);
+          });
+        } else {
+          window.prompt('手动复制这段临时密码', password);
+        }
+      });
+      line.appendChild(copy);
+      resetBox.appendChild(line);
+      resetBox.appendChild(el('div', 'set-reset-note',
+        '只显示这一次。让 TA 用这个密码登录，再到「账号」页改成自己的密码；重置已经把 TA 所有设备踢下线。'));
+      const close = el('button', 'link-btn', '知道了');
+      close.type = 'button';
+      close.addEventListener('click', () => { resetBox.hidden = true; });
+      resetBox.appendChild(close);
+      resetBox.scrollIntoView({block: 'nearest'});
+    }
+
+    function resetPassword(u) {
+      if (!window.confirm('重置「' + u.username + '」的密码？TA 所有设备会立刻退出登录。')) return;
+      status.className = 'settings-status';
+      status.textContent = '正在重置…';
+      accountApi('/admin/users/' + encodeURIComponent(u.id) + '/reset-password',
+        {method: 'POST'})
+        .then(out => {
+          showTemp(u.username, out.temp_password);
+          return load();
+        })
+        .catch(showError);
     }
 
     function patch(id, change) {
@@ -13375,6 +13561,10 @@
       // 自己那一行只读：降级或停用自己会把管理员锁在门外
       if (u.id !== me) {
         const actions = el('div', 'set-user-actions');
+        const resetBtn = el('button', 'ghost', '重置密码');
+        resetBtn.addEventListener('click', () => resetPassword(u));
+        actions.appendChild(resetBtn);
+
         const roleBtn = el('button', 'ghost',
           u.role === 'admin' ? '取消管理员' : '设为管理员');
         roleBtn.addEventListener('click', () => {
