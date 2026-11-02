@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#fdfcf9">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.74.2">
+  <meta name="app-version" content="0.74.3">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -123,12 +123,32 @@
       --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
       --shadow-raised: 0 18px 48px rgba(0, 0, 0, .42);
     }
-    /* 琉璃的两处专属：径向渐变画布 + 毛玻璃面板 + 紫色发光主按钮（照 DeepTutor） */
+    /* 琉璃的专属：紫径向渐变画布 + 毛玻璃面板 + 紫色发光主按钮（照 DeepTutor）。
+       .main / .topbar / .subnav 默认铺不透明的 --bg，会把 body 的渐变整块盖住，
+       琉璃只剩纯深色、和「深色」看不出区别（v0.74.3）。 */
     html[data-theme="glass"] body {
-      background: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0d0d1a 100%);
+      background:
+        radial-gradient(circle at 18% 6%, rgba(157, 80, 187, .26) 0%, transparent 44%),
+        radial-gradient(circle at 86% 94%, rgba(110, 72, 170, .30) 0%, transparent 48%),
+        radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0d0d1a 100%);
       background-attachment: fixed;
     }
-    html[data-theme="glass"] .sidebar,
+    html[data-theme="glass"] .main { background: transparent; }
+    html[data-theme="glass"] .topbar,
+    html[data-theme="glass"] .subnav {
+      background: color-mix(in srgb, var(--bg) 58%, transparent);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    }
+    html[data-theme="glass"] .sidebar {
+      background: linear-gradient(180deg, rgba(26, 26, 46, .72), rgba(14, 13, 26, .58));
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    /* 输入区底纹原本渐隐到实心 --bg，在琉璃里会压出一条深色横带；
+       消息区在它上方独立滚动，这里直接让画布透上来。 */
+    html[data-theme="glass"] .composer-wrap {
+      background: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+    }
     html[data-theme="glass"] .modal-card,
     html[data-theme="glass"] .composer {
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
@@ -3665,16 +3685,15 @@
 
     /* ---------- v0.69 侧栏收放 / 顶栏瘦身 ---------- */
     .app { transition: grid-template-columns .18s ease; }
-    /* 按钮骑在侧栏右缘上，但侧栏为了裁长文案带 overflow:hidden；
-       用 fixed 定位让它不被裁掉，left 跟着收放动画一起走。 */
-    .sidebar { position: relative; }
+    /* 收放按钮放进品牌行右端，跟 logo 同一条基线：不再骑在侧栏边缘，
+       就不会飘到页面标题上，也不会被侧栏的 overflow:hidden 裁掉（v0.74.3）。 */
     .side-toggle {
-      position: fixed; top: 20px; left: calc(268px - 12px); right: auto; z-index: 3;
+      flex: none; margin-left: auto;
       width: 24px; height: 24px; display: grid; place-items: center;
       padding: 0; border: 1px solid var(--line); border-radius: 999px;
       background: var(--bg); color: var(--muted);
       box-shadow: var(--shadow-sm);
-      transition: color .12s, border-color .12s, left .18s ease;
+      transition: color .12s, border-color .12s;
     }
     .side-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
     .side-toggle svg {
@@ -3687,7 +3706,11 @@
 
     .app.collapsed { grid-template-columns: 64px minmax(0, 1fr); }
     .app.collapsed .sidebar { padding-left: 8px; padding-right: 8px; }
-    .app.collapsed .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+    /* 收起后品牌行只剩 logo，把收放按钮挪到 logo 下方居中，仍在 64px 轨道内。 */
+    .app.collapsed .brand {
+      flex-direction: column; justify-content: center; gap: 7px;
+      padding-left: 0; padding-right: 0;
+    }
     .app.collapsed .brand-text,
     .app.collapsed .new-chat-label,
     .app.collapsed .nav-label,
@@ -3695,7 +3718,7 @@
     .app.collapsed .side-note,
     .app.collapsed #token-label,
     .app.collapsed .token-gear { display: none; }
-    .app.collapsed .side-toggle { left: calc(64px - 12px); }
+    .app.collapsed .side-toggle { margin-left: 0; }
     .app.collapsed .side-toggle svg { transform: rotate(180deg); }
     .app.collapsed .new-chat { padding: 8px 0; }
     .app.collapsed .nav button { justify-content: center; padding: 8px 0; }
@@ -3939,10 +3962,6 @@
 </div>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <button class="side-toggle" id="side-toggle" type="button"
-            aria-label="收起侧栏" aria-expanded="true" title="收起侧栏">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
-    </button>
     <div class="brand">
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 96 96">
@@ -3957,6 +3976,10 @@
         <h1>言据</h1>
         <p>言必有据 · 句句可查</p>
       </div>
+      <button class="side-toggle" id="side-toggle" type="button"
+              aria-label="收起侧栏" aria-expanded="true" title="收起侧栏">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6l-6 6 6 6"/></svg>
+      </button>
     </div>
     <button class="new-chat" id="new-chat" title="新建对话"><span class="new-chat-ico">＋</span><span class="new-chat-label">新建对话</span></button>
     <nav class="nav" id="nav">
@@ -14824,7 +14847,13 @@
   function themeThumb(t) {
     let g = '<svg viewBox="0 0 160 96" aria-hidden="true">';
     g += '<rect width="160" height="96" fill="' + t.bg + '"/>';
-    if (t.key === 'glass') g += '<rect width="160" height="96" fill="#a855f7" opacity=".14"/>';
+    if (t.key === 'glass') {
+      g += '<defs><radialGradient id="th-glass" cx="26%" cy="18%" r="90%">' +
+        '<stop offset="0" stop-color="#a855f7" stop-opacity=".46"/>' +
+        '<stop offset=".55" stop-color="#6e48aa" stop-opacity=".18"/>' +
+        '<stop offset="1" stop-color="#0d0d1a" stop-opacity="0"/></radialGradient></defs>' +
+        '<rect width="160" height="96" fill="url(#th-glass)"/>';
+    }
     g += '<rect width="46" height="96" fill="' + t.side + '"/>';
     g += '<rect x="8" y="13" width="30" height="9" rx="4" fill="' + t.brand + '" opacity=".2"/>';
     [30, 44, 58, 72].forEach((y, i) => {
