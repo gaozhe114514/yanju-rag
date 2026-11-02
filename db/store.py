@@ -885,7 +885,7 @@ class Store:
     def get_user_by_id(self, user_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, username, role, created_at, last_login_at"
+                "SELECT id, username, password_hash, role, created_at, last_login_at"
                 " FROM users WHERE id = %s", (user_id,)).fetchone()
         return dict(row) if row else None
 
@@ -897,6 +897,14 @@ class Store:
                 (user_id,)).fetchone()
             conn.commit()
         return dict(row) if row else None
+
+    def update_password(self, user_id: str, password_hash: str) -> bool:
+        with self.connect() as conn:
+            row = conn.execute(
+                "UPDATE users SET password_hash = %s WHERE id = %s",
+                (password_hash, user_id))
+            conn.commit()
+            return row.rowcount > 0
 
     def has_admin(self) -> bool:
         with self.connect() as conn:
@@ -963,6 +971,19 @@ class Store:
                 (token_hash,))
             conn.commit()
             return row.rowcount > 0
+
+    def delete_user_sessions(self, user_id: str, keep_hash: str = "") -> int:
+        """清掉这个账号的会话；``keep_hash`` 是当前设备，改密码时保留它。"""
+        with self.connect() as conn:
+            if keep_hash:
+                row = conn.execute(
+                    "DELETE FROM user_sessions WHERE user_id = %s"
+                    " AND token_hash <> %s", (user_id, keep_hash))
+            else:
+                row = conn.execute(
+                    "DELETE FROM user_sessions WHERE user_id = %s", (user_id,))
+            conn.commit()
+            return int(row.rowcount or 0)
 
     def delete_expired_sessions(self, user_id: str) -> int:
         with self.connect() as conn:

@@ -259,6 +259,41 @@ class AccountService:
         with self._lock:
             self._sessions.pop(hashed, None)
 
+    def change_password(self, user_id: str, old_password, new_password,
+                        ip: str = "", keep_token: str = "") -> Dict:
+        """改密码：验原密码，换新哈希，其它设备的会话全部失效。
+
+        ``keep_token`` 是发起这次修改的那台设备，保留它，免得刚改完就被登出。
+        原密码错也走登录失败计数，不给穷举留口子。
+        """
+        raw = self._raw_user(user_id)
+        if raw is None:
+            raise AccountError(404, "账号不存在")
+        key = username_key(raw.get("username"))
+        self._check_fail_rate(ip, key)
+        if not verify_password(str(old_password or ""),
+                               raw.get("password_hash") or dummy_hash()):
+            self._record_fail(ip, key)
+            raise AccountError(401, "原密码不对")
+        password = clean_password(new_password)
+        if verify_password(password, raw.get("password_hash") or ""):
+            raise AccountError(400, "新密码不能和原密码一样")
+        self._store_clear_fails(ip, key)
+        pw_hash = hash_password(password)
+        keep = token_hash(keep_token) if keep_token else ""
+        if self.store is not None:
+            self.store.update_password(user_id, pw_hash)
+            revoked = self.store.delete_user_sessions(user_id, keep)
+        else:
+            with self._lock:
+                self._users[user_id]["password_hash"] = pw_hash
+                revoked = 0
+                for hashed, session in list(self._sessions.items()):
+                    if session["user_id"] == user_id and hashed != keep:
+                        self._sessions.pop(hashed, None)
+                        revoked += 1
+        return {"ok": True, "sessions_revoked": int(revoked)}
+
     def find_user(self, username: str) -> Optional[Dict]:
         key = username_key(username)
         if not key:
@@ -413,6 +448,13 @@ class AccountService:
             "created_at": _iso(user.get("created_at")),
             "last_login_at": _iso(user.get("last_login_at")) or None,
         }
+
+    def _raw_user(self, user_id: str) -> Optional[Dict]:
+        """带口令哈希的内部记录，只给改密码用，不出路由层。"""
+        if self.store is not None:
+            return self.store.get_user_by_id(user_id)
+        with self._lock:
+            return dict(self._users[user_id]) if user_id in self._users else None
 
     def _memory_user_by_key(self, key: str) -> Optional[Dict]:
         with self._lock:

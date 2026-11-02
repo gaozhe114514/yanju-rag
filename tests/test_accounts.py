@@ -127,6 +127,61 @@ class LoginTest(unittest.TestCase):
         self.assertIsNone(self.svc.authenticate(""))
 
 
+class PasswordChangeTest(unittest.TestCase):
+    def setUp(self):
+        self.svc, self.clock = make_service()
+        out = self.svc.register("Alice", "password123")
+        self.uid = out["user"]["id"]
+        self.first = out["token"]
+
+    def test_change_password_keeps_current_session(self):
+        res = self.svc.change_password(
+            self.uid, "password123", "new-password-456",
+            ip="9.9.9.9", keep_token=self.first)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["sessions_revoked"], 0)
+        self.assertIsNotNone(self.svc.authenticate(self.first))
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.login("alice", "password123", ip="9.9.9.9")
+        self.assertEqual(ctx.exception.status, 401)
+        self.assertTrue(self.svc.login("alice", "new-password-456", ip="9.9.9.9")["token"])
+
+    def test_other_sessions_are_revoked(self):
+        second = self.svc.login("alice", "password123", ip="9.9.9.8")
+        res = self.svc.change_password(
+            self.uid, "password123", "new-password-456", keep_token=self.first)
+        self.assertEqual(res["sessions_revoked"], 1)
+        self.assertIsNotNone(self.svc.authenticate(self.first))
+        self.assertIsNone(self.svc.authenticate(second["token"]))
+
+    def test_wrong_old_password_is_rate_limited(self):
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.change_password(self.uid, "bad-password", "new-password-456",
+                                     ip="9.9.9.7")
+        self.assertEqual(ctx.exception.status, 401)
+        for _ in range(4):
+            with self.assertRaises(AccountError):
+                self.svc.change_password(self.uid, "bad-password", "new-password-456",
+                                         ip="9.9.9.7")
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.change_password(self.uid, "password123", "new-password-456",
+                                     ip="9.9.9.7")
+        self.assertEqual(ctx.exception.status, 429)
+
+    def test_new_password_rules(self):
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.change_password(self.uid, "password123", "short")
+        self.assertEqual(ctx.exception.status, 400)
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.change_password(self.uid, "password123", "password123")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_unknown_user(self):
+        with self.assertRaises(AccountError) as ctx:
+            self.svc.change_password("u-nope", "password123", "new-password-456")
+        self.assertEqual(ctx.exception.status, 404)
+
+
 class RoleTest(unittest.TestCase):
     def test_first_user_is_admin_second_is_member(self):
         svc, _ = make_service()

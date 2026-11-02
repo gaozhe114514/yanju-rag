@@ -301,6 +301,11 @@ class CredentialsRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
+class PasswordChangeRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=1, max_length=128)
+
+
 class SyncItemRequest(BaseModel):
     value: Any = None
     updated_at: int = 0
@@ -972,6 +977,18 @@ def auth_login(req: CredentialsRequest, request: Request,
 def auth_logout(request: Request, _: None = Depends(enforce_content)) -> dict:
     _accounts().logout(_bearer(request))
     return {"ok": True}
+
+
+@app.post("/auth/password")
+def auth_password(req: PasswordChangeRequest, request: Request,
+                  user: Dict[str, Any] = Depends(current_user),
+                  _: None = Depends(enforce_content)) -> dict:
+    try:
+        return _accounts().change_password(
+            user["id"], req.old_password, req.new_password,
+            ip=_client_ip(request), keep_token=_bearer(request))
+    except AccountError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
 
 
 @app.get("/auth/me")

@@ -12851,6 +12851,89 @@
       stateRow.ctrl.appendChild(syncBtn);
       sec.body.appendChild(stateRow.row);
 
+      const pwRow = setRow('修改密码',
+        '改完密码，其它设备上的登录会失效，这台设备保持登录。现在还没有找回密码的入口，忘了只能找管理员处理。');
+      pwRow.row.classList.add('set-row-block');
+      const pwForm = el('div', 'set-account');
+
+      const oldPw = el('input');
+      oldPw.type = 'password';
+      oldPw.autocomplete = 'current-password';
+      oldPw.placeholder = '原密码';
+      oldPw.setAttribute('aria-label', '原密码');
+      pwForm.appendChild(oldPw);
+
+      const newPw = el('input');
+      newPw.type = 'password';
+      newPw.autocomplete = 'new-password';
+      newPw.placeholder = '新密码（至少 8 位）';
+      newPw.setAttribute('aria-label', '新密码');
+      pwForm.appendChild(newPw);
+
+      const againPw = el('input');
+      againPw.type = 'password';
+      againPw.autocomplete = 'new-password';
+      againPw.placeholder = '再输一次新密码';
+      againPw.setAttribute('aria-label', '再输一次新密码');
+      pwForm.appendChild(againPw);
+
+      const pwActions = el('div', 'btn-row');
+      const pwBtn = el('button', 'primary', '改密码');
+      pwActions.appendChild(pwBtn);
+      pwForm.appendChild(pwActions);
+
+      const pwStatus = el('div', 'settings-status');
+      pwForm.appendChild(pwStatus);
+
+      function sendPassword() {
+        const oldValue = oldPw.value;
+        const newValue = newPw.value;
+        if (!oldValue || !newValue) {
+          pwStatus.className = 'settings-status err';
+          pwStatus.textContent = '原密码和新密码都要填。';
+          return;
+        }
+        if (newValue.length < 8) {
+          pwStatus.className = 'settings-status err';
+          pwStatus.textContent = '新密码至少 8 位。';
+          return;
+        }
+        if (newValue !== againPw.value) {
+          pwStatus.className = 'settings-status err';
+          pwStatus.textContent = '两次输入的新密码不一样。';
+          return;
+        }
+        pwBtn.disabled = true;
+        pwStatus.className = 'settings-status';
+        pwStatus.textContent = '正在修改…';
+        accountApi('/auth/password', {
+          method: 'POST',
+          body: {old_password: oldValue, new_password: newValue}
+        }).then(res => {
+          oldPw.value = '';
+          newPw.value = '';
+          againPw.value = '';
+          pwBtn.disabled = false;
+          pwStatus.className = 'settings-status';
+          const revoked = Number(res && res.sessions_revoked) || 0;
+          pwStatus.textContent = revoked
+            ? '密码已改，其它 ' + revoked + ' 台设备需要重新登录。'
+            : '密码已改。';
+          toast('密码已改');
+        }).catch(e => {
+          pwBtn.disabled = false;
+          const detail = String((e.data && e.data.detail) || e.message || '');
+          pwStatus.className = 'settings-status err';
+          pwStatus.textContent = detail || '改密码失败';
+        });
+      }
+      pwBtn.addEventListener('click', sendPassword);
+      [oldPw, newPw, againPw].forEach(input => input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); sendPassword(); }
+      }));
+      pwRow.ctrl.appendChild(pwForm);
+      sec.body.appendChild(pwRow.row);
+
       const outRow = setRow('退出登录',
         '退出后本机内容保留；换别的账号登录时，本机属于上个账号的内容会先清掉，避免串号。');
       const outBtn = el('button', 'ghost', '退出登录');
