@@ -41,6 +41,7 @@ from answer.agent import QueryAgent, chitchat_reply
 from answer.auto import fallback_detail, should_fallback
 from answer.daily import (daily_reply, daily_stream, general_reply,
                           general_stream)
+from answer import docgen
 from answer.pipeline import AnswerPipeline, AnswerResult
 from answer.tools import run_tools, tool_context, tool_will_run
 from answer.tutor import run_turn as tutor_turn
@@ -280,6 +281,19 @@ class GenerateQuestionsRequest(BaseModel):
     text: str = Field(..., min_length=80, max_length=20000)
     count: int = Field(5, ge=1, le=10)
     title: str = Field("", max_length=80)
+
+
+class CreateOutlineRequest(BaseModel):
+    topic: str = Field(..., min_length=2, max_length=100)
+    kind: str = Field("doc", pattern="^(doc|slides)$")
+    points: int = Field(5, ge=3, le=10)
+    # 可选补充要点：离线演示模式直接用它排章节，接上模型时当写作材料
+    notes: str = Field("", max_length=2000)
+
+
+class CreateExportRequest(BaseModel):
+    format: str = Field(..., pattern="^(md|docx|pptx)$")
+    outline: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EvalResultRequest(BaseModel):
@@ -2503,6 +2517,53 @@ def document_reparse(cid: str, doc_id: str, request: Request,
             "status": "completed" if doc else "failed",
             "chunks": (doc or {}).get("chunks", 0),
             "error": row.get("error") or ""}
+
+
+@app.post("/create/outline")
+def create_outline(req: CreateOutlineRequest,
+                   _: None = Depends(enforce_guard)) -> dict:
+    """按主题整理成文档 / 演示大纲；没有真实模型时返回明确标注的演示模板。"""
+    provider = _state.get("provider_impl")
+    demo = _state.get("provider") != "deepseek" or provider is None
+    try:
+        out = docgen.generate_outline(
+            provider, req.topic, req.kind, req.points, req.notes, demo=demo)
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail="生成大纲失败：%s" % e)
+    except docgen.CreateError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return out
+
+
+@app.post("/create/export")
+def create_export(req: CreateExportRequest,
+                  _: None = Depends(enforce_guard)) -> Response:
+    """把已确认的大纲导出成 Markdown / Word / PPT，不落盘。"""
+    try:
+        outline = docgen.normalize_outline(req.outline)
+        if req.format == "md":
+            body = docgen.render_markdown(outline).encode("utf-8")
+            media = "text/markdown; charset=utf-8"
+        elif req.format == "docx":
+            body = docgen.render_docx(outline)
+            media = ("application/vnd.openxmlformats-officedocument."
+                     "wordprocessingml.document")
+        else:
+            body = docgen.render_pptx(outline)
+            media = ("application/vnd.openxmlformats-officedocument."
+                     "presentationml.presentation")
+    except docgen.CreateError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    name = docgen.safe_filename(outline["title"], req.format)
+    return Response(
+        content=body, media_type=media,
+        headers={
+            "Content-Disposition": "attachment; filename=\"create.%s\"; "
+            "filename*=UTF-8''%s" %
+            (req.format, urllib.parse.quote(name)),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        })
 
 
 @app.post("/bank/generate")

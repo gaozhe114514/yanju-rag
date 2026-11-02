@@ -16,6 +16,10 @@ openpyxl>=3.1
 python-docx>=1.1
 pdfplumber>=0.11
 
+# 创作页导出 PPT（answer/docgen.py）；与 python-docx 一起放在模型层之后安装，
+# requirements.txt 不变就不会重下 torch 与 2.4GB 模型。
+python-pptx>=0.6.23
+
 # 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU，模型随包分发（约 15MB）。
 # 第一次识别时加载进内存，KB_OCR=0 可整体关闭。
 rapidocr-onnxruntime>=1.3,<2
