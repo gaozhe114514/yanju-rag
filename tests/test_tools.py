@@ -161,12 +161,17 @@ class RunToolsTest(unittest.TestCase):
 
 
 class TimeToolTest(unittest.TestCase):
-    def test_reports_china_time_and_exam_days(self):
+    def test_reports_china_time_and_target_days(self):
         res = time_lookup("今天几号", {"exam_days": 51})
         self.assertTrue(res["ok"])
         self.assertIn("Asia/Shanghai", res["detail"])
         self.assertIn("星期", res["detail"])
+        self.assertIn("目标日", res["detail"])
         self.assertIn("51 天", res["detail"])
+
+    def test_no_target_day_no_countdown(self):
+        res = time_lookup("今天几号", {"exam_days": None})
+        self.assertNotIn("目标日", res["detail"])
 
 
 class CalcToolTest(unittest.TestCase):

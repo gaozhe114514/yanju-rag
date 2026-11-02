@@ -67,7 +67,7 @@ TUTOR_SYSTEM = """你是「言据 · 精通之路」里的一对一导师。这�
 2. 已经有「当前大纲」时不要整张换掉。学习者说改哪里就只改那一块，其余模块原样保留（连同 done 状态）。他要求改标题、顺序、增删模块都可以，但不要顺手重写没提到的模块。
 3. 大纲围绕学习者写的目标组织，不是照搬资料目录。不要出现「本书第 X 章」「材料一」「本章」这类按资料分模块的写法；多份资料要按主题重新组织到一起；每一份已选资料都要在某个模块里有交代，不能因为看起来次要就丢掉。
 4. 每个模块给一句 objective：学完这个模块，学习者能做什么。写成能力，不是话题（「能独立用高斯消元解线性方程组并判断解的结构」，不是「线性方程组」）。
-5. 模块 4 到 8 个，每个模块 2 到 6 个知识点，总数不超过 40。知识点要具体到能练的粒度，并且符合这门科目的考试大纲；拿不准的考点不要编。
+5. 模块 4 到 8 个，每个模块 2 到 6 个知识点，总数不超过 40。知识点要具体到能练的粒度，并且符合这门主题的知识体系；拿不准的知识点不要编。
 6. 每个知识点标 type：memory（要记住的事实）/ procedure（步骤技能）/ concept（要理解的概念）/ design（开放判断）。
 7. 不要编出处、页码、题号，也不要说「资料第几页」。材料里没有的内容不要假装它有；资料确实不够时，在 say 里直说缺什么。
 8. say 是给学习者看的话：这次做了什么、为什么这样排、请他改哪里。定稿后明说「大纲已定稿」，并直接问一句「现在就按第一个模块开始学？」——学习者回「开始学习」时，系统会在同一轮切到学习模式让他开讲，所以不要只说「去找按钮」，也可以接着说改哪里。他认可后 stage 用 approved。第一次起草出来时 stage 用 draft；还在问问题时 stage 用 intake。
@@ -303,7 +303,7 @@ def build_turn_messages(payload: dict, digest: Sequence[dict]) -> List[dict]:
         elif label:
             lines.append("● %s（没有可读内容）" % label)
     parts.append("【已选资料】\n" + ("\n\n".join(lines) if lines
-                                 else "（学习者没有勾选资料，按目标和科目考试大纲设计）"))
+                                 else "（学习者没有勾选资料，按目标和这门主题的知识体系设计）"))
 
     parts.append("【学习档案】\n" + _learner_lines(payload.get("learner")))
 
@@ -390,11 +390,11 @@ def offline_turn(payload: dict, digest: Sequence[dict]) -> dict:
                      ]},
                     {"id": "target", "header": "目标", "prompt": "学完什么程度算过关？",
                      "multi_select": False, "allow_free_text": True,
-                     "placeholder": "例如：真题里这科的题能稳拿分",
+                     "placeholder": "例如：能独立完成这科的综合练习",
                      "options": [
-                         {"label": "会做基础题", "description": "覆盖常考选择填空"},
-                         {"label": "能独立做综合题", "description": "大题能自己推"},
-                         {"label": "熟练掌握", "description": "能给别人讲清楚"},
+                         {"label": "掌握基础", "description": "能处理常见的基础问题"},
+                         {"label": "能独立解决综合问题", "description": "能把几块知识串起来用"},
+                         {"label": "能讲给别人听", "description": "不只自己做得出，还能解释清楚"},
                      ]},
                     {"id": "time", "header": "时间", "prompt": "能投入多少时间？",
                      "multi_select": False, "allow_free_text": True,

@@ -294,6 +294,8 @@ class CreateOutlineRequest(BaseModel):
 class CreateExportRequest(BaseModel):
     format: str = Field(..., pattern="^(md|docx|pptx)$")
     outline: Dict[str, Any] = Field(default_factory=dict)
+    # PPT 配色：陶土 / 墨蓝 / 黑白；md、docx 忽略
+    style: str = Field("clay", pattern="^(clay|ink|mono)$")
 
 
 class EvalResultRequest(BaseModel):
@@ -2549,7 +2551,7 @@ def create_export(req: CreateExportRequest,
             media = ("application/vnd.openxmlformats-officedocument."
                      "wordprocessingml.document")
         else:
-            body = docgen.render_pptx(outline)
+            body = docgen.render_pptx(outline, style=req.style)
             media = ("application/vnd.openxmlformats-officedocument."
                      "presentationml.presentation")
     except docgen.CreateError as e:

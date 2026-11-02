@@ -87,6 +87,23 @@ class DemoTest(unittest.TestCase):
         self.assertEqual(len(got["outline"]["sections"]), 4)
 
 
+class PromptTest(unittest.TestCase):
+    def test_generic_prompt_does_not_assume_exam(self):
+        """创作是通用功能：不能因为主题是菜谱也往考研上拐。"""
+        messages = docgen.build_messages("鱼香肉丝怎么做", "slides", 5, "")
+        joined = "\n".join(m["content"] for m in messages)
+        for word in ("考研", "复习", "教材", "讲义"):
+            self.assertNotIn(word, joined)
+        self.assertIn("不要假设", joined)
+        self.assertIn("普通读者", joined)
+
+    def test_demo_template_is_audience_neutral(self):
+        out = docgen.demo_outline("鱼香肉丝怎么做", "doc", 4)
+        text = json.dumps(out, ensure_ascii=False)
+        for word in ("考研", "考试", "复习", "教材"):
+            self.assertNotIn(word, text)
+
+
 class GenerateTest(unittest.TestCase):
     def test_model_json_is_normalized(self):
         provider = FakeProvider([json.dumps({
@@ -155,6 +172,46 @@ class ExportTest(unittest.TestCase):
         self.assertIn("进程调度", joined)
         self.assertIn("时间片轮转", joined)
         self.assertIn("谢谢", joined)
+
+    def test_pptx_themes_are_distinct_and_openable(self):
+        try:
+            from pptx import Presentation
+        except ImportError:
+            self.skipTest("python-pptx 未安装")
+        self.assertEqual(docgen.DECK_STYLES, ("clay", "ink", "mono"))
+        blobs = {}
+        for style in docgen.DECK_STYLES:
+            data = docgen.render_pptx(sample_outline("slides"), style=style)
+            self.assertTrue(data.startswith(b"PK"))
+            prs = Presentation(io.BytesIO(data))
+            self.assertGreaterEqual(len(prs.slides), 4)
+            blobs[style] = data
+        self.assertEqual(len(set(blobs.values())), 3)
+
+    def test_long_deck_keeps_every_section_and_notes(self):
+        try:
+            from pptx import Presentation
+        except ImportError:
+            self.skipTest("python-pptx 未安装")
+        outline = {
+            "kind": "slides", "title": "鱼香肉丝怎么做",
+            "subtitle": "从备料到出锅",
+            "sections": [
+                {"heading": "准备食材 %d" % i,
+                 "bullets": ["要点 %d-%d" % (i, j) for j in range(1, 8)],
+                 "notes": "备注 %d" % i}
+                for i in range(1, 7)
+            ],
+        }
+        prs = Presentation(io.BytesIO(docgen.render_pptx(outline, style="ink")))
+        joined = "\n".join(
+            shape.text_frame.text for slide in prs.slides
+            for shape in slide.shapes if shape.has_text_frame)
+        for i in range(1, 7):
+            self.assertIn("准备食材 %d" % i, joined)
+        notes = [slide.notes_slide.notes_text_frame.text
+                 for slide in prs.slides if slide.has_notes_slide]
+        self.assertIn("备注 1", notes)
 
     def test_filename_strips_path_and_illegal_chars(self):
         name = docgen.safe_filename('  a/b:c*?"<>|  ', "docx")

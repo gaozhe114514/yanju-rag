@@ -303,14 +303,15 @@ def weather_lookup(query: str, fetch: Callable[[str, Dict[str, str]], dict] = No
 # ---------- 时间 ----------
 
 def time_lookup(query: str, context: Optional[dict] = None) -> dict:
-    """本机时钟（按东八区），顺带把考试倒计时带出来。"""
+    """本机时钟（按东八区），顺带把用户设的目标日倒计时带出来。"""
     now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
     weekday = "一二三四五六日"[now.weekday()]
     detail = "%d 年 %d 月 %d 日（星期%s）%02d:%02d，Asia/Shanghai（UTC+8）" % (
         now.year, now.month, now.day, weekday, now.hour, now.minute)
-    left = (context or {}).get("exam_days")
+    ctx = context or {}
+    left = ctx.get("target_days", ctx.get("exam_days"))
     if isinstance(left, (int, float)) and left >= 0:
-        detail += "；距考试还有 %d 天" % int(left)
+        detail += "；距目标日还有 %d 天" % int(left)
     return {"name": "time", "label": "时间", "source": "系统时钟",
             "detail": detail + "。", "ok": True}
 
@@ -726,9 +727,9 @@ def study_lookup(query: str, context: Optional[dict] = None) -> dict:
                           "刷新页面后再问一次。")
         return base
     parts = []
-    left = data.get("exam_days")
+    left = data.get("target_days", data.get("exam_days"))
     if isinstance(left, (int, float)) and left >= 0:
-        parts.append("距考试 %d 天" % int(left))
+        parts.append("距目标日 %d 天" % int(left))
     streak = data.get("streak")
     if isinstance(streak, (int, float)) and streak:
         parts.append("连续学习 %d 天" % int(streak))

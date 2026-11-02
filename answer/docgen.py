@@ -6,6 +6,7 @@
 或 WPS 里改。离线演示模式给一份明确标「演示」的模板，不假装是模型写的。
 """
 import datetime
+import math
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -25,9 +26,10 @@ _WS = re.compile(r"\s+")
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 SYSTEM_PROMPT = (
-    "你是给考研学生写讲义和演示文稿的编辑。你只根据用户给的主题与补充要点"
-    "组织内容，不编造具体数据、论文、书名、人名或引用；拿不准就不写。"
-    "只输出 JSON 对象，不要写解释或代码围栏。"
+    "你是一位通用内容编辑，帮用户把主题整理成文档或演示文稿的结构。"
+    "只根据用户给的主题与补充要点组织内容，不预设用户的身份、行业、"
+    "学习阶段或使用场景；不要编造具体数据、论文、书名、人名或引用，"
+    "拿不准就不写。只输出 JSON 对象，不要写解释或代码围栏。"
 )
 
 USER_TEMPLATE = """请为下面的主题写一份{kind_name}大纲。
@@ -36,8 +38,8 @@ USER_TEMPLATE = """请为下面的主题写一份{kind_name}大纲。
 1. 共 {points} 节，由浅入深，标题短而具体。
 2. 每节 3-6 条要点，每条一句话，能直接讲出来；不要空话和套话。
 3. 可以给每节一句讲者提示（notes），没有就留空。
-4. 不要写具体统计数据、论文名、书名或「研究表明」；需要举例时用通用例子。
-5. 全中文，面向考研复习。
+4. 不要写具体统计数据、论文名、书名或「研究表明」；需要举例时用日常、通用的例子。
+5. 全中文，面向普通读者；不要假设主题与考试、学校、职场或某门课程有关。
 6. 只输出 JSON：
 {{"title": "", "subtitle": "", "sections": [
   {{"heading": "", "bullets": ["", ""], "notes": ""}}
@@ -62,7 +64,7 @@ def _clean(value: Any, limit: int) -> str:
 
 
 def _kind_name(kind: str) -> str:
-    return "演示文稿" if kind == "slides" else "学习文档"
+    return "演示文稿" if kind == "slides" else "文档"
 
 
 def _bullets(raw: Any, heading: str) -> List[str]:
@@ -127,7 +129,7 @@ def demo_outline(topic: str, kind: str = "doc", points: int = 5,
         count = max(MIN_SECTIONS, min(int(points or 5), 10))
     except (TypeError, ValueError):
         count = 5
-    headings = (["背景与目标", "核心概念", "方法与步骤", "例子与练习",
+    headings = (["从问题出发", "关键概念", "做法与步骤", "一个例子",
                  "常见误区", "小结与下一步"] if kind == "doc"
                 else ["为什么讲这个", "核心概念", "方法与步骤",
                       "一个例子", "小结"])
@@ -145,7 +147,7 @@ def demo_outline(topic: str, kind: str = "doc", points: int = 5,
             bullets = [
                 "围绕「%s」说清这一节要解决的问题。" % topic,
                 "把关键词、前提和结论分开写，方便回看。",
-                "留一处练习或自测，确认真的会用。",
+                "留一个可以动手验证的环节，确认真的会用。",
             ]
         else:
             bullets = [
@@ -242,7 +244,7 @@ def _docx_set_font(run, size: float, bold: bool = False,
 
 
 def render_docx(outline: Dict) -> bytes:
-    """A4 讲义：标题、章节、要点、讲者提示，页脚写明是 AI 草稿。"""
+    """A4 文档：标题、章节、要点、提示，页脚写明是 AI 草稿。"""
     try:
         from docx import Document
         from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -302,6 +304,52 @@ def render_docx(outline: Dict) -> bytes:
 
 # ---------- PowerPoint ----------
 
+DECK_THEMES = {
+    # 陶土：言据默认，暖纸底 + 砖红，适合讲解、访谈、文化类主题
+    "clay": {
+        "BG": "FDFCF9", "INK": "1C1816", "MUTED": "6D645A",
+        "BRAND": "B0501E", "ACCENT": "D4734B", "CREAM": "F5F2EA",
+        "LINE": "E6DECC", "DARK": "2A211C", "ON_DARK": "FDFCF9",
+        "SOFT": "EDE4D5",
+    },
+    # 墨蓝：冷色、克制，适合技术、产品、商业汇报
+    "ink": {
+        "BG": "F7F8FA", "INK": "101828", "MUTED": "5B6472",
+        "BRAND": "1F4E79", "ACCENT": "4C8BB8", "CREAM": "EAF0F6",
+        "LINE": "D6DEE8", "DARK": "102A43", "ON_DARK": "F7F8FA",
+        "SOFT": "DCE7F1",
+    },
+    # 黑白：纸刊感，只有黑、白、暖灰和一点金棕
+    "mono": {
+        "BG": "FFFFFF", "INK": "111111", "MUTED": "666666",
+        "BRAND": "8A6A3B", "ACCENT": "B08B58", "CREAM": "F2F0EB",
+        "LINE": "DEDAD2", "DARK": "141414", "ON_DARK": "FFFFFF",
+        "SOFT": "E8E4DC",
+    },
+}
+DECK_STYLES = tuple(DECK_THEMES)
+
+
+def _fit_size(texts: Sequence[str], width_in: float, height_in: float,
+              max_size: float = 18.0, min_size: float = 11.5,
+              gap_pt: float = 8.0) -> float:
+    """按字数和可用面积估一个不溢出的字号；中文按一个字约一个 em 算。"""
+    texts = [t for t in texts if t]
+    if not texts:
+        return max_size
+    size = max_size
+    while size >= min_size:
+        chars_per_line = max(8.0, width_in * 72.0 / size * 0.96)
+        lines = sum(max(1, int(math.ceil(len(t) / chars_per_line)))
+                    for t in texts)
+        needed = (lines * size * 1.34 +
+                  max(0, len(texts) - 1) * gap_pt) / 72.0
+        if needed <= height_in:
+            return size
+        size -= 0.5
+    return min_size
+
+
 def _pptx_font(run, size: float, bold: bool = False, color: str = "1C1816",
                name: str = "Microsoft YaHei"):
     from pptx.dml.color import RGBColor
@@ -321,7 +369,7 @@ def _pptx_font(run, size: float, bold: bool = False, color: str = "1C1816",
 
 def _pptx_text(slide, text: str, left, top, width, height, size: float,
                bold: bool = False, color: str = "1C1816", align=None,
-               line_spacing: float = 1.15):
+               line_spacing: float = 1.2, anchor=None):
     from pptx.util import Pt
     box = slide.shapes.add_textbox(left, top, width, height)
     tf = box.text_frame
@@ -330,6 +378,8 @@ def _pptx_text(slide, text: str, left, top, width, height, size: float,
     tf.margin_right = 0
     tf.margin_top = 0
     tf.margin_bottom = 0
+    if anchor is not None:
+        tf.vertical_anchor = anchor
     p = tf.paragraphs[0]
     if align is not None:
         p.alignment = align
@@ -340,19 +390,26 @@ def _pptx_text(slide, text: str, left, top, width, height, size: float,
     return box
 
 
-def render_pptx(outline: Dict) -> bytes:
-    """16:9 演示文稿：封面、目录、章节页、结束页，配色沿用言据的陶土/米白。"""
+def render_pptx(outline: Dict, style: str = "clay") -> bytes:
+    """16:9 演示文稿：多种版式交替 + 三套配色，不再是每页一样的项目符号。
+
+    版式按章节序号轮换：左右分栏、卡片网格、步骤时间线、金句页；
+    长章节自动续页，讲者提示写进备注，页脚有进度条和页码。
+    """
     try:
         from pptx import Presentation
         from pptx.dml.color import RGBColor
         from pptx.enum.shapes import MSO_SHAPE
-        from pptx.enum.text import PP_ALIGN
-        from pptx.util import Emu, Inches, Pt
+        from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+        from pptx.util import Inches, Pt
     except ImportError as e:
         raise CreateError("服务器没有安装 python-pptx，暂时不能导出 PPT") from e
     out = normalize_outline(outline)
-    BG, INK, MUTED = "FDFCF9", "1C1816", "6D645A"
-    BRAND, CREAM, LINE = "B0501E", "F5F2EA", "E6DECC"
+    theme = DECK_THEMES.get(str(style or "clay").lower(), DECK_THEMES["clay"])
+    BG, INK, MUTED = theme["BG"], theme["INK"], theme["MUTED"]
+    BRAND, ACCENT, CREAM = theme["BRAND"], theme["ACCENT"], theme["CREAM"]
+    LINE, DARK, ON_DARK = theme["LINE"], theme["DARK"], theme["ON_DARK"]
+    SOFT = theme["SOFT"]
     W, H = Inches(13.333), Inches(7.5)
 
     prs = Presentation()
@@ -365,83 +422,287 @@ def render_pptx(outline: Dict) -> bytes:
         fill.solid()
         fill.fore_color.rgb = RGBColor.from_string(color)
 
+    def shape(slide, kind, left, top, width, height, fill=None, line=None,
+              line_width: float = 0.75, radius=None):
+        sp = slide.shapes.add_shape(kind, left, top, width, height)
+        if fill:
+            sp.fill.solid()
+            sp.fill.fore_color.rgb = RGBColor.from_string(fill)
+        else:
+            sp.fill.background()
+        if line:
+            sp.line.color.rgb = RGBColor.from_string(line)
+            sp.line.width = Pt(line_width)
+        else:
+            sp.line.fill.background()
+        try:
+            sp.shadow.inherit = False
+        except Exception:
+            pass
+        if radius is not None and len(sp.adjustments):
+            sp.adjustments[0] = radius
+        return sp
+
     def bar(slide, left, top, width, height, color=BRAND):
-        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
-        shape.fill.solid()
-        shape.fill.fore_color.rgb = RGBColor.from_string(color)
-        shape.line.fill.background()
-        return shape
+        return shape(slide, MSO_SHAPE.RECTANGLE, left, top, width, height,
+                     fill=color)
 
-    def footer(slide, index: int):
-        _pptx_text(slide, "言据 · AI 草稿，请核对事实与数据",
-                   Inches(0.75), Inches(6.95), Inches(8), Inches(0.3), 9, False, MUTED)
-        _pptx_text(slide, str(index), Inches(12.1), Inches(6.95),
-                   Inches(0.55), Inches(0.3), 9, False, MUTED, PP_ALIGN.RIGHT)
+    def text(slide, content, left, top, width, height, size, bold=False,
+             color=INK, align=PP_ALIGN.LEFT, line_spacing=1.2, anchor=None):
+        return _pptx_text(slide, content, Inches(left), Inches(top),
+                          Inches(width), Inches(height), size, bold, color,
+                          align, line_spacing, anchor)
 
-    # 封面
-    cover = prs.slides.add_slide(blank)
-    paint_bg(cover)
-    bar(cover, Inches(0.75), Inches(1.15), Inches(0.12), Inches(2.0), BRAND)
-    _pptx_text(cover, "言据 · 创作", Inches(1.15), Inches(1.1),
-               Inches(4), Inches(0.3), 12, True, BRAND)
-    _pptx_text(cover, out["title"], Inches(1.1), Inches(1.5),
-               Inches(11.2), Inches(1.5), 36, True, INK)
-    if out["subtitle"]:
-        _pptx_text(cover, out["subtitle"], Inches(1.15), Inches(3.15),
-                   Inches(10.8), Inches(1.0), 15, False, MUTED)
-    _pptx_text(cover, datetime.date.today().strftime("%Y 年 %m 月 %d 日"),
-               Inches(1.15), Inches(6.1), Inches(5), Inches(0.4), 11, False, MUTED)
+    def bullet_box(slide, bullets, left, top, width, height, base=18.0,
+                   min_size=11.5, color=INK, marker=BRAND, gap_pt=10.0):
+        from pptx.util import Inches as In
+        size = _fit_size(bullets, width, height, base, min_size, gap_pt)
+        box = slide.shapes.add_textbox(In(left), In(top), In(width), In(height))
+        tf = box.text_frame
+        tf.word_wrap = True
+        tf.margin_left = 0
+        tf.margin_right = 0
+        tf.margin_top = 0
+        tf.margin_bottom = 0
+        for i, bullet in enumerate(bullets):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.line_spacing = 1.24
+            p.space_after = Pt(gap_pt)
+            mark = p.add_run()
+            mark.text = "•  "
+            _pptx_font(mark, size, True, marker)
+            body = p.add_run()
+            body.text = bullet
+            _pptx_font(body, size, False, color)
+        return box
 
-    # 目录
-    agenda = prs.slides.add_slide(blank)
-    paint_bg(agenda)
-    _pptx_text(agenda, "目录", Inches(0.75), Inches(0.55),
-               Inches(4), Inches(0.6), 26, True, INK)
-    bar(agenda, Inches(0.75), Inches(1.25), Inches(0.9), Inches(0.05), BRAND)
-    top = Inches(1.65)
-    step = Inches(0.48)
-    for i, sec in enumerate(out["sections"][:10]):
-        _pptx_text(agenda, "%02d" % (i + 1), Inches(0.78), top + step * i,
-                   Inches(0.6), Inches(0.4), 12, True, BRAND)
-        _pptx_text(agenda, sec["heading"], Inches(1.45), top + step * i,
-                   Inches(10.8), Inches(0.4), 16, False, INK)
-    footer(agenda, 2)
-
-    # 章节页：每页最多 6 条，超出拆成续页
-    number = 2
+    # 总页数先算好，页脚进度条才不会越走越短
+    plans = []
     for i, sec in enumerate(out["sections"]):
         chunks = [sec["bullets"][j:j + 6]
                   for j in range(0, len(sec["bullets"]), 6)] or [[""]]
+        plans.append((i, sec, chunks))
+    total = 2 + sum(len(p[2]) for p in plans) + 1
+
+    def footer(slide, index: int, color=MUTED):
+        text(slide, "言据 · AI 草稿，请核对事实与数据", 0.78, 6.86, 8.2, 0.3,
+             9, False, color)
+        text(slide, "%02d / %02d" % (index, total), 11.55, 6.86, 1.0, 0.3,
+             9, False, color, PP_ALIGN.RIGHT)
+        track_w = 11.78
+        bar(slide, Inches(0.78), Inches(7.16), Inches(track_w),
+            Inches(0.035), LINE)
+        done = max(0.0, min(1.0, index / float(total)))
+        if done:
+            bar(slide, Inches(0.78), Inches(7.16), Inches(track_w * done),
+                Inches(0.035), BRAND)
+
+    def section_head(slide, index: int, heading: str, part: int = 0):
+        text(slide, "第 %d 节" % (index + 1), 0.78, 0.52, 4.0, 0.3,
+             11, True, BRAND)
+        shown = heading + ("（续）" if part else "")
+        size = _fit_size([shown], 9.7, 0.95, 27, 17)
+        text(slide, shown, 0.75, 0.9, 9.9, 1.0, size, True, INK)
+        bar(slide, Inches(0.78), Inches(1.9), Inches(0.9), Inches(0.05), BRAND)
+        text(slide, "%02d" % (index + 1), 10.75, 0.14, 1.8, 1.1,
+             64, True, SOFT, PP_ALIGN.RIGHT)
+
+    # ---------- 封面 ----------
+    cover = prs.slides.add_slide(blank)
+    paint_bg(cover)
+    bar(cover, Inches(8.55), 0, Inches(4.783), H, DARK)
+    shape(cover, MSO_SHAPE.OVAL, Inches(9.15), Inches(1.05),
+          Inches(3.15), Inches(3.15), fill=ACCENT)
+    shape(cover, MSO_SHAPE.OVAL, Inches(9.82), Inches(1.72),
+          Inches(1.8), Inches(1.8), fill=DARK)
+    bar(cover, Inches(9.2), Inches(4.55), Inches(1.1), Inches(0.05), ACCENT)
+
+    text(cover, "言据 · 创作", 0.8, 0.78, 4.0, 0.3, 12, True, BRAND)
+    bar(cover, Inches(0.82), Inches(1.2), Inches(0.85), Inches(0.05), BRAND)
+    cover_size = _fit_size([out["title"]], 6.7, 2.2, 40, 24, gap_pt=0)
+    text(cover, out["title"], 0.8, 1.55, 6.85, 2.35, cover_size, True, INK,
+         line_spacing=1.12)
+    if out["subtitle"]:
+        sub_size = _fit_size([out["subtitle"]], 6.6, 1.15, 15, 10.5, gap_pt=0)
+        text(cover, out["subtitle"], 0.83, 4.15, 6.7, 1.2, sub_size, False,
+             MUTED, line_spacing=1.45)
+    text(cover, datetime.date.today().strftime("%Y 年 %m 月 %d 日"),
+         0.83, 6.45, 5.0, 0.4, 11, False, MUTED)
+    text(cover, "YANJU · STUDIO", 9.18, 5.55, 3.4, 0.3, 10, True, ACCENT)
+    text(cover, "把主题\n变成能讲的结构", 9.18, 5.9, 3.3, 0.95, 13, False,
+         ON_DARK, line_spacing=1.55)
+
+    # ---------- 目录 ----------
+    agenda = prs.slides.add_slide(blank)
+    paint_bg(agenda)
+    text(agenda, "目录", 0.78, 0.5, 4.0, 0.7, 30, True, INK)
+    text(agenda, "CONTENTS", 0.82, 1.18, 3.0, 0.28, 10, True, BRAND)
+    bar(agenda, Inches(0.82), Inches(1.52), Inches(0.9), Inches(0.05), BRAND)
+    sections = out["sections"]
+    cols = 2 if len(sections) > 3 else 1
+    rows = int(math.ceil(len(sections) / float(cols)))
+    row_h = min(0.82, 4.75 / max(1, rows))
+    for i, sec in enumerate(sections[:12]):
+        col, row = i % cols, i // cols
+        x = 0.82 + col * 5.95
+        y = 1.85 + row * row_h
+        text(agenda, "%02d" % (i + 1), x, y, 0.55, 0.35, 12, True, BRAND)
+        size = _fit_size([sec["heading"]], 4.7, 0.38, 15.5, 10.5, gap_pt=0)
+        text(agenda, sec["heading"], x + 0.58, y - 0.02, 4.75, 0.4,
+             size, False, INK)
+        bar(agenda, Inches(x), Inches(y + row_h - 0.18),
+            Inches(5.25), Inches(0.012), LINE)
+    footer(agenda, 2)
+
+    # ---------- 章节页 ----------
+    number = 2
+    for i, sec, chunks in plans:
         for part, bullets in enumerate(chunks):
             number += 1
             slide = prs.slides.add_slide(blank)
             paint_bg(slide)
-            _pptx_text(slide, "第 %d 节" % (i + 1), Inches(0.75), Inches(0.55),
-                       Inches(3), Inches(0.3), 11, True, BRAND)
             heading = sec["heading"] + ("（续）" if part else "")
-            _pptx_text(slide, heading, Inches(0.75), Inches(0.9),
-                       Inches(11.6), Inches(0.8), 28, True, INK)
-            bar(slide, Inches(0.75), Inches(1.78), Inches(0.9), Inches(0.05), BRAND)
-            top = Inches(2.15)
-            for j, bullet in enumerate(bullets):
-                _pptx_text(slide, "•  " + bullet, Inches(0.9),
-                           top + Inches(0.72) * j, Inches(11.4),
-                           Inches(0.62), 17, False, INK, line_spacing=1.2)
+            longest = max([len(b) for b in bullets] or [0])
+
+            if part:
+                # 续页用两栏列表，信息密度高，不和首页抢版式
+                section_head(slide, i, sec["heading"], part)
+                if len(bullets) >= 4:
+                    half = int(math.ceil(len(bullets) / 2.0))
+                    bullet_box(slide, bullets[:half], 0.85, 2.15, 5.55, 4.35,
+                               16, 11.5)
+                    bullet_box(slide, bullets[half:], 6.95, 2.15, 5.55, 4.35,
+                               16, 11.5)
+                else:
+                    bullet_box(slide, bullets, 0.85, 2.15, 11.7, 4.35,
+                               18, 12)
+                footer(slide, number)
+            else:
+                layout = ["split", "cards", "steps", "quote"][i % 4]
+                if longest > 90:
+                    layout = "split"
+                if len(bullets) == 1 and longest >= 24:
+                    layout = "quote"
+                if layout == "steps" and (len(bullets) > 5 or longest > 52):
+                    layout = "cards"
+                if layout == "quote" and (not bullets or
+                                          len(bullets[0]) < 16):
+                    layout = "cards"
+
+                if layout == "split":
+                    bar(slide, 0, 0, Inches(4.35), H, DARK)
+                    bar(slide, Inches(0.62), Inches(1.0), Inches(0.9),
+                        Inches(0.05), ACCENT)
+                    text(slide, "第 %d 节" % (i + 1), 0.64, 1.15, 3.0, 0.3,
+                         11, True, ACCENT)
+                    text(slide, "%02d" % (i + 1), 0.6, 1.5, 3.2, 1.0,
+                         58, True, ACCENT)
+                    hsize = _fit_size([sec["heading"]], 3.15, 2.0, 24, 15,
+                                      gap_pt=0)
+                    text(slide, sec["heading"], 0.64, 2.9, 3.2, 2.15,
+                         hsize, True, ON_DARK, line_spacing=1.18)
+                    text(slide, "SECTION", 0.66, 6.45, 2.4, 0.3, 9, True,
+                         ACCENT)
+                    text(slide, "本节要点", 4.85, 0.82, 3.0, 0.3, 11, True,
+                         BRAND)
+                    bar(slide, Inches(4.87), Inches(1.14), Inches(0.62),
+                        Inches(0.05), BRAND)
+                    bullet_box(slide, bullets, 4.85, 1.5, 7.65, 4.95,
+                               18, 12.5, gap_pt=12)
+                    footer(slide, number)
+
+                elif layout == "cards":
+                    section_head(slide, i, sec["heading"])
+                    n = len(bullets)
+                    cols = 2 if n > 1 else 1
+                    rows = int(math.ceil(n / float(cols)))
+                    gap = 0.16
+                    card_w = (11.75 - gap * (cols - 1)) / cols
+                    card_h = (4.25 - gap * (rows - 1)) / max(1, rows)
+                    for j, bullet in enumerate(bullets):
+                        c, r = j % cols, j // cols
+                        x = 0.78 + c * (card_w + gap)
+                        y = 2.12 + r * (card_h + gap)
+                        shape(slide, MSO_SHAPE.ROUNDED_RECTANGLE,
+                              Inches(x), Inches(y), Inches(card_w),
+                              Inches(card_h), fill=CREAM, line=LINE,
+                              line_width=0.75, radius=0.055)
+                        bar(slide, Inches(x + 0.02), Inches(y + 0.14),
+                            Inches(0.045), Inches(card_h - 0.28), ACCENT)
+                        text(slide, "%02d" % (j + 1), x + 0.18, y + 0.1,
+                             0.8, 0.26, 10, True, BRAND)
+                        size = _fit_size([bullet], card_w - 0.4,
+                                         card_h - 0.42, 15, 10.5, gap_pt=0)
+                        text(slide, bullet, x + 0.18, y + 0.38,
+                             card_w - 0.36, card_h - 0.46, size, False,
+                             INK, line_spacing=1.28)
+                    footer(slide, number)
+
+                elif layout == "steps":
+                    section_head(slide, i, sec["heading"])
+                    n = len(bullets)
+                    row_h = min(0.84, 4.05 / max(1, n))
+                    top = 2.22
+                    if n > 1:
+                        bar(slide, Inches(1.09), Inches(top + 0.22),
+                            Inches(0.025), Inches(row_h * (n - 1)), LINE)
+                    for j, bullet in enumerate(bullets):
+                        y = top + j * row_h
+                        shape(slide, MSO_SHAPE.OVAL, Inches(0.82),
+                              Inches(y), Inches(0.52), Inches(0.52),
+                              fill=BRAND)
+                        text(slide, str(j + 1), 0.82, y + 0.005, 0.52, 0.5,
+                             10.5, True, ON_DARK, PP_ALIGN.CENTER,
+                             anchor=MSO_ANCHOR.MIDDLE)
+                        size = _fit_size([bullet], 10.6, row_h - 0.12,
+                                         16, 11)
+                        text(slide, bullet, 1.55, y - 0.02, 10.85,
+                             row_h - 0.06, size, False, INK,
+                             anchor=MSO_ANCHOR.MIDDLE)
+                    footer(slide, number)
+
+                else:  # quote
+                    section_head(slide, i, sec["heading"])
+                    shape(slide, MSO_SHAPE.ROUNDED_RECTANGLE,
+                          Inches(0.78), Inches(2.02), Inches(11.75),
+                          Inches(2.6), fill=CREAM, line=LINE,
+                          line_width=0.75, radius=0.035)
+                    text(slide, "“", 0.95, 1.55, 1.0, 1.0, 72, True, ACCENT)
+                    quote = bullets[0]
+                    qsize = _fit_size([quote], 10.25, 1.95, 28, 17, gap_pt=0)
+                    text(slide, quote, 1.62, 2.18, 10.3, 2.25, qsize, False,
+                         INK, line_spacing=1.32)
+                    rest = bullets[1:]
+                    if rest:
+                        half = int(math.ceil(len(rest) / 2.0))
+                        bullet_box(slide, rest[:half], 0.88, 4.9, 5.45, 1.55,
+                                   13.5, 10.5, gap_pt=6)
+                        if rest[half:]:
+                            bullet_box(slide, rest[half:], 6.85, 4.9, 5.45,
+                                       1.55, 13.5, 10.5, gap_pt=6)
+                    footer(slide, number)
+
             if sec.get("notes") and part == 0:
                 try:
                     slide.notes_slide.notes_text_frame.text = sec["notes"]
                 except Exception:
                     pass
-            footer(slide, number)
 
-    # 结束页
+    # ---------- 结束页 ----------
     end = prs.slides.add_slide(blank)
-    paint_bg(end, CREAM)
-    bar(end, Inches(0.75), Inches(2.3), Inches(0.12), Inches(1.4), BRAND)
-    _pptx_text(end, "谢谢", Inches(1.15), Inches(2.15),
-               Inches(5), Inches(0.9), 34, True, INK)
-    _pptx_text(end, "这份 PPT 是 AI 草稿，数据与事实请再核对一遍。",
-               Inches(1.15), Inches(3.15), Inches(10), Inches(0.6), 15, False, MUTED)
+    paint_bg(end, DARK)
+    shape(end, MSO_SHAPE.OVAL, Inches(9.6), Inches(-1.45),
+          Inches(5.4), Inches(5.4), fill=ACCENT)
+    shape(end, MSO_SHAPE.OVAL, Inches(10.55), Inches(-0.5),
+          Inches(3.5), Inches(3.5), fill=DARK)
+    text(end, "言据 · 创作", 0.85, 0.85, 4.0, 0.3, 12, True, ACCENT)
+    text(end, "谢谢", 0.8, 2.15, 6.0, 1.1, 48, True, ON_DARK)
+    bar(end, Inches(0.85), Inches(3.45), Inches(1.15), Inches(0.06), ACCENT)
+    text(end, "这份演示是 AI 草稿，数据与事实请再核对一遍。",
+         0.85, 3.72, 7.6, 0.8, 15, False, ON_DARK, line_spacing=1.45)
+    if out["title"]:
+        text(end, "主题 · " + out["title"], 0.85, 6.45, 7.8, 0.4, 10,
+             False, ACCENT)
 
     import io
     buf = io.BytesIO()
