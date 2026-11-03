@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#fdfcf9">
+  <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.74.5">
+  <meta name="app-version" content="0.75.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -19,10 +19,8 @@
       } catch (e) {}
       // v0.30 的「奶油」编码成 light（DeepTutor 里 Cream 就是 :root 默认）
       if (theme === 'cream') theme = 'light';
-      if (['snow', 'light', 'dark', 'glass'].indexOf(theme) < 0) {
-        theme = window.matchMedia &&
-          window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'snow';
-      }
+      // v0.75 起默认是琉璃；没存过偏好就落琉璃，不再跟随系统深浅色
+      if (['snow', 'light', 'dark', 'glass'].indexOf(theme) < 0) theme = 'glass';
       root.setAttribute('data-theme', theme);
       // 没登录（也没选「先看看」）时，首帧直接铺登录页，避免主界面闪一下
       var signed = '', skipped = '';
@@ -66,39 +64,41 @@
        只换色板（画布、文字、边框、主色、状态色），不动字号、间距和组件规则。 */
     html[data-theme="snow"] {
       color-scheme: light;
-      --bg: #ffffff; --card: #ffffff; --pop-bg: #ffffff; --ink: #0d0d0d; --muted: #6e6e6e;
-      --line: #e5e5e5; --brand: #2563eb; --brand-dark: #1d4ed8;
-      --brand-soft: #e9f1fe; --brand-light: #6f9cf5;
+      /* 冷白纸面：画布退成浅蓝灰，卡片仍是纯白，靠底色把层次拉开 */
+      --bg: #f6f8fc; --card: #ffffff; --pop-bg: #ffffff; --ink: #101828; --muted: #5a6678;
+      --line: #e3e8f2; --brand: #2563eb; --brand-dark: #1d4ed8;
+      --brand-soft: #e8f0fe; --brand-light: #6f9cf5;
       --on-brand: #ffffff; --on-ink: #ffffff;
-      --cream: #f7f7f7; --muted-surface: #f2f2f2; --wash: #ececec;
-      --ink-2: #2b2b2b; --ink-3: #4a4a4a; --muted-soft: #8a8a8a;
-      --line-strong: #cfcfcf; --surface-2: #fafafa;
-      --ok: #16794b; --ok-surface: #ecfdf3;
-      --warn: #a15c00; --warn-surface: #fffaeb;
+      --cream: #f8fafd; --muted-surface: #eff3f9; --wash: #e7edf6;
+      --ink-2: #26334d; --ink-3: #475467; --muted-soft: #6b7688;
+      --line-strong: #cfd8e6; --surface-2: #fafbfe;
+      --ok: #157347; --ok-surface: #ecfdf3;
+      --warn: #9a5b00; --warn-surface: #fffaeb;
       --danger: #d92d20; --danger-surface: #fef3f2;
       --info: #2563eb; --info-dark: #1d4ed8;
       --info-surface: #eff6ff; --info-line: #c7d8fb;
       --violet: #7c3aed; --violet-surface: #f5f3ff; --violet-line: #ddd6fe;
-      --shadow-sm: 0 1px 2px rgba(13, 13, 13, .05);
-      --shadow-raised: 0 16px 40px rgba(13, 13, 13, .12);
+      --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
+      --shadow-raised: 0 16px 40px rgba(16, 24, 40, .12);
     }
     html[data-theme="dark"] {
       color-scheme: dark;
-      --bg: #1a1918; --card: #242220; --pop-bg: #242220; --ink: #e8e4de; --muted: #9b9590;
-      --line: #3a3634; --brand: #d4734b; --brand-dark: #e8a483;
-      --brand-soft: rgba(212, 115, 75, .16); --brand-light: #e08a64;
-      --on-brand: #1a1918; --on-ink: #1a1918;
-      --cream: #2a2725; --muted-surface: #2a2725; --wash: #302d2a;
-      --ink-2: #f2eee8; --ink-3: #cfc9c2; --muted-soft: #8b857f;
-      --line-strong: #4a4542; --surface-2: #2a2725;
-      --ok: #5fd08a; --ok-surface: #173424;
-      --warn: #f2b84b; --warn-surface: #3a2c16;
-      --danger: #d44a3c; --danger-surface: #3a1e1c;
-      --info: #7ba7ff; --info-dark: #9ab7ff;
+      /* 暖黑而不是纯黑：画布、卡片、浮层三档拉开，边框不再和背景糊成一片 */
+      --bg: #161412; --card: #211e1b; --pop-bg: #262320; --ink: #f4efe8; --muted: #a8a099;
+      --line: #37322d; --brand: #e28a63; --brand-dark: #f0a985;
+      --brand-soft: rgba(226, 138, 99, .16); --brand-light: #eba079;
+      --on-brand: #1a1512; --on-ink: #1a1512;
+      --cream: #262320; --muted-surface: #262320; --wash: #2e2a26;
+      --ink-2: #ece6dd; --ink-3: #cfc8bf; --muted-soft: #948d85;
+      --line-strong: #4a443d; --surface-2: #1b1917;
+      --ok: #6fd99a; --ok-surface: #173424;
+      --warn: #f5c264; --warn-surface: #3a2c16;
+      --danger: #ff7b6b; --danger-surface: #3a1e1c;
+      --info: #8fb3ff; --info-dark: #aec7ff;
       --info-surface: #172641; --info-line: #2b3f63;
-      --violet: #b794ff; --violet-surface: #2a2340; --violet-line: #3d3459;
-      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
-      --shadow-raised: 0 16px 44px rgba(0, 0, 0, .32);
+      --violet: #c0a0ff; --violet-surface: #2a2340; --violet-line: #3d3459;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .34);
+      --shadow-raised: 0 16px 44px rgba(0, 0, 0, .42);
     }
     html[data-theme="glass"] {
       color-scheme: dark;
@@ -3372,28 +3372,40 @@
       margin: 6px 0 0; max-width: 68ch; color: var(--muted);
       font-size: 12.5px; line-height: 1.7;
     }
-    .set-section { margin-bottom: 44px; }
+    /* 每个分区是一张卡片：功能行在上，解释文字在下 */
+    .set-section {
+      margin-bottom: 18px; padding: 18px 22px 6px;
+      border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+      border-radius: 16px; background: var(--card);
+      box-shadow: var(--shadow-sm);
+    }
     .set-section:last-child { margin-bottom: 4px; }
-    .set-section-head { margin-bottom: 18px; }
+    .set-section-head { margin-bottom: 14px; }
     .set-section-head h3 {
       margin: 0; color: var(--ink); font-size: 15px; font-weight: 600; letter-spacing: -.01em;
     }
     .set-section-head p {
-      margin: 4px 0 0; max-width: 72ch; color: var(--muted); font-size: 13px; line-height: 1.65;
+      margin: 4px 0 0; max-width: 72ch; color: var(--muted); font-size: 12.5px; line-height: 1.65;
     }
-    .set-section-body { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+    .set-section-body { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
+    /* 一行 = 标签 + 控件在上，说明横跨整行放在下面。
+       控件靠右上，和标签同一视觉水平线；一行放不下时窄屏再折行。 */
     .set-row {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
-      padding: 20px 0;
+      display: grid; grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center; gap: 6px 24px;
+      padding: 18px 0;
       border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
     }
     .set-section-body > .set-row:first-child { border-top: 0; }
-    .set-row-block { flex-direction: column; gap: 14px; }
-    .set-row-block .set-ctrl { width: 100%; }
-    .set-main { flex: 1; min-width: 0; }
+    .set-row-block { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; }
+    .set-main { min-width: 0; }
     .set-label { color: var(--ink); font-size: 14px; font-weight: 500; line-height: 1.5; }
-    .set-desc { margin-top: 4px; max-width: 58ch; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
-    .set-ctrl { display: flex; align-items: center; gap: 8px; flex: none; }
+    .set-desc { color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+    .set-row > .set-desc { grid-column: 1 / -1; max-width: 76ch; }
+    .set-main .set-desc { margin-top: 4px; max-width: 58ch; }
+    .set-ctrl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .set-row:not(.set-row-block) > .set-ctrl { justify-content: flex-end; }
+    .set-row-block > .set-ctrl { width: 100%; }
     .set-ctrl select, .set-ctrl input {
       min-height: 38px; min-width: 136px; padding: 7px 11px;
       border: 1px solid var(--line); border-radius: 8px;
@@ -3424,41 +3436,56 @@
     .set-switch[aria-checked="true"] { background: var(--ink); border-color: var(--ink); }
     .set-switch[aria-checked="true"] i { transform: translateX(16px); }
     .set-switch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-    /* 主题卡：5:3 缩略图 + 名字 + 三颗色点（照 DeepTutor 的 ThemePreviewCard） */
-    .set-themes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    /* 主题卡：5:3 缩略图 + 名字 + 三颗色点（照 DeepTutor 的 ThemePreviewCard）。
+       窄于 1300px 只排两列：四列会把卡片压到一百多像素，缩略图左右看着像被裁掉。 */
+    .set-themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    @media (min-width: 1300px) {
+      .set-themes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
     .set-theme {
-      display: flex; flex-direction: column; gap: 8px; padding: 6px;
-      border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-      border-radius: 12px; background: transparent; text-align: left;
-      transition: border-color .16s, background .16s;
+      display: flex; flex-direction: column; gap: 9px; padding: 8px;
+      border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+      border-radius: 14px; background: color-mix(in srgb, var(--card) 88%, transparent);
+      text-align: left; cursor: pointer;
+      transition: border-color .16s, background .16s, transform .16s, box-shadow .16s;
     }
     .set-theme:hover {
-      border-color: var(--line);
-      background: color-mix(in srgb, var(--muted-surface) 55%, transparent);
+      border-color: var(--line-strong); background: var(--card);
+      transform: translateY(-1px); box-shadow: var(--shadow-sm);
     }
+    .set-theme:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
     .set-theme[aria-pressed="true"] {
-      border-color: var(--ink); background: var(--card); box-shadow: var(--shadow-sm);
+      border-color: var(--brand); background: var(--card);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 30%, transparent), var(--shadow-sm);
     }
     .set-thumb {
       position: relative; display: block; overflow: hidden;
-      border-radius: 8px; aspect-ratio: 5 / 3;
+      border-radius: 10px; aspect-ratio: 5 / 3;
       box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
     }
     .set-thumb svg { display: block; width: 100%; height: 100%; }
     .set-thumb-check {
-      position: absolute; top: 6px; right: 6px; display: grid; place-items: center;
-      width: 16px; height: 16px; border-radius: 50%;
-      background: var(--ink); color: var(--bg); font-size: 10px; line-height: 1;
+      position: absolute; top: 8px; right: 8px; display: grid; place-items: center;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--brand); color: var(--on-brand);
+      font-size: 11px; line-height: 1;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .28);
     }
     .set-theme-meta {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 6px; padding: 0 2px 2px;
+      gap: 8px; padding: 0 3px 2px;
     }
-    .set-theme-name { color: var(--muted); font-size: 12.5px; }
-    .set-theme[aria-pressed="true"] .set-theme-name { color: var(--ink); font-weight: 500; }
+    .set-theme-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .set-theme-name { color: var(--ink-3); font-size: 13px; font-weight: 500; letter-spacing: .01em; }
+    .set-theme[aria-pressed="true"] .set-theme-name { color: var(--ink); font-weight: 600; }
+    .set-theme-tag {
+      flex: none; padding: 1px 6px; border-radius: 999px;
+      background: var(--brand-soft); color: var(--brand);
+      font-size: 10px; font-weight: 600; line-height: 1.6;
+    }
     .set-dots { display: flex; flex: none; padding-left: 3px; }
     .set-dots i {
-      width: 10px; height: 10px; margin-left: -3px; border-radius: 50%;
+      width: 11px; height: 11px; margin-left: -3px; border-radius: 50%;
       box-shadow: 0 0 0 1.5px var(--bg);
     }
     .set-facts { display: grid; gap: 5px; margin-top: 6px; }
@@ -3578,13 +3605,15 @@
       .set-nav button { width: auto; white-space: nowrap; padding: 7px 12px; }
       .set-group { display: none; }
       .set-title { font-size: 22px; }
-      .set-row { gap: 12px; }
-      .set-row:not(.set-row-block) { flex-direction: column; align-items: stretch; }
+      .set-section { padding: 16px 16px 4px; border-radius: 14px; }
+      .set-row { gap: 8px 12px; padding: 16px 0; }
+      .set-row:not(.set-row-block) { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+      .set-row:not(.set-row-block) > .set-ctrl { justify-content: flex-start; }
       .set-ctrl { flex-wrap: wrap; justify-content: flex-start; }
       .set-ctrl select, .set-ctrl input { min-width: 0; width: 100%; }
       .set-ctrl input[type="password"] { min-width: 0; }
       .set-account { width: 100%; }
-      .set-themes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .set-themes { gap: 10px; }
       .set-user { flex-direction: column; align-items: stretch; gap: 10px; }
       .set-user-tools input[type="search"] { flex: 1 1 100%; }
       .set-user-actions button { flex: 1; min-height: 44px; }
@@ -4467,8 +4496,10 @@
   const AUTH_SKIP_KEY = '408-auth-skip-v1';
   // 账号 token、同步元数据和设备级视图状态不上传服务器。
   // 访问口令更不能同步——它是进门凭据，不是个人内容。
+  // 上一次提问时间是这台设备的对话节奏，不跟着账号走，换号后也不该把
+  // 上一个人的提问时间喂给「时间感知」。
   const SYNC_SKIP_KEYS = [TOKEN_KEY, ACCOUNT_KEY, SYNC_META_KEY, SYNC_OWNER_KEY,
-                          ACTIVE_KEY, LIB_TAB_KEY, SIDEBAR_KEY];
+                          ACTIVE_KEY, LIB_TAB_KEY, SIDEBAR_KEY, LAST_ASK_KEY];
   const PRESET_DECK = {
     id: 'cs408', preset: true, name: '408 真题',
     desc: '2019–2024 五卷真题，按科目和年份筛选；解析与出处来自服务端语料。',
@@ -4611,22 +4642,22 @@
 
   /* 偏好只影响这台设备的界面，不参与检索；口令不进这里 */
   const DEFAULT_PREFS = {
-    startPage: 'chat', reducedMotion: false, masteryCount: '5', theme: 'snow',
+    startPage: 'chat', reducedMotion: false, masteryCount: '5', theme: 'glass',
     tools: DEFAULT_TOOLS
   };
 
-  // 主题只换色板：默认（纯白·蓝）、奶油（暖纸·陶土）、深色（近黑·陶土）、琉璃（深紫·紫）。
-  // 四套都照 DeepTutor 的 theme-snow / :root / .dark / .theme-glass。
+  // 主题只换色板：琉璃（深紫·紫，默认）、雪白（冷白·蓝）、奶油（暖纸·陶土）、
+  // 深色（暖黑·陶土）。四套都按 DeepTutor 的 theme-glass / theme-snow / :root / .dark 整理。
   // dot 是色卡圆点用的固定色，不跟当前主题走。
   const THEMES = [
-    {key: 'snow', name: '默认', en: 'Default', dot: '#2563eb', bg: '#ffffff',
-     card: '#ffffff', ink: '#0d0d0d', line: '#e5e5e5', side: '#f4f4f4', brand: '#2563eb'},
-    {key: 'light', name: '奶油', en: 'Cream', dot: '#b0501e', bg: '#fdfcf9',
-     card: '#ffffff', ink: '#1c1816', line: '#e6decc', side: '#f3efe4', brand: '#b0501e'},
-    {key: 'dark', name: '深色', en: 'Dark', dot: '#d4734b', bg: '#1a1918',
-     card: '#242220', ink: '#e8e4de', line: '#3a3634', side: '#211f1d', brand: '#d4734b'},
     {key: 'glass', name: '琉璃', en: 'Glass', dot: '#a855f7', bg: '#0e0d1a',
-     card: '#1c1b30', ink: '#ffffff', line: 'rgba(255,255,255,.16)', side: '#161528', brand: '#a855f7'}
+     card: '#1c1b30', ink: '#ffffff', line: 'rgba(255,255,255,.16)', side: '#161528', brand: '#a855f7'},
+    {key: 'snow', name: '雪白', en: 'Snow', dot: '#2563eb', bg: '#f6f8fc',
+     card: '#ffffff', ink: '#101828', line: '#e3e8f2', side: '#eef2f9', brand: '#2563eb'},
+    {key: 'light', name: '奶油', en: 'Cream', dot: '#b0501e', bg: '#fdfcf9',
+     card: '#ffffff', ink: '#1c1816', line: '#e6decc', side: '#f5f2ea', brand: '#b0501e'},
+    {key: 'dark', name: '深色', en: 'Dark', dot: '#e28a63', bg: '#161412',
+     card: '#211e1b', ink: '#f4efe8', line: '#37322d', side: '#262320', brand: '#e28a63'}
   ];
   function loadPrefs() {
     const raw = loadJSON(PREFS_KEY, {});
@@ -4823,6 +4854,9 @@
     state.account.token = '';
     state.account.user = null;
     state.account.error = '';
+    // 设置页的草稿属于刚登出的这个人：不清掉的话，下一个人点「应用更改」
+    // 会把上一个人的偏好写进新账号。
+    settingsDraft = null;
     localStorage.removeItem(ACCOUNT_KEY);
   }
 
@@ -4836,6 +4870,13 @@
     return api(path, options);
   }
 
+  // 多标签：localStorage 是共享的，内存 state 却不是。别的标签换了账号
+  // （token 或 owner 变了），本页要整页重载，否则旧标签会继续拿上一个账号的
+  // 内存数据往共享存储里写，再被新账号的下一次同步带走。
+  window.addEventListener('storage', e => {
+    if (e.key === ACCOUNT_KEY || e.key === SYNC_OWNER_KEY) location.reload();
+  });
+
   // 登录 / 手动同步时把两边按时间戳合并：本地更新的推上去，服务器更新的拉下来。
   async function syncNow(opts) {
     opts = opts || {};
@@ -4847,12 +4888,15 @@
       if (opts.toast) toast('正在同步，稍等一下');
       return false;
     }
+    // 请求飞行中可能换了账号：响应回来先比一次，别拿旧账号的结果改新账号。
+    const token = state.account.token;
     syncState.running = true;
     state.account.syncing = true;
     state.account.error = '';
     if (opts.render) renderSettings();
     try {
       const server = await accountApi('/me/data');
+      if (state.account.token !== token) return false;
       const serverItems = (server && server.items) || {};
       const meta = loadSyncMeta();
       const localKeys = syncableLocalKeys();
@@ -4893,6 +4937,7 @@
         const res = await accountApi('/me/data', {
           method: 'PUT', body: {items: push}
         });
+        if (state.account.token !== token) return false;
         const rejected = (res && res.server) || {};
         Object.keys(rejected).forEach(key => {
           meta[key] = Number(rejected[key]) || meta[key];
@@ -4911,6 +4956,9 @@
       if (opts.render) renderSettings();
       return true;
     } catch (e) {
+      // 旧账号的响应晚到，不能把刚登录的新账号 token 清掉，也不该在新账号
+      // 的设置页写「同步失败」。
+      if (state.account.token !== token) return false;
       const detail = String((e.data && e.data.detail) || '');
       if (e.status === 401 && detail.indexOf('登录') >= 0) {
         clearAccountToken();
@@ -5158,7 +5206,21 @@
     try {
       const me = await accountApi('/auth/me');
       state.account.user = me.user;
-      if (!localStorage.getItem(SYNC_OWNER_KEY)) {
+      const owner = localStorage.getItem(SYNC_OWNER_KEY) || '';
+      if (owner && owner !== me.user.id) {
+        // 本机记的 owner 和当前 token 对不上（另一个标签换了号、或旧版本
+        // 留下的数据）：按换号处理，先清本机个人数据再拉当前账号的副本。
+        syncableLocalKeys().forEach(key => localStorage.removeItem(key));
+        saveSyncMeta({});
+        settingsDraft = null;
+        nativeSetItem.call(localStorage, SYNC_OWNER_KEY, me.user.id);
+        const ok = await syncNow({});
+        stashToast(ok ? '已切换账号，内容已换成这个账号自己的'
+                      : '已切换账号，服务器暂时没连上，稍后会自动再同步');
+        location.reload();
+        return;
+      }
+      if (!owner) {
         nativeSetItem.call(localStorage, SYNC_OWNER_KEY, me.user.id);
       }
     } catch (e) {
@@ -9231,14 +9293,18 @@
     if (state.collectionsLoaded && !force) return state.collections;
     // 没口令时这个接口必然 401，别让每次重渲染都再打一遍（会弹出成堆的设置框）
     if (state.collectionsUnavailable && !force) return state.collections;
+    // 换号时旧请求可能晚到：响应属于上一个账号，直接丢掉
+    const token = state.account.token || '';
     try {
       const data = await api('/collections');
+      if ((state.account.token || '') !== token) return state.collections;
       state.collections = (data && data.items) || [];
       state.collectionsNeedLogin = !!(data && data.need_login);
       state.collectionsCanCreateShared = !!(data && data.can_create_shared);
       state.collectionsLoaded = true;
       state.collectionsUnavailable = false;
     } catch (e) {
+      if ((state.account.token || '') !== token) return state.collections;
       // 失败也别让重渲染再拉一遍；口令验证成功或用户手动刷新时才重试
       state.collectionsUnavailable = true;
       if (e.status === 401) showAuthNeeded('请先输入访问口令。');
@@ -14742,7 +14808,7 @@
   /* ---------- 设置 ---------- */
   function applyPrefs() {
     document.documentElement.classList.toggle('reduce-motion', !!state.prefs.reducedMotion);
-    const theme = state.prefs.theme || 'snow';
+    const theme = state.prefs.theme || 'glass';
     document.documentElement.setAttribute('data-theme', theme);
     const meta = document.querySelector('meta[name="theme-color"]');
     const hit = THEMES.filter(t => t.key === theme)[0];
@@ -14807,14 +14873,16 @@
     renderSettings();
   }
 
+  /* 功能在上、说明在下：标签和控件排第一行，desc 作为行的直接子元素
+     横跨整行放到下面，不再塞进 main 里和控制区抢高度。 */
   function setRow(label, desc) {
     const row = el('div', 'set-row');
     const main = el('div', 'set-main');
     main.appendChild(el('div', 'set-label', label));
-    if (desc) main.appendChild(el('div', 'set-desc', desc));
     row.appendChild(main);
     const ctrl = el('div', 'set-ctrl');
     row.appendChild(ctrl);
+    if (desc) row.appendChild(el('div', 'set-desc', desc));
     return {row, main, ctrl};
   }
 
@@ -14896,7 +14964,10 @@
       ? '<span class="set-thumb-check" aria-hidden="true">✓</span>' : '');
     b.appendChild(thumb);
     const meta = el('span', 'set-theme-meta');
-    meta.appendChild(el('span', 'set-theme-name', t.name));
+    const title = el('span', 'set-theme-title');
+    title.appendChild(el('span', 'set-theme-name', t.name));
+    if (t.key === DEFAULT_PREFS.theme) title.appendChild(el('span', 'set-theme-tag', '默认'));
+    meta.appendChild(title);
     const dots = el('span', 'set-dots');
     [t.brand, t.ink, t.line].forEach(c => {
       const i = el('i');
@@ -14990,10 +15061,23 @@
           state.account.token = out.token;
           state.account.user = out.user;
           nativeSetItem.call(localStorage, ACCOUNT_KEY, out.token);
-          prepareSyncOwner(out.user.id);
+          const switched = prepareSyncOwner(out.user.id);
           state.account.busy = false;
           state.account.mode = 'login';
+          settingsDraft = null;
           toast(mode === 'register' ? '账号已创建' : '已登录');
+          if (switched) {
+            // 和首屏登录同一条路：本机数据已按 owner 清空，但内存 state 还是
+            // 上一个账号的。先把新账号的副本拉进 localStorage，再整页重载；
+            // 同步失败也重载，宁可先看到空，也不把旧数据推给新账号。
+            status.className = 'settings-status';
+            status.textContent = '正在切换账号…';
+            const ok = await syncNow({});
+            stashToast(ok ? '已切换到另一个账号，内容已换成这个账号自己的'
+                          : '已切换账号，服务器暂时没连上，稍后会自动再同步');
+            location.reload();
+            return;
+          }
           renderSettings();
           refreshCollectionsForAccount();
           await syncNow({reload: true, toast: true});
@@ -15193,8 +15277,9 @@
   function settingsAppearance(body) {
     const sec = setSection('主题',
       '每张卡就是这套配色应用后的样子。选中后点底部的「应用更改」才换肤。');
-    const row = setRow('配色',
-      '默认是纯白 + 蓝，奶油是暖纸 + 陶土，深色在近黑上保留暖调，琉璃是深紫渐变 + 毛玻璃面板。');
+    const row = setRow('配色方案',
+      '琉璃是默认的深紫渐变 + 毛玻璃；雪白是冷白纸面 + 蓝；奶油是暖纸 + 陶土；' +
+      '深色用暖黑打底，主色仍是陶土。');
     row.row.classList.add('set-row-block');
     const grid = el('div', 'set-themes');
     const picked = draftPrefs().theme;
@@ -15274,9 +15359,9 @@
     const secTok = setSection('访问口令',
       '只保存在本机浏览器，通过 X-Access-Token 请求头发送，不会写进日志。');
     const siteNeedsToken = !state.health || state.health.auth_required;
-    const tokRow = setRow('访问口令',
-      '只保存在本机浏览器，通过 X-Access-Token 请求头发送，不会写进日志。');
-    tokRow.row.classList.add('set-token');
+    // 分区说明已经写过一遍，行里不再重复；控件竖排在标签下面
+    const tokRow = setRow('口令', '');
+    tokRow.row.classList.add('set-token', 'set-row-block');
 
     const input = el('input');
     input.type = 'password';

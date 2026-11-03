@@ -1439,11 +1439,12 @@ def _collection_digest(cid: str) -> Optional[dict]:
     return {"text": "\n".join(pieces)[:1500], "titles": titles}
 
 
-def _mastery_digest(materials) -> List[dict]:
+def _mastery_digest(materials, request: Request) -> List[dict]:
     """把前端勾的素材变成模型能读的摘要。
 
     考点卡片和知识库由服务端自己读（它们是语料的事实来源）；题库和对话
     只存在浏览器，所以只能收前端带来的那一段，并标明来源。
+    知识库和问答走同一道权限闸门：拿到库 id 不等于能读它。
     """
     out = []
     budget = 9000
@@ -1456,7 +1457,9 @@ def _mastery_digest(materials) -> List[dict]:
             entry = _knowledge_digest(key[len("knowledge:"):])
             kind = kind or "knowledge"
         elif key.startswith("collection:"):
-            entry = _collection_digest(key[len("collection:"):])
+            cid = key[len("collection:"):]
+            _guard_chat_collection(cid, request)
+            entry = _collection_digest(cid)
             kind = kind or "collection"
         detail = str(item.detail or "").strip()
         if entry is None:
@@ -1477,12 +1480,12 @@ def _mastery_digest(materials) -> List[dict]:
 
 
 @app.post("/mastery/turn")
-def mastery_turn(req: MasteryTurnRequest,
+def mastery_turn(req: MasteryTurnRequest, request: Request,
                  _: None = Depends(enforce_guard)) -> dict:
     """精通之路的导师会话：一轮拿回一段话、一张问答卡，或一份大纲。"""
     t0 = time.time()
     payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    digest = _mastery_digest(req.materials)
+    digest = _mastery_digest(req.materials, request)
     metrics.bump("mastery_total")
     try:
         result = tutor_turn(_state.get("provider_impl"), payload, digest)
