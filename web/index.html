@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.75.0">
+  <meta name="app-version" content="0.75.1">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -3574,18 +3574,27 @@
     }
     .set-badge.admin { background: var(--brand-soft); color: var(--brand); }
     .set-badge.off { background: var(--danger-surface); color: var(--danger); }
-    /* 底部应用条：有未保存的改动才出现 */
+    /* 底部应用条：有未保存的改动才出现，做成一张浮起的卡片，不再压一条黑带 */
     .set-toolbar {
-      position: sticky; bottom: 0; z-index: 5; flex: none;
-      display: flex; align-items: center; gap: 12px; margin-top: 20px;
-      padding: 12px 0 14px; border-top: 1px solid var(--line);
-      background: color-mix(in srgb, var(--bg) 92%, transparent);
-      backdrop-filter: blur(8px);
+      position: sticky; bottom: 14px; z-index: 5; flex: none;
+      display: flex; align-items: center; gap: 12px; margin: 20px 0 2px;
+      padding: 12px 16px;
+      border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--line));
+      border-radius: 14px;
+      background: var(--pop-bg);
+      box-shadow: var(--shadow-raised);
     }
     .set-toolbar[hidden] { display: none; }
     .set-toolbar-text { flex: 1; min-width: 0; }
-    .set-toolbar-text b { display: block; color: var(--ink); font-size: 13px; font-weight: 600; }
-    .set-toolbar-text span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .set-toolbar-text b {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--ink); font-size: 13px; font-weight: 600;
+    }
+    .set-toolbar-text b::before {
+      content: ''; width: 6px; height: 6px; flex: none;
+      border-radius: 50%; background: var(--brand);
+    }
+    .set-toolbar-text span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
     .set-toolbar button { padding: 8px 14px; border-radius: 8px; font-size: 12.5px; white-space: nowrap; }
     /* 偏好开「减少动效」时，全站过渡降到接近零 */
     html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
@@ -3618,8 +3627,12 @@
       .set-user-tools input[type="search"] { flex: 1 1 100%; }
       .set-user-actions button { flex: 1; min-height: 44px; }
       .set-token .set-ctrl { width: 100%; }
-      .set-toolbar { padding: 10px 0 12px; }
+      .set-toolbar {
+        bottom: calc(62px + 8px + env(safe-area-inset-bottom));
+        margin: 16px 0 2px; padding: 10px 12px; border-radius: 12px;
+      }
       .set-toolbar-text span { display: none; }
+      .set-toolbar button { padding: 8px 12px; }
     }
 
     /* ---------- 知识图谱（v0.64，照 Obsidian 的 graph view） ---------- */
