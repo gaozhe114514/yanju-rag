@@ -71,6 +71,30 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(plan.intent, "clarify")
         self.assertEqual(plan.source, "llm")
 
+    def test_standalone_question_with_wh_word_skips_llm(self):
+        # 「不想上班怎么办」带「怎么」，但和上文无关；不能当追问送去改写，
+        # 否则模型判成 clarify，问题走不到检索和通用回答。
+        p = FakeProvider({"intent": "clarify", "query": "", "reason": "指代不明"})
+        plan = QueryAgent(p).plan(
+            "不想上班怎么办",
+            [{"role": "user", "content": "快速排序的时间复杂度"},
+             {"role": "assistant", "content": "平均 O(n log n)"}])
+        self.assertEqual(plan.intent, "kb")
+        self.assertEqual(plan.source, "none")
+        self.assertEqual(plan.rewritten, "不想上班怎么办")
+        self.assertEqual(p.calls, 0)
+
+    def test_cue_word_inside_common_compound_is_ignored(self):
+        # 「应该 / 其他 / 因此」含指代字，但不指代上文
+        for q in ("应该怎么复习数据结构", "其他排序算法的区别",
+                  "因此为什么会栈溢出", "其中正确的是哪一个"):
+            with self.subTest(q=q):
+                p = FakeProvider({"intent": "clarify", "query": ""})
+                plan = QueryAgent(p).plan(q, [{"role": "user", "content": "LRU"}])
+                self.assertEqual(plan.intent, "kb")
+                self.assertEqual(plan.source, "none")
+                self.assertEqual(p.calls, 0)
+
     def test_llm_failure_falls_back_to_rule(self):
         p = FakeProvider(error="timeout")
         plan = QueryAgent(p).plan("那时间复杂度呢",

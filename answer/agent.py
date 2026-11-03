@@ -20,12 +20,22 @@ _CHITCHAT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 出现这些词时，问题很可能依赖上一轮，值得花一次模型调用做改写
-_CONTEXT_CUES = (
-    "它", "他", "她", "其", "该", "此", "这题", "那题", "这道", "那道",
-    "上述", "前面", "刚刚", "刚才", "上一", "还有", "另外", "那么", "那",
-    "呢", "为什么", "怎么", "如何",
+# 指代 / 承接信号：出现这些词时，问题很可能依赖上一轮，值得花一次模型调用改写。
+# 「怎么 / 如何 / 为什么 / 什么」这类通用疑问词故意不算：独立的新问题也常带
+# 它们（例如「不想上班怎么办」）。当成追问信号去改写，模型很容易判成「指代
+# 不明」，问题就被挡在检索和通用回答之前。
+_REFERENTIAL_CUES = (
+    "它", "她", "他", "其", "该", "此",
+    "这题", "那题", "这道", "那道", "这个", "那个", "这种", "那种",
+    "这些", "那些", "该题", "上述", "前面", "上文",
+    "刚刚", "刚才", "上一", "还有", "另外", "那么", "呢",
 )
+
+# 含上面这些字、但并不指代上文的常用词；判断前先剔除，
+# 免得「其他 / 应该 / 因此」这类词误触发改写。
+_CUE_NOISE = ("其他", "其它", "其实", "应该", "该不该", "不该",
+              "因此", "如此", "此外", "从此", "彼此",
+              "其中", "尤其", "其余")
 
 _INTRO = (
     "我是「言据」的资料问答助手，负责从资料原文里找依据并给出可核对的引用。"
@@ -82,7 +92,9 @@ def normalize_history(history: Optional[List[Dict]], limit: int = 6) -> List[Dic
 
 def _needs_rewrite(query: str) -> bool:
     q = (query or "").strip()
-    return any(cue in q for cue in _CONTEXT_CUES)
+    for word in _CUE_NOISE:
+        q = q.replace(word, "")
+    return any(cue in q for cue in _REFERENTIAL_CUES)
 
 
 def _rule_rewrite(query: str, history: List[Dict]) -> str:
