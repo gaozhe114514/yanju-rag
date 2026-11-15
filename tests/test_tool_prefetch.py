@@ -4,7 +4,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-from api.app import _live_query, _split_tools, _tool_results
+from api.tools_runtime import _live_query, _split_tools, _tool_results
 
 
 class SplitToolsTest(unittest.TestCase):

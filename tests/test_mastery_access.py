@@ -4,10 +4,14 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from fastapi import HTTPException
+try:
+    from fastapi import HTTPException
 
-from api import app as app_module
-from api.app import _mastery_digest
+    from api import app as app_module
+    from api.app import _mastery_digest
+except ImportError as exc:  # CI 只装标准库与文件解析依赖，不装 fastapi
+    raise unittest.SkipTest("需要 fastapi 才能测 API 层权限闸门：%s" % exc)
+
 from kb.library import Library
 
 
