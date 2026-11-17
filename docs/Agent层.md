@@ -145,7 +145,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 - 「执行过程」沿用原来的步骤表，能看到理解问题、拒答判断、生成、引用校验各自的耗时；
 - 切回标准问答就回到原来的 `/chat/stream`，历史对话不受影响。
 
-README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/v0762-mode-dark-1440.png`（回答方式弹层）与 `data/work/v0762-agent-dark-390.png`（手机 Agent 轨迹）。
+README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/prod-v0762-mode-dark-1440.png`（线上回答方式弹层）与 `data/work/prod-v0762-agent-dark-390.png`（线上手机 Agent 轨迹）。
 
 ## 为什么是 LangGraph 0.6
 
@@ -177,7 +177,7 @@ README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地�
 
 ## 没做的事
 
-- **没有部署**。本轮只到本地验证与提交，线上仍是 v0.75.1。
+- **已部署（v0.76.2）**：线上 `/health` 为 `agent=true / agent_checkpointer=postgres`，`/agent/stream` 两轮通过；生产截图见 `data/work/prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
 - 没有多 Agent 分工、没有任意工具循环、没有 MCP / CLI 工具沙箱——先把「可引用的 Agent」做扎实。
 - Agent 暂未接应答缓存：工具轨迹和线程记忆要一起返回，缓存键需要额外带 `thread_id`，这轮先不做；普通 `/chat` 的缓存不受影响。
 - 没有把生成提示改成带完整对话历史的 prompt：对话历史只用于问题改写与线程记忆，生成仍以本轮检索到的资料为唯一事实来源，避免历史回答污染引用。
