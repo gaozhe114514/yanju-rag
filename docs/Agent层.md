@@ -167,8 +167,8 @@ curl -N http://127.0.0.1:8000/agent/stream \
 ## 测试与验收
 
 - 单元测试新增 24 条：`tests/test_agent_graph.py`（成功、闸门拒答、换查询重试成功 / 失败、重试后无命中仍保留尝试次数、模型拒答、生成异常、寒暄 / 澄清、线程记忆、跨 owner 隔离、工作线程冒烟）与 `tests/test_agent_tools.py`（工具 top_k、JSON Schema、状态序列化、线程号清洗、checkpointer 选择、SSE 事件、refine 兜底）。
-- 全量：`Ran 666 tests ... OK (skipped=13)`。
-- 模拟 CI（不装 fastapi，装 langgraph）：`Ran 664 tests ... OK (skipped=18)`。
+- 全量：`Ran 667 tests ... OK (skipped=13)`。
+- 模拟 CI（不装 fastapi，装 langgraph）：`Ran 665 tests ... OK (skipped=18)`。
 - 本机 mock 服务：`/health` 返回 `agent=true / agent_checkpointer=memory`；`/agent/stream` 成功返回工具调用、引用与步骤；同一 `thread_id` 第二轮能带上上一轮历史改写追问。
 - **PostgresSaver 路径没有在本机实库跑过**：本机没有 Docker / PostgreSQL，只按官方 `PostgresSaver(conn) + setup()` 接法实现。部署前要在有数据库的环境确认 `/health` 的 `agent_checkpointer=postgres`，并用同一个 `thread_id` 连问两轮验证跨重启续写。
 - 前端 CDP：1440×900 与 390×844 各一张截图；Agent 开关 `aria-pressed=true`，工具调用可展开，横向溢出 0，控制台错误 0。

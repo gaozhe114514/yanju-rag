@@ -33,6 +33,13 @@ class VersionInfoTest(unittest.TestCase):
         # FastAPI 自己的版本号也从 version.json 来，不再手写第二份
         self.assertEqual(app_module.app.version, current)
 
+    def test_frontend_meta_matches_version_file(self):
+        # 页面的 app-version 是手写的，容易和后端 version.json 漂移
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web" / "index.html").read_text(encoding="utf-8")
+        current = version_module.version_info()["version"]
+        self.assertIn('<meta name="app-version" content="%s">' % current, html)
+
     def test_malformed_file_falls_back(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "version.json"

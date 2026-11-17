@@ -4,7 +4,7 @@
 
 > 问资料，答得出来就带逐字引用，答不出来就明说；也能把主题整理成 Word 文档或 PPT。
 
-**当前版本 v0.76.0** ｜ 666 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.75.1）｜ Python 3.9 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
+**当前版本 v0.76.0** ｜ 667 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.75.1）｜ Python 3.9 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
 
 ![问答首页（琉璃主题）](docs/screens/home-glass-1440.png)
 
