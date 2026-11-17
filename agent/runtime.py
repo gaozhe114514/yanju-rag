@@ -52,11 +52,11 @@ def _result_from_state(state: Dict[str, Any], thread_id: str, kind: str,
                        t0: float, thread_reset: bool = False) -> AgentResult:
     try:
         hits = hits_from_state(state)
-    except ValueError:
+    except Exception:  # 旧 checkpoint 或手工改坏的状态不能让整条流断掉
         hits = []
     try:
         context = context_from_state(state)
-    except ValueError:
+    except Exception:
         context = []
     return AgentResult(
         refused=bool(state.get("refused")),

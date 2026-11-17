@@ -799,6 +799,8 @@ def _citation_payload(citations, pool) -> list:
     by_id = {h.chunk.id: h.chunk for h in pool}
     out = []
     for c in citations or []:
+        if not isinstance(c, dict):
+            continue
         cid = c.get("chunk_id")
         ch = by_id.get(cid)
         out.append({
