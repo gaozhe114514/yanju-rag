@@ -19,6 +19,9 @@ KEYS = (
     "cache_hit",
     # 精通之路的导师会话（定大纲）：轮次、给了大纲、问了问题、模型没用
     "mastery_total", "mastery_outline", "mastery_ask", "mastery_failed",
+    # Agent 端点：轮次、回答/拒答、工具调用次数、换查询重试次数
+    "agent_total", "agent_answered", "agent_refused", "agent_tool_calls",
+    "agent_retry",
 )
 
 

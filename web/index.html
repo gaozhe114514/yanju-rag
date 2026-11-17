@@ -2070,6 +2070,12 @@
     }
     .composer-chip:hover { border-color: var(--line-strong); color: var(--brand); }
     .composer-chip.on { background: var(--wash); border-color: transparent; color: var(--brand-dark); }
+    #agent-chip.on { font-weight: 600; }
+    #agent-chip.on::after {
+      content: ''; display: inline-block; width: 5px; height: 5px;
+      margin-left: 5px; border-radius: 50%; background: currentColor;
+      vertical-align: 1px;
+    }
 
     @media (max-width: 860px) {
       .space-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
@@ -4126,6 +4132,8 @@
           <div class="composer-bar">
             <button class="composer-chip" id="collection-chip" type="button"
                     aria-haspopup="dialog" title="只用 408 题库的真题与考点；要查自己导入的资料，就在这里切换">408 题库</button>
+            <button class="composer-chip" id="agent-chip" type="button"
+                    aria-pressed="false" title="Agent 模式：规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；资料不足仍然拒答">Agent</button>
             <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
@@ -4502,6 +4510,8 @@
   const DECK_Q_KEY = '408-deck-questions-v1';
   // 问答当前依据的知识库：空字符串 = 内置 408 语料
   const COLLECTION_KEY = '408-chat-collection-v1';
+  // Agent 模式开关：设备级偏好，不上传；线程号跟着对话存在本机
+  const AGENT_MODE_KEY = '408-agent-mode-v1';
   const PREFS_KEY = '408-prefs-v1';
   // 侧栏收放是这台设备的视图状态，跟着屏幕大小走，不跟账号同步
   const SIDEBAR_KEY = '408-sidebar-collapsed-v1';
@@ -4795,6 +4805,7 @@
     collectionsCanCreateShared: false,
     collectionId: '',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
+    agentMode: loadJSON(AGENT_MODE_KEY, false) === true,
     chatPersonaId: ''
   };
 
@@ -5307,11 +5318,11 @@
   }
 
   /* ---------- 流式问答（SSE） ---------- */
-  async function streamChat(body, onEvent, signal) {
+  async function streamChat(body, onEvent, signal, path) {
     const headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'};
     if (state.token) headers['X-Access-Token'] = state.token;
     if (state.account.token) headers['Authorization'] = 'Bearer ' + state.account.token;
-    const resp = await fetch('/chat/stream', {
+    const resp = await fetch(path || '/chat/stream', {
       method: 'POST', headers, body: JSON.stringify(body), signal
     });
     if (!resp.ok) {
@@ -5351,8 +5362,17 @@
   function streamStageText(stage, evt) {
     if (stage === 'daily') return '正在回答…';
     if (stage === 'general') return '资料里没有依据，正在用通用知识回答…';
-    if (stage === 'tool') return '正在查' + ((evt && evt.label) || '实时数据') + '…';
+    if (stage === 'tool') {
+      if (evt && typeof evt.hits === 'number') {
+        return evt.hits ? '检索完成，命中 ' + evt.hits + ' 条资料…'
+          : '检索完成，没有命中资料…';
+      }
+      return '正在查' + ((evt && evt.label) || '实时数据') + '…';
+    }
     if (stage === 'plan') return '正在理解问题…';
+    if (stage === 'search') return '正在调用 search_kb 检索资料…';
+    if (stage === 'retry') return '引用没对上原文，换个问法再查一次…';
+    if (stage === 'refuse') return '资料不足，正在按规则拒答…';
     if (stage === 'cache') return '命中缓存，正在取出答案…';
     if (stage === 'retrieve') return '正在检索资料…';
     if (stage === 'gate') {
@@ -5740,6 +5760,9 @@
     if (data.reason === 'empty_collection') {
       return '这个知识库还没有资料。先去「学习空间 → 知识库」里加一篇，再回来问。';
     }
+    if (data.reason === 'agent_unavailable') {
+      return data.notice || 'Agent 模式暂时不可用，请稍后再试。';
+    }
     return data.collection
       ? '这个知识库里没有足够依据回答这个问题。可以换个问法，或往库里再补一些资料。'
       : '资料里没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
@@ -5752,6 +5775,7 @@
     if (data.refused) {
       let reason = data.collection ? '知识库未覆盖' : '资料未覆盖';
       if (data.reason === 'empty_collection') reason = '知识库还没有资料';
+      else if (data.reason === 'agent_unavailable') reason = 'Agent 未启用';
       else if ((data.reason || '').indexOf('low_score') === 0) reason = '召回分数不足';
       else if ((data.reason || '').indexOf('low_margin') === 0) reason = '候选区分度不足';
       else if ((data.reason || '').indexOf('stat_failed') === 0) reason = '统计校验未通过';
@@ -5939,6 +5963,11 @@
       meta.appendChild(el('span', 'meta-note ok',
         cites.length ? '引用已核对 · ' + cites.length + ' 条' : '引用已核对'));
     }
+    if (data.mode === 'agent' && data.agent) {
+      const calls = (data.agent.tool_calls || []).length;
+      meta.appendChild(el('span', 'meta-note' + (data.refused ? '' : ' ok'),
+        'Agent · ' + calls + ' 次 search_kb'));
+    }
 
     // 用了什么工具要写出来：成功标来源，失败也明说，别让模型一句「查不到」糊过去
     (data.tools || []).filter(Boolean).forEach(t => {
@@ -6002,6 +6031,27 @@
         trace.appendChild(r);
       });
       det.appendChild(trace);
+      meta.appendChild(det);
+    }
+
+    if (data.agent && data.agent.tool_calls && data.agent.tool_calls.length) {
+      const det = el('details', 'mini-det');
+      det.open = !!data.agent.retry;  // 换查询重试时摊开，能直接看到两次检索
+      det.appendChild(el('summary', null,
+        '工具调用 · search_kb' + (data.agent.retry ? ' · 已重试' : '')));
+      const box = el('div', 'trace');
+      data.agent.tool_calls.forEach((t, i) => {
+        const r = el('div', 'trace-row');
+        r.appendChild(el('div', 'trace-name', t.name || 'tool'));
+        r.appendChild(el('div', 'trace-ms', t.ms ? t.ms + 'ms' : '—'));
+        const args = t.args || {};
+        const q = (args.query || '').length > 48
+          ? (args.query || '').slice(0, 48) + '…' : (args.query || '');
+        r.appendChild(el('div', 'trace-detail',
+          '#' + (i + 1) + ' · query: ' + q + ' → ' + (t.hits || 0) + ' 条'));
+        box.appendChild(r);
+      });
+      det.appendChild(box);
       meta.appendChild(det);
     }
 
@@ -6143,7 +6193,12 @@
     // 先算出间隔再记时间，否则本次提问的间隔永远是 0。
     noteAskTime();
     try {
-      await streamChat({
+      const agentMode = !!state.agentMode;
+      const body = agentMode ? {
+        query: text, history: history, style: style,
+        thread_id: conv.agentThreadId || conv.id,
+        collection: state.chatCollection || ''
+      } : {
         query: text, history: history,
         style: style,
         // auto = 先查资料；资料里没有依据时，改给标明「未查资料」的通用回答
@@ -6154,7 +6209,8 @@
         study: enabledTools().indexOf('study') >= 0 ? studySummary() : {},
         // 空字符串 = 内置 408 语料；否则只在这个知识库里检索
         collection: state.chatCollection || ''
-      }, evt => {
+      };
+      await streamChat(body, evt => {
         if (evt.type === 'status') {
           bubble.setStage(streamStageText(evt.stage, evt));
         } else if (evt.type === 'delta') {
@@ -6170,8 +6226,14 @@
         } else if (evt.type === 'done') {
           finalData = evt.data;
         }
-      }, state.streamAbort.signal);
+      }, state.streamAbort.signal, agentMode ? '/agent/stream' : '/chat/stream');
       if (!finalData) throw new Error('连接中断，回答没有收完');
+      if (agentMode && finalData.thread_id) {
+        conv.agentThreadId = finalData.thread_id;
+        if (finalData.thread_reset) {
+          toast('原来的 Agent 线程属于其他账号，已换成新线程', 'err');
+        }
+      }
       bubble.done();
       conv.messages.push({role: 'assistant', data: finalData, query: text,
         ts: Date.now()});
@@ -17143,6 +17205,22 @@
 
     const collectionChip = $('#collection-chip');
     if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
+    const agentChip = $('#agent-chip');
+    if (agentChip) {
+      const syncAgentChip = () => {
+        agentChip.classList.toggle('on', !!state.agentMode);
+        agentChip.setAttribute('aria-pressed', state.agentMode ? 'true' : 'false');
+        agentChip.title = state.agentMode
+          ? 'Agent 模式已开启：会规划、调用 search_kb 检索，回答下可展开工具与校验过程'
+          : 'Agent 模式：规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；资料不足仍然拒答';
+      };
+      agentChip.addEventListener('click', () => {
+        state.agentMode = !state.agentMode;
+        saveKey(AGENT_MODE_KEY, state.agentMode);
+        syncAgentChip();
+      });
+      syncAgentChip();
+    }
     $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
     const libDrop = $('#lib-drop');

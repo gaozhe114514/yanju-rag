@@ -171,12 +171,15 @@ class WeKnoraClientTest(unittest.TestCase):
         rows = self.client.search("kb-1", "线程是什么", 5)
         self.assertEqual(rows[0]["text"], "线程是调度的基本单位。")
         self.assertEqual(rows[0]["title"], "操作系统讲义")
-        hits = WeKnoraSearcher(self.client, "kb-1", "操作系统讲义").search("线程是什么")
+        searcher = WeKnoraSearcher(self.client, "kb-1", "操作系统讲义")
+        hits = searcher.search("线程是什么")
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0].chunk.kind, "doc")
         self.assertIn("线程", hits[0].chunk.text)
         self.assertEqual(hits[0].chunk.source_ref["document_id"], "k-1")
         self.assertAlmostEqual(hits[0].score, 0.87)
+        # AnswerPipeline / Agent 统一带 skip_rerank；WeKnora 没有本地精排，忽略即可
+        self.assertEqual(len(searcher.search("线程是什么", skip_rerank=True)), 1)
 
     def test_preview(self):
         self.assertIn("进程", self.client.document_preview("k-1"))

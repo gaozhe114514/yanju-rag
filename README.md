@@ -4,7 +4,7 @@
 
 > 问资料，答得出来就带逐字引用，答不出来就明说；也能把主题整理成 Word 文档或 PPT。
 
-**当前版本 v0.75.1** ｜ 642 条测试通过 ｜ 已部署到 `101.42.26.64` ｜ Python 3.9 · FastAPI · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
+**当前版本 v0.76.0** ｜ 666 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.75.1）｜ Python 3.9 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
 
 ![问答首页（琉璃主题）](docs/screens/home-glass-1440.png)
 
@@ -19,6 +19,7 @@
 | 能力 | 说明 |
 |---|---|
 | 可引用问答 | 问题理解 → BM25 + 向量召回 → RRF → Cross-Encoder 精排 → 拒答闸门 → 生成 → 引用逐字校验；校验不过重试一次，仍不过就拒答 |
+| Agent 层（v0.76） | LangGraph 状态图：规划 → 调用 `search_kb` → 拒答判断 → 生成 → 逐字校验 → 换查询重试一次 → 拒答；工具调用与执行过程可见，线程记忆可落 PostgreSQL |
 | 自建知识库 | PDF / Word / PPT / Excel / Markdown / TXT / HTML 与图片 OCR；切分成可引用片段，支持在线编辑、附件、表格与原文高亮 |
 | 学习闭环 | 精通之路（导师定大纲、出题、按证据判掌握）、练习、错题本、10 题小测、知识图谱 |
 | 创作 | 选文档或演示文稿，写主题 → 确认大纲 → 下载 Word `.docx` / PPT `.pptx` / Markdown `.md` |
@@ -28,6 +29,19 @@
 | 知识库：31 篇资料、1683 段可引用片段 | 设置：四套主题，琉璃为默认 |
 |---|---|
 | <img src="docs/screens/collection-glass-1440.png" width="100%" alt="知识库"> | <img src="docs/screens/settings-glass-1440.png" width="100%" alt="设置"> |
+
+## Agent 层
+
+输入条切到 **Agent** 后，回答不只给出引用，还能看到完整轨迹：理解问题 → 调用 `search_kb` 检索 → 拒答判断 → 生成 → 逐字校验；校验不过会换一个检索问题重试一次，仍不过就拒答。工具参数、命中条数与每步耗时都能在回答下展开。
+
+![Agent 模式：工具调用与逐字校验](docs/screens/agent-glass-1440.png)
+
+- **不动检索**：`search_kb` 仍调用原来的 BM25 + 向量 → RRF → Cross-Encoder，只把返回的 top 片段暴露成工具。
+- **硬约束不变**：引用仍逐字命中原文；失败重试一次后拒答；资料不足写缺口日志。
+- **线程记忆**：默认进程内，配 `DATABASE_URL` 后自动切到 PostgreSQL checkpoint；换账号拿旧线程号会新建线程。
+- **接口**：`POST /agent/stream`（SSE）；现有 `/chat`、`/chat/stream` 完全不动。
+
+细节与取舍见 [Agent 层](docs/Agent层.md)。
 
 ## 系统架构
 
@@ -83,6 +97,7 @@ py -m unittest discover -s tests -t . -v
 | [设计规范](design.md) | 配色、字体、间距、组件与布局的唯一来源；改界面前先读 |
 | [架构设计](docs/架构设计.md) | 在线链路、分层架构、数据模型、选型理由、成本与落地顺序 |
 | [功能说明](docs/功能说明.md) | 产品框架、自建知识库、权限、文件进料、账号同步、WeKnora |
+| [Agent 层](docs/Agent层.md) | LangGraph 状态图、search_kb、线程记忆、SSE 事件与边界 |
 | [在线问答与接口](docs/接口.md) | 启动方式、HTTP 接口一览、访问口令、限流与缓存 |
 | [检索与评测](docs/检索与评测.md) | 检索模式、2019 卷基线、拒答阈值标定、真实生成评测 |
 | [存储层](docs/存储层.md) | PostgreSQL + pgvector 的表结构、语料同步与重建 |
@@ -103,6 +118,7 @@ data/
   eval/      检索评测 query 集
   out/       定稿 JSONL
   work/      中间产物（已 gitignore）
+agent/       Agent 状态图、search_kb 工具、线程记忆与运行时
 pipeline/    离线数据管线：切题、抽取、校验、校对、补解析
 retrieval/   chunk、bigram 分词、BM25、bge 向量、RRF、Cross-Encoder、评测
 answer/      问题理解、拒答闸门、生成、引用校验、流式、用资料出题、文档与 PPT
@@ -125,6 +141,7 @@ tools/       构建期预下载模型
 - **E 级校验错误不归零，不许进检索库。**
 - **公式原样保留**，不让模型重写 LaTeX。
 - **引用必须逐字命中原文**：校验不过重试一次，仍不过就拒答。
+- **Agent 与主链路同一套规则**：`/agent/stream` 也必须逐字校验；失败最多换查询重试一次，仍失败必须拒答。
 - **拒答优于硬编**：资料未覆盖时明说，并记录缺口日志。
 
 ## 版权

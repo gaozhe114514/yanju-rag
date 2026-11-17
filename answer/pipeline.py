@@ -77,6 +77,10 @@ class AnswerPipeline:
                 focus, query, tables=getattr(self.searcher, "doc_tables", None))
         return self._with_neighbors(hits, chunks), None
 
+    def prepare(self, query: str, hits):
+        """给 Agent 层复用的上下文准备（相邻片段 / 全表统计），行为与主链路一致。"""
+        return self._prepare(query, hits)
+
     # 普通问答补前后片段的上限：top-k 之外不再无限加
     NEIGHBOR_MAX_CHARS = 12000
 

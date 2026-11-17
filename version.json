@@ -1,8 +1,14 @@
 {
-  "version": "0.75.1",
-  "released": "2026-11-03",
+  "version": "0.76.0",
+  "released": "2026-11-17",
   "name": "言据",
   "history": [
+    {
+      "version": "0.76.0",
+      "date": "2026-11-17",
+      "title": "Agent 层：LangGraph 状态图、search_kb 工具与线程记忆",
+      "notes": "新增 POST /agent/stream：规划 → 调用 search_kb → 拒答闸门 → 生成 → 逐字引用校验 → 失败换查询重试一次 → 仍失败拒答。检索仍走原来的 BM25 / 向量 / RRF / Cross-Encoder，search_kb 只包一层返回可引用片段；生成、引用校验与拒答全部复用现有实现。状态图用 LangGraph 0.6（0.7 起要求 Python 3.10，本机与 CI 仍是 3.9），线程记忆默认 InMemorySaver，配 DATABASE_URL 时换 PostgresSaver 并复用同一个 PostgreSQL 16 自动建表；线程按登录用户 / 匿名 IP 哈希隔离，换账号拿旧 thread_id 续写会新建线程。前端输入条新增 Agent 开关，回答下可展开执行过程与 search_kb 调用参数；原 /chat、/chat/stream 不动。测试 666 条通过（skip 13）；模拟 CI 环境 664 条通过（18 跳过）。本轮未部署。"
+    },
     {
       "version": "0.75.1",
       "date": "2026-11-03",

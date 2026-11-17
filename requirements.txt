@@ -15,6 +15,12 @@ uvicorn[standard]>=0.30
 # 存储层：Postgres + pgvector（pgvector 扩展在数据库镜像里，Python 侧只要驱动）
 psycopg[binary]>=3.2
 
+# Agent 层：LangGraph 状态图 + 线程记忆。
+# 0.7 / 1.0 起要求 Python >=3.10，本机与 CI 仍是 3.9，所以钉在 0.6。
+# PostgreSQL checkpoint 是独立安装包，复用同一个 PG 16。
+langgraph>=0.6,<0.7
+langgraph-checkpoint-postgres>=2.0,<3
+
 # 知识库文件进料（kb/parsers.py）：
 #   PDF 文字层、HTML 正文、编码探测
 pypdf>=4.0

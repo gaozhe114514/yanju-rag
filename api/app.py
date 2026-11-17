@@ -116,6 +116,16 @@ class ChatRequest(BaseModel):
     study: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AgentRequest(BaseModel):
+    """Agent 模式：多轮带线程记忆，工具调用与校验轨迹随 SSE 返回。"""
+    query: str = Field(..., min_length=1, max_length=500)
+    # 线程号由前端生成或服务端首次返回；同一账号才能续写同一线程
+    thread_id: str = Field("", max_length=64)
+    history: List[ChatTurn] = Field(default_factory=list)
+    style: str = Field("", max_length=400)
+    collection: str = Field("", max_length=64)
+
+
 class MasteryMaterial(BaseModel):
     """学习者勾的素材：key 决定服务端能不能自己去读，detail 是前端手里的摘要。"""
     key: str = Field("", max_length=200)
@@ -362,6 +372,27 @@ def _resolve(path: str) -> str:
     return str((ROOT / path) if not os.path.isabs(path) else Path(path))
 
 
+def _init_agent_runtime() -> None:
+    """Agent 是可选的：没装 langgraph 或记忆后端连不上时，老接口照常工作。"""
+    old = _state.pop("agent_handle", None)
+    if old is not None:
+        old.close()
+    try:
+        from agent.checkpoint import build_checkpointer
+        from agent.runtime import AgentRuntime
+
+        handle = build_checkpointer(os.environ.get("DATABASE_URL", ""))
+        _state["agent_rt"] = AgentRuntime(handle.saver, handle.kind)
+        _state["agent_handle"] = handle
+        _state.pop("agent_error", None)
+        print("Agent 记忆：%s" % handle.kind)
+    except Exception as e:
+        _state["agent_rt"] = None
+        _state["agent_handle"] = None
+        _state["agent_error"] = "%s: %s" % (type(e).__name__, e)
+        print("Agent 未启用：%s" % _state["agent_error"])
+
+
 def _load() -> None:
     raw = os.environ.get(
         "KB_INPUT",
@@ -496,12 +527,18 @@ def _load() -> None:
         "cache_ns": "%s|%s|k%s|%s" % (
             mode, provider_name, fuse_k, fingerprint[:16]),
     })
+    _init_agent_runtime()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _load()
-    yield
+    try:
+        yield
+    finally:
+        handle = _state.pop("agent_handle", None)
+        if handle is not None:
+            handle.close()
 
 
 app = FastAPI(title="言据 · 可引用知识库", version=version_info()["version"],
@@ -512,7 +549,7 @@ app = FastAPI(title="言据 · 可引用知识库", version=version_info()["vers
 # 记所有进到 API 的请求，但只留方法、路径、状态、耗时和问句；
 # 不记 IP、UA、请求头。写库放到后台线程，日志失败绝不影响问答。
 
-_QUERY_PATHS = {"/ask", "/chat", "/chat/stream"}
+_QUERY_PATHS = {"/ask", "/chat", "/chat/stream", "/agent/stream"}
 _LOG_SKIP = {"/health", "/favicon.ico"}
 
 
@@ -598,6 +635,38 @@ def _pipeline_for(collection: str):
                           gate=_state.get("gate"), prompt_mode="doc")
     pipes[collection] = (searcher, pipe)
     return pipe
+
+
+def _agent_owner(request: Request) -> str:
+    """线程归属：登录用户按 user id，匿名按 IP 哈希；换人续写会新建线程。"""
+    token = _bearer(request)
+    if token:
+        try:
+            user = _accounts().authenticate(token)
+        except Exception:
+            user = None
+        if user and user.get("id") is not None:
+            return "user:%s" % user["id"]
+    # 用 _client_ip 而不是 _client_tag：放在 Nginx 后面时才能拿到真实客户端 IP
+    ip = _client_ip(request)
+    tag = hashlib.sha256(ip.encode("utf-8")).hexdigest()[:12] if ip else ""
+    return "anon:%s" % tag
+
+
+def _agent_deps(pipeline):
+    """把现有管线包成 Agent 依赖，检索与生成实现完全复用。"""
+    from agent.nodes import AgentDeps
+
+    return AgentDeps(
+        search=lambda q, skip_rerank=False: pipeline.searcher.search(
+            q, skip_rerank=skip_rerank),
+        prepare=pipeline.prepare,
+        provider=pipeline.provider,
+        gate=pipeline.gate,
+        agent=_state.get("agent"),
+        prompt_mode=pipeline.prompt_mode,
+        top_k=5,
+    )
 
 
 def _preset_collection() -> dict:
@@ -725,16 +794,14 @@ def _steps(res, plan=None, collection: str = "") -> list:
     return steps
 
 
-def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
-    # 引用可能来自补进来的相邻片段或整表片段，按「实际交给模型的上下文」解析；
-    # 召回条数仍按检索结果 res.hits 显示。
-    pool = res.context or res.hits
+def _citation_payload(citations, pool) -> list:
+    """把模型给的 chunk_id / quote 补成前端可跳转的引用。"""
     by_id = {h.chunk.id: h.chunk for h in pool}
-    citations = []
-    for c in res.citations:
+    out = []
+    for c in citations or []:
         cid = c.get("chunk_id")
         ch = by_id.get(cid)
-        citations.append({
+        out.append({
             "chunk_id": cid,
             "quote": c.get("quote"),
             "kind": ch.kind if ch else "question",
@@ -743,6 +810,14 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
             "subject": ch.subject if ch else "",
             "source_ref": ch.source_ref if ch else {},
         })
+    return out
+
+
+def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
+    # 引用可能来自补进来的相邻片段或整表片段，按「实际交给模型的上下文」解析；
+    # 召回条数仍按检索结果 res.hits 显示。
+    pool = res.context or res.hits
+    citations = _citation_payload(res.citations, pool)
     rewritten = plan.rewritten if plan and plan.rewritten != plan.query else ""
     return {
         "intent": plan.intent if plan else "kb",
@@ -763,6 +838,63 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
             "rewritten_query": rewritten,
             "steps": _steps(res, plan, collection),
         },
+    }
+
+
+def _agent_payload(result, t0: float, query: str = "",
+                   collection: str = "") -> dict:
+    """Agent 的最终响应：字段与 /chat 对齐，另带线程号与工具轨迹。"""
+    pool = result.context or result.hits
+    citations = _citation_payload(result.citations, pool)
+    rewritten = result.rewritten if result.rewritten != query else ""
+    steps = list(result.steps or [])
+    return {
+        "intent": result.intent,
+        "mode": "agent",
+        "collection": "" if _is_preset(collection) else collection,
+        "thread_id": result.thread_id,
+        "thread_reset": bool(result.thread_reset),
+        "refused": result.refused,
+        "answer": result.answer,
+        "citations": citations,
+        "reason": result.reason,
+        "gap_detail": gap_detail(result.reason) if result.refused else "",
+        "hits": [_hit_payload(h) for h in result.hits],
+        "attempts": result.attempts,
+        "latency_ms": int((time.time() - t0) * 1000),
+        "rewritten_query": rewritten,
+        "tool_calls": list(result.tool_calls or []),
+        "trace": {
+            "intent": result.intent,
+            "rewritten_query": rewritten,
+            "steps": steps,
+        },
+        "agent": {
+            "checkpointer": result.checkpointer,
+            "thread_id": result.thread_id,
+            "thread_reset": bool(result.thread_reset),
+            "attempts": result.attempts,
+            "retry": result.attempts > 1,
+            "tool_calls": list(result.tool_calls or []),
+        },
+    }
+
+
+def _agent_unavailable_payload(t0: float) -> dict:
+    """langgraph 没装上时的明确失败，不假装回答。"""
+    return {
+        "intent": "kb", "mode": "agent", "collection": "",
+        "thread_id": "", "thread_reset": False,
+        "refused": True, "answer": "", "citations": [],
+        "reason": "agent_unavailable", "gap_detail": "",
+        "hits": [], "attempts": 0,
+        "latency_ms": int((time.time() - t0) * 1000),
+        "rewritten_query": "", "tool_calls": [],
+        "trace": {"intent": "kb", "rewritten_query": "", "steps": []},
+        "agent": {"checkpointer": "none", "thread_id": "",
+                  "thread_reset": False, "attempts": 0, "retry": False,
+                  "tool_calls": []},
+        "notice": "Agent 运行时未启用，请检查服务端依赖与日志",
     }
 
 
@@ -951,6 +1083,9 @@ def health() -> dict:
         "cache_ttl_s": _state.get("cache_ttl", 0),
         "collections": _collection_count(),
         "kb_backend": "weknora" if _weknora() is not None else "local",
+        "agent": bool(_state.get("agent_rt")),
+        "agent_checkpointer": getattr(_state.get("agent_handle"), "kind",
+                                      "none"),
     }
 
 
@@ -1325,6 +1460,62 @@ def chat_stream(req: ChatRequest, request: Request,
                 _cache_store(plan.rewritten, payload, style, req.collection)
                 yield sse({"type": "done", "data": payload})
                 return
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
+
+@app.post("/agent/stream")
+def agent_stream(req: AgentRequest, request: Request,
+                 _: None = Depends(enforce_guard)):
+    """Agent 流式端点：规划 → search_kb → 闸门 → 生成 → 逐字校验。
+
+    先按 SSE 推 status / tool / delta，校验失败会发 reset 并换查询重试一次；
+    最终只认 done 里的 payload。现有 /chat、/chat/stream 完全不动。
+    """
+    _guard_chat_collection(req.collection, request)
+    pipeline = _pipeline_for(req.collection)
+    runtime = _state.get("agent_rt")
+
+    def events():
+        t0 = time.time()
+        if pipeline is None:
+            data = (_empty_collection_payload(t0)
+                    if not _is_preset(req.collection)
+                    else _agent_unavailable_payload(t0))
+            yield sse({"type": "done", "data": data})
+            return
+        if runtime is None:
+            yield sse({"type": "done", "data": _agent_unavailable_payload(t0)})
+            return
+
+        deps = _agent_deps(pipeline)
+        owner = _agent_owner(request)
+        metrics.bump("agent_total")
+        with _lock:
+            for ev in runtime.stream(
+                    deps, query=req.query, thread_id=req.thread_id,
+                    owner=owner, history=_history(req),
+                    style=_clean_style(req.style),
+                    collection=req.collection):
+                if ev.get("type") != "final":
+                    yield sse(ev)
+                    continue
+                result = ev["result"]
+                metrics.bump("agent_refused" if result.refused
+                             else "agent_answered")
+                if result.attempts > 1:
+                    metrics.bump("agent_retry")
+                if result.tool_calls:
+                    metrics.bump("agent_tool_calls", len(result.tool_calls))
+                _log_gap(req.query, AnswerResult(
+                    result.refused, reason=result.reason, hits=result.hits),
+                    req.collection)
+                yield sse({"type": "done", "data": with_cache_meta(
+                    _agent_payload(result, t0, req.query, req.collection))})
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache",

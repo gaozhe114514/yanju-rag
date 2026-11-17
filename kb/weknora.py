@@ -394,7 +394,9 @@ class WeKnoraSearcher:
         self.name = name
         self.limit = limit
 
-    def search(self, query: str) -> List[SearchHit]:
+    def search(self, query: str, skip_rerank: bool = False) -> List[SearchHit]:
+        # WeKnora 自己完成召回与排序，没有本地精排开关；参数只为兼容
+        # AnswerPipeline / Agent 的统一调用签名，传什么都不影响这里。
         rows = self.client.search(self.cid, query, self.limit)
         hits = []
         for i, row in enumerate(rows):
