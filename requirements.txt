@@ -35,5 +35,9 @@ chardet>=5.0
 # 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU、无需系统 OCR 引擎。
 #   opencv-python 在 slim 镜像里需要 libgl1 / libglib2.0-0（见 Dockerfile）；
 #   模型随包分发（约 15MB），第一次识别时加载进内存，KB_OCR=0 可整体关闭。
+# opencv-python 4.11 起要求 numpy>=2，和本项目的 numpy<2 冲突；
+# requirements-ocr 里也钉了一次，但 Dockerfile 是两次 pip install，
+# 第一次解析 requirements.txt 时看不到第二个文件，所以这里必须再钉。
+opencv-python==4.8.1.78
 rapidocr-onnxruntime>=1.3,<2
 pillow>=10.0
