@@ -95,7 +95,7 @@ search_kb ──▶ gate ──(证据不足)──▶ refuse ──▶ END
 ## 线程记忆
 
 - 状态里的 `messages` 只存 user / assistant 的短文本（单条截断 1200 字），用带上限的 reducer 只保留最近 20 条；检索片段、上下文、原始输出也都在状态里，但每轮覆盖，不会随轮次无限增长。
-- 默认 `InMemorySaver`，进程重启即丢；配置 `DATABASE_URL` 且装了 `langgraph-checkpoint-postgres` 时自动换 `PostgresSaver`，复用同一个 PostgreSQL 16，`setup()` 自动建 `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` 三张表。
+- 默认 `InMemorySaver`，进程重启即丢；配置 `DATABASE_URL` 且装了 `langgraph-checkpoint-postgres` 时自动换 `PostgresSaver`，复用同一个 PostgreSQL 16，`setup()` 自动建 `checkpoints` / `checkpoint_blobs` / `checkpoint_writes`，以及记录迁移版本的 `checkpoint_migrations`。
 - `thread_id` 由前端给（缺省用对话 id）或服务端生成；同一 `thread_id` 只有同一个 owner 能续写。owner 是登录用户 id，未登录时是客户端 IP 的 SHA-256 前缀。换了账号或换了客户端拿旧线程号来，会新建线程并在响应里标 `thread_reset: true`，不会读出别人的对话。
 - `/health` 的 `agent` / `agent_checkpointer` 可以直接看到当前是否启用、记忆落在内存还是 Postgres。
 - 单 worker 部署下内存记忆够用；多 worker 各自一份，必须配 `DATABASE_URL` 才能共享线程。
