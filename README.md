@@ -4,7 +4,7 @@
 
 > 问资料，答得出来就带逐字引用，答不出来就明说；也能把主题整理成 Word 文档或 PPT。
 
-**当前版本 v0.76.0** ｜ 667 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.75.1）｜ Python 3.9 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
+**当前版本 v0.76.1** ｜ 667 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.75.1）｜ Python 3.11 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
 
 ![问答首页（琉璃主题）](docs/screens/home-glass-1440.png)
 
@@ -68,7 +68,7 @@ curl -s http://127.0.0.1:8000/health
 ### 本地 mock（不需要 API key）
 
 ```bash
-py -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+py -3.11 -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 # 浏览器打开 http://127.0.0.1:8000
 ```
 
@@ -77,17 +77,17 @@ mock provider 只取 top-1 的答案，用来验证链路，不是真生成。
 ### 离线跑一遍数据管线
 
 ```bash
-py -m pipeline.build --paper data/raw/sample_paper.txt \
-                     --answer data/raw/sample_answer.txt \
-                     --year 2024 --provider mock
+py -3.11 -m pipeline.build --paper data/raw/sample_paper.txt \
+                          --answer data/raw/sample_answer.txt \
+                          --year 2024 --provider mock
 ```
 
-> Windows 上若 `python` 指向 Microsoft Store 的占位符，请使用 `py`。
+> 项目按 Python 3.11 维护；Windows 上用 `py -3.11`（或先激活 3.11 的虚拟环境），不要用 Microsoft Store 的 `python` 占位符。
 
 ### 运行测试
 
 ```bash
-py -m unittest discover -s tests -t . -v
+py -3.11 -m unittest discover -s tests -t . -v
 ```
 
 ## 文档

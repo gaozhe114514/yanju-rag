@@ -22,5 +22,9 @@ python-pptx>=0.6.23
 
 # 图片 OCR：RapidOCR 跑 PP-OCRv4 的 ONNX 模型，纯 CPU，模型随包分发（约 15MB）。
 # 第一次识别时加载进内存，KB_OCR=0 可整体关闭。
+# opencv-python 4.11 起要求 numpy>=2，而本项目为了 pgvector 仍钉 numpy<2；
+# 不钉 opencv 时 pip 会在 3.11 上反复回溯 4.11~5.0 的几十 MB wheel。
+# 4.8.1.78 是 3.9 环境已验收的版本，rapidocr 也支持。
+opencv-python==4.8.1.78
 rapidocr-onnxruntime>=1.3,<2
 pillow>=10.0

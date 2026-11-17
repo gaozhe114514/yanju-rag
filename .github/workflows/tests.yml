@@ -16,10 +16,9 @@ permissions:
 
 jobs:
   test:
-    # ubuntu-latest 已经是 24.04，而 setup-python 在 24.04 上不再提供 3.9 的
-    # 预编译包（3.9 已 EOL），日志会直接报 "version '3.9' ... was not found"。
-    # 项目本体和 Docker 镜像仍是 3.9，先固定到 22.04；等整体升到 3.11 再换回 latest。
-    runs-on: ubuntu-22.04
+    # 项目本体、Docker 镜像与开发环境统一到 Python 3.11；ubuntu-latest（24.04）
+    # 的 setup-python 能直接装 3.11，不再需要为 3.9 退回 22.04。
+    runs-on: ubuntu-latest
     env:
       # 强制 UTF-8，避免 runner 上非 UTF-8 输出编码把中文用例名或断言打崩。
       PYTHONUTF8: "1"
@@ -29,19 +28,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.11"
       # 单测可以依赖：标准库 + numpy + 文件解析要的几个纯 wheel。
       # openpyxl / python-docx 是表格抽取用例自己造 xlsx / docx 样本用的，
       # 和生产进料同一套解析库，不算额外引擎。
       # langgraph 是 Agent 状态图的纯 Python 运行时，图用例需要它；
-      # 版本与 requirements.txt 一致，钉在 0.6（Python 3.9 可装的最后一档）。
+      # 版本与 requirements.txt 一致，Agent 层先在 0.6 上验收，升 1.0 单独做。
+      # langchain-core<1 是配套约束：0.6 的元数据允许 1.x，但只在 0.3.x 上验证过。
       # fastapi / torch / OCR 引擎仍然不许进单测：要么改成测纯函数，
       # 要么在用例里用 mock 把引擎挡掉（OCR 用例就是 mock 的）。
       # 曾经这里只装 numpy，知识库解析上线后一直红，就是漏了 pillow / bs4。
       - name: Install test deps
-        run: python -m pip install "numpy<2" pillow beautifulsoup4 pypdf chardet openpyxl python-docx "langgraph>=0.6,<0.7"
+        run: python -m pip install "numpy<2" pillow beautifulsoup4 pypdf chardet openpyxl python-docx "langgraph>=0.6,<0.7" "langchain-core>=0.3,<1"
       # 红了先看这一步：版本对不上就能直接排除环境问题。
-      # 本地等价复现：在 python:3.9-slim 容器里跑同样的两条命令。
+      # 本地等价复现：在 python:3.11-slim 容器里跑同样的两条命令。
       - name: Show environment
         run: |
           python -V

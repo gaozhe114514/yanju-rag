@@ -1,4 +1,5 @@
-# 离线管线（pipeline/）只依赖 Python 3.9+ 标准库，无需安装任何包。
+# 项目按 Python 3.11 维护（Docker 镜像也是 3.11）；离线管线只用标准库。
+# 离线管线（pipeline/）无需安装任何包。
 #
 # 检索与问答层需要（Windows 上用 py -m pip 安装）：
 numpy>=1.24,<2
@@ -16,9 +17,13 @@ uvicorn[standard]>=0.30
 psycopg[binary]>=3.2
 
 # Agent 层：LangGraph 状态图 + 线程记忆。
-# 0.7 / 1.0 起要求 Python >=3.10，本机与 CI 仍是 3.9，所以钉在 0.6。
+# 本机 / CI 已升到 Python 3.11，但 Agent 层先在 0.6 上完成验收；
+# 升 1.0 / create_agent 单独做，不和 Python 版本迁移混在一起。
+# langgraph 0.6 的依赖只写 langchain-core>=0.1；在 3.11 上 pip 会挑 1.x，
+# 而 0.6 只在 0.3.x 上验证过，所以这里把 langchain-core 也钉在 1 以下。
 # PostgreSQL checkpoint 是独立安装包，复用同一个 PG 16。
 langgraph>=0.6,<0.7
+langchain-core>=0.3,<1
 langgraph-checkpoint-postgres>=2.0,<3
 
 # 知识库文件进料（kb/parsers.py）：

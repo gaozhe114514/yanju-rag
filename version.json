@@ -1,8 +1,14 @@
 {
-  "version": "0.76.0",
+  "version": "0.76.1",
   "released": "2026-11-17",
   "name": "言据",
   "history": [
+    {
+      "version": "0.76.1",
+      "date": "2026-11-17",
+      "title": "开发与 CI 统一到 Python 3.11",
+      "notes": "Docker 镜像早就是 python:3.11-slim，本机与 CI 还停在 3.9，CI 为了 3.9 固定 ubuntu-22.04。现在本机装 Python 3.11.9、新建 E:\\venvs\\yanju311，CI 改 python-version 3.11 与 ubuntu-latest，README / CLAUDE.md / requirements 注释同步，数据管线文档不再写 3.9+。LangGraph 暂留 0.6，1.0 / create_agent 单独迁移，不和 Python 版本升级混做；同时补 langchain-core<1 与 opencv-python==4.8.1.78 两个 pin，避免 3.11 上解析到未验证的 1.x 或与 numpy<2 冲突的 opencv 5.x。测试 667 条通过（skip 13）；模拟 CI 665 条通过（18 跳过）；3.11 + CPU torch 下 hybrid-ce 的 /agent/stream 跑通（第一次 13.3s、第二次 12.4s，引用 1 条）。本轮未部署，线上仍是 v0.75.1。"
+    },
     {
       "version": "0.76.0",
       "date": "2026-11-17",

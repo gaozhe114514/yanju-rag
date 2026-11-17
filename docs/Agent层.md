@@ -149,7 +149,9 @@ README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地�
 
 ## 为什么是 LangGraph 0.6
 
-- 项目本机、CI 与线上镜像都按 Python 3.9 维护；LangGraph 0.7 / LangChain 1.0 起要求 Python 3.10，`langchain.agents.create_agent` 在 3.9 上用不了。因此 `requirements.txt` 钉在 `langgraph>=0.6,<0.7`，用显式 `StateGraph` 组节点，不依赖 `create_agent`。
+- v0.76.0 时本机、CI 与线上镜像仍按 Python 3.9 维护；LangGraph 0.7 / LangChain 1.0 起要求 Python 3.10，所以当时钉在 `langgraph>=0.6,<0.7`。
+- v0.76.1 已把本机、CI 与镜像统一到 Python 3.11，理论上可以升 1.0；但这轮只做 Python 版本迁移，Agent 层先在 0.6 上验收，`create_agent` 作为单独迁移，不和版本升级混做。
+- `requirements.txt` 同时钉了 `langchain-core>=0.3,<1`：LangGraph 0.6 的依赖元数据只写 `langchain-core>=0.1`，在 3.11 上 pip 会挑 1.x，而 0.6 只在 0.3.x 上验证过；不钉会在新环境里装出没测过的组合。
 - 显式图更适合面试与审计：每个节点、每条边、重试上限都写在代码里，不需要记框架的隐式 ReAct 循环。
 - checkpoint 仍用官方 `InMemorySaver` / `PostgresSaver`，没有自己造一套状态存储。
 
@@ -169,7 +171,7 @@ README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地�
 - 单元测试新增 24 条：`tests/test_agent_graph.py`（成功、闸门拒答、换查询重试成功 / 失败、重试后无命中仍保留尝试次数、模型拒答、生成异常、寒暄 / 澄清、线程记忆、跨 owner 隔离、工作线程冒烟）与 `tests/test_agent_tools.py`（工具 top_k、JSON Schema、状态序列化、线程号清洗、checkpointer 选择、SSE 事件、refine 兜底）。
 - 全量：`Ran 667 tests ... OK (skipped=13)`。
 - 模拟 CI（不装 fastapi，装 langgraph）：`Ran 665 tests ... OK (skipped=18)`。
-- 本机 mock 服务：`/health` 返回 `agent=true / agent_checkpointer=memory`；`/agent/stream` 成功返回工具调用、引用与步骤；同一 `thread_id` 第二轮能带上上一轮历史改写追问。另用 `KB_MODE=hybrid-ce`（与线上同模式）跑通：`search_kb` 检索 723ms、引用 1 条、`refused=false`，第二轮同样带上历史改写。
+- 本机 mock 服务：`/health` 返回 `agent=true / agent_checkpointer=memory`；`/agent/stream` 成功返回工具调用、引用与步骤；同一 `thread_id` 第二轮能带上上一轮历史改写追问。另用 `KB_MODE=hybrid-ce`（与线上同模式）跑通：v0.76.0 在 3.9 + CUDA torch 上检索 723ms；v0.76.1 换 3.11 + CPU torch 后第一次 13.3s、第二次 12.4s（CPU 精排，生产镜像同样是 CPU torch），引用 1 条、`refused=false`，第二轮同样带上历史改写。
 - **PostgresSaver 路径没有在本机实库跑过**：本机没有 Docker / PostgreSQL，只按官方 `PostgresSaver(conn) + setup()` 接法实现。部署前要在有数据库的环境确认 `/health` 的 `agent_checkpointer=postgres`，并用同一个 `thread_id` 连问两轮验证跨重启续写。
 - 前端 CDP：1440×900 与 390×844 各一张截图；Agent 开关 `aria-pressed=true`，工具调用可展开，横向溢出 0，控制台错误 0。
 

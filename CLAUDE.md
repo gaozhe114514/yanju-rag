@@ -29,5 +29,5 @@
 
 ## 验证
 
-- 后端：`python -m unittest discover -s tests -t .`（解释器 `E:\python3.9\python.exe`）
+- 后端：`python -m unittest discover -s tests -t .`（解释器 `E:\venvs\yanju311\Scripts\python.exe`，Python 3.11）
 - 前端：Playwright 实际打开页面点一遍，桌面 1440×900 与手机 390×844 各截一张图，存 `data/work/`。
