@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.76.1">
+  <meta name="app-version" content="0.76.2">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -2070,8 +2070,12 @@
     }
     .composer-chip:hover { border-color: var(--line-strong); color: var(--brand); }
     .composer-chip.on { background: var(--wash); border-color: transparent; color: var(--brand-dark); }
-    #agent-chip.on { font-weight: 600; }
-    #agent-chip.on::after {
+    .chip-kicker { color: var(--muted); margin-right: 4px; white-space: nowrap; }
+    .composer-chip.on .chip-kicker { color: inherit; opacity: .75; }
+    .chip-kicker-short { display: none; }
+    #answer-mode-chip { max-width: 118px; }
+    #answer-mode-chip.on { font-weight: 600; }
+    #answer-mode-chip.on::after {
       content: ''; display: inline-block; width: 5px; height: 5px;
       margin-left: 5px; border-radius: 50%; background: currentColor;
       vertical-align: 1px;
@@ -2087,7 +2091,10 @@
       .tabbar .nav-ico svg { width: 17px; height: 17px; }
       .subnav { flex-wrap: nowrap; overflow-x: auto; }
       .subnav button { flex: none; }
-      .composer-chip { max-width: 62px; padding: 4px 7px; }
+      .composer-chip { max-width: 96px; padding: 4px 7px; }
+      .chip-kicker-full { display: none; }
+      .chip-kicker-short { display: inline; }
+      #answer-mode-chip { max-width: 92px; }
       .list-row { flex-direction: column; gap: 8px; }
       .list-actions { width: 100%; justify-content: flex-start; }
       .toolbar .grow { min-width: 0; }
@@ -2123,6 +2130,11 @@
       .create-actions .dl-primary, .create-actions .dl-again { grid-column: 1 / -1; }
       .module { padding: 14px; }
       .space-groups { gap: 24px; }
+    }
+
+    @media (max-width: 380px) {
+      .composer-chip { max-width: 72px; padding: 4px 6px; font-size: 10.5px; }
+      #answer-mode-chip { max-width: 78px; }
     }
 
     /* ---------- 流式对话（对齐 DeepTutor 的对话列） ---------- */
@@ -4131,10 +4143,16 @@
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
             <button class="composer-chip" id="collection-chip" type="button"
-                    aria-haspopup="dialog" title="只用 408 题库的真题与考点；要查自己导入的资料，就在这里切换">408 题库</button>
-            <button class="composer-chip" id="agent-chip" type="button"
-                    aria-pressed="false" title="Agent 模式：规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；资料不足仍然拒答">Agent</button>
-            <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog">默认</button>
+                    aria-haspopup="dialog" title="查哪些资料：内置 408 题库，或你导入的知识库">
+              <span class="chip-kicker">资料</span><span id="collection-chip-name">408 题库</span>
+            </button>
+            <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog" title="用哪种语气讲；引用与拒答规则不变">
+              <span class="chip-kicker">人格</span><span id="persona-chip-name">默认</span>
+            </button>
+            <button class="composer-chip" id="answer-mode-chip" type="button"
+                    aria-haspopup="dialog" title="回答方式：标准问答，或 Agent 编排">
+              <span class="chip-kicker chip-kicker-full">回答方式</span><span class="chip-kicker chip-kicker-short">方式</span><span id="answer-mode-name">标准</span>
+            </button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
             </button>
@@ -9402,7 +9420,8 @@
     const chip = $('#collection-chip');
     if (!chip) return;
     const c = activeCollection();
-    chip.textContent = c ? c.name : '408 题库';
+    const name = $('#collection-chip-name');
+    if (name) name.textContent = c ? c.name : '408 题库';
     chip.classList.toggle('on', !!c);
     chip.title = c ? '当前只用「' + c.name + '」里的资料回答'
       : '不选库时回答依据是 408 题库（真题 + 考点）';
@@ -11575,9 +11594,55 @@
     const chip = $('#persona-chip');
     if (!chip) return;
     const p = personaById(currentPersonaId());
-    chip.textContent = p ? p.name : '默认';
+    const name = $('#persona-chip-name');
+    if (name) name.textContent = p ? p.name : '默认';
     chip.classList.toggle('on', !!p);
     chip.title = p ? '当前人格：' + p.name : '选择人格预设';
+  }
+
+  function renderAnswerModeChip() {
+    const chip = $('#answer-mode-chip');
+    const name = $('#answer-mode-name');
+    if (!chip) return;
+    const agent = !!state.agentMode;
+    if (name) name.textContent = agent ? 'Agent' : '标准';
+    chip.classList.toggle('on', agent);
+    chip.title = agent
+      ? '当前回答方式：Agent 编排；回答下会显示检索工具与校验过程'
+      : '回答方式：标准问答；点这里切换为 Agent 或查看两者区别';
+  }
+
+  function openAnswerModePicker() {
+    const wrap = el('div', 'form-grid');
+    wrap.appendChild(el('div', 'panel-sub',
+      '「资料」决定查哪些内容；这里只选回答怎么执行。两种方式都逐字校验引用，共用同一个知识库。'));
+    const list = el('div', 'stack');
+    const mk = (agent, title, desc) => {
+      const row = el('button', 'list-row');
+      row.type = 'button';
+      row.style.textAlign = 'left';
+      row.style.cursor = 'pointer';
+      const main = el('div', 'list-main');
+      main.appendChild(el('div', 'list-title', title));
+      main.appendChild(el('div', 'list-meta', desc));
+      row.appendChild(main);
+      if (!!state.agentMode === agent) row.appendChild(el('span', 'badge', '使用中'));
+      row.addEventListener('click', () => {
+        state.agentMode = agent;
+        saveKey(AGENT_MODE_KEY, agent);
+        renderAnswerModeChip();
+        closeModal();
+        toast(agent ? '已切到 Agent：回答下会显示检索与校验过程'
+                    : '已切回标准问答');
+      });
+      list.appendChild(row);
+    };
+    mk(false, '标准问答',
+       '快；资料不足时，界面会改给一段标明「资料未覆盖」的通用回答。');
+    mk(true, 'Agent 编排',
+       '规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；显示工具与耗时，资料不足直接拒答，响应会稍慢。');
+    wrap.appendChild(list);
+    openModal('选择回答方式', wrap);
   }
 
   function openPersonaPicker() {
@@ -17205,22 +17270,9 @@
 
     const collectionChip = $('#collection-chip');
     if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
-    const agentChip = $('#agent-chip');
-    if (agentChip) {
-      const syncAgentChip = () => {
-        agentChip.classList.toggle('on', !!state.agentMode);
-        agentChip.setAttribute('aria-pressed', state.agentMode ? 'true' : 'false');
-        agentChip.title = state.agentMode
-          ? 'Agent 模式已开启：会规划、调用 search_kb 检索，回答下可展开工具与校验过程'
-          : 'Agent 模式：规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；资料不足仍然拒答';
-      };
-      agentChip.addEventListener('click', () => {
-        state.agentMode = !state.agentMode;
-        saveKey(AGENT_MODE_KEY, state.agentMode);
-        syncAgentChip();
-      });
-      syncAgentChip();
-    }
+    const modeChip = $('#answer-mode-chip');
+    if (modeChip) modeChip.addEventListener('click', openAnswerModePicker);
+    renderAnswerModeChip();
     $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
     const libDrop = $('#lib-drop');
