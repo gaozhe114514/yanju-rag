@@ -145,7 +145,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 - 「执行过程」沿用原来的步骤表，能看到理解问题、拒答判断、生成、引用校验各自的耗时；
 - 关闭开关就回到原来的 `/chat/stream`，历史对话不受影响。
 
-截图：`docs/screens/agent-glass-1440.png`；手机验收见 `data/work/v076-agent-390.png`。
+README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题，桌面与手机各一张）见 `data/work/v076-agent-dark-1440.png` 与 `v076-agent-dark-390.png`。
 
 ## 为什么是 LangGraph 0.6
 
