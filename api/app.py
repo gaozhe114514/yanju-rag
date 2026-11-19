@@ -653,6 +653,36 @@ def _agent_owner(request: Request) -> str:
     return "anon:%s" % tag
 
 
+_AGENT_LIVE_TOOLS = ("weather", "time", "calc")
+
+
+def _agent_live_question(query: str) -> bool:
+    """Agent 只查知识库、不调用实时工具；先认出来，给用户一条明确的退路。"""
+    return any(tool_will_run([name], query) for name in _AGENT_LIVE_TOOLS)
+
+
+def _agent_live_payload(t0: float, query: str = "", collection: str = "") -> dict:
+    notice = ("这个问题需要天气 / 时间 / 计算等实时工具；Agent 模式只查当前知识库，"
+              "不调用实时数据。请把回答方式切回标准问答再问。")
+    return {
+        "intent": "kb", "mode": "agent",
+        "collection": "" if _is_preset(collection) else collection,
+        "thread_id": "", "thread_reset": False,
+        "refused": True, "answer": "", "citations": [],
+        "reason": "agent_live_unsupported", "gap_detail": "",
+        "hits": [], "attempts": 0,
+        "latency_ms": int((time.time() - t0) * 1000),
+        "rewritten_query": "", "tool_calls": [],
+        "trace": {"intent": "kb", "rewritten_query": "", "steps": [
+            {"name": "回答方式", "ms": 0,
+             "detail": "实时数据问题需要标准问答里的天气 / 时间工具"}]},
+        "agent": {"checkpointer": "none", "thread_id": "",
+                  "thread_reset": False, "attempts": 0, "retry": False,
+                  "tool_calls": []},
+        "notice": notice,
+    }
+
+
 def _agent_deps(pipeline):
     """把现有管线包成 Agent 依赖，检索与生成实现完全复用。"""
     from agent.nodes import AgentDeps
@@ -1494,9 +1524,15 @@ def agent_stream(req: AgentRequest, request: Request,
             yield sse({"type": "done", "data": _agent_unavailable_payload(t0)})
             return
 
+        metrics.bump("agent_total")
+        if _agent_live_question(req.query):
+            metrics.bump("agent_refused")
+            yield sse({"type": "done", "data": _agent_live_payload(
+                t0, req.query, req.collection)})
+            return
+
         deps = _agent_deps(pipeline)
         owner = _agent_owner(request)
-        metrics.bump("agent_total")
         with _lock:
             for ev in runtime.stream(
                     deps, query=req.query, thread_id=req.thread_id,

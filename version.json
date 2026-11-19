@@ -1,13 +1,13 @@
 {
-  "version": "0.76.3",
+  "version": "0.76.4",
   "released": "2026-11-19",
   "name": "言据",
   "history": [
     {
-      "version": "0.76.3",
+      "version": "0.76.4",
       "date": "2026-11-19",
-      "title": "Agent 层、Python 3.11 与输入设置",
-      "notes": "新增 LangGraph Agent 模式与 `/agent/stream`：`search_kb` 工具、逐字校验、换查询重试一次、Postgres 线程记忆；本机与 CI 升 Python 3.11；输入条收敛为一个「输入设置」入口。"
+      "title": "Agent 层、Python 3.11、输入设置与天气回退",
+      "notes": "新增 LangGraph Agent 模式与 `/agent/stream`：`search_kb` 工具、逐字校验、换查询重试一次、Postgres 线程记忆；本机与 CI 升 Python 3.11；输入条收敛为一个「输入设置」入口。天气预报在 Open-Meteo 预报超时时回退 wttr.in；实时数据问题不再提示切知识库，Agent 模式遇到天气 / 时间 / 计算问题时直接提示切回标准问答。"
     },
     {
       "version": "0.75",

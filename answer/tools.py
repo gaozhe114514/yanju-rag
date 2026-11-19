@@ -23,6 +23,7 @@ from typing import Callable, Dict, List, Optional
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+WTTR_URL = "https://wttr.in/"
 BING_RSS_URL = "https://www.bing.com/search"
 BING_API_URL = "https://api.bing.microsoft.com/v7.0/search"
 TAVILY_URL = "https://api.tavily.com/search"
@@ -39,7 +40,7 @@ UA = "Mozilla/5.0 (compatible; yinzheng-tools/0.2)"
 TOOLS: Dict[str, Dict[str, str]] = {
     "weather": {
         "label": "天气查询",
-        "desc": "问天气时取实时气温、今日与明日预报（Open-Meteo，无需密钥）。",
+        "desc": "问天气时取实时气温、今日与明日预报（Open-Meteo，失败时回退 wttr.in，无需密钥）。",
     },
     "time": {
         "label": "时间日期",
@@ -229,6 +230,56 @@ def _geocode(city: str, fetch: Callable[[str, Dict[str, str]], dict],
     return geo
 
 
+# wttr.in 的天气描述是英文，转成和 Open-Meteo 一致的中文短句
+_WTTR_DESC = {
+    "sunny": "晴", "clear": "晴", "partly cloudy": "多云", "cloudy": "多云",
+    "overcast": "阴", "mist": "薄雾", "fog": "雾", "freezing fog": "冻雾",
+    "patchy rain nearby": "局部有雨", "light drizzle": "毛毛雨",
+    "patchy light drizzle": "零星毛毛雨", "light rain": "小雨",
+    "moderate rain": "中雨", "heavy rain": "大雨", "light rain shower": "阵雨",
+    "moderate or heavy rain shower": "强阵雨", "thundery outbreaks possible": "可能有雷暴",
+    "patchy light rain with thunder": "雷阵雨", "light snow": "小雪",
+    "moderate snow": "中雪", "heavy snow": "大雪", "blizzard": "暴雪",
+    "sleet": "雨夹雪", "light freezing rain": "冻雨", "freezing drizzle": "冻毛毛雨",
+    "patchy sleet nearby": "局部雨夹雪", "patchy snow nearby": "局部小雪",
+}
+
+
+def _wttr_desc(obj) -> str:
+    desc = ((obj or {}).get("weatherDesc") or [{}])[0].get("value") or ""
+    key = desc.strip().lower()
+    return _WTTR_DESC.get(key, desc.strip() or "未知天气")
+
+
+def _weather_wttr(city: str, fetch: Callable[[str, Dict[str, str]], dict]):
+    """Open-Meteo 预报连不上时的回退：wttr.in 的免费 JSON。"""
+    data = fetch(WTTR_URL + urllib.parse.quote(city),
+                 {"format": "j1", "lang": "zh"})
+    cur = ((data or {}).get("current_condition") or [None])[0]
+    days = (data or {}).get("weather") or []
+    if not cur or not days:
+        return None
+    parts = ["%s现在 %s℃，体感 %s℃，%s，湿度 %s%%，风速 %s km/h" % (
+        city, _num(cur.get("temp_C"), 0), _num(cur.get("FeelsLikeC"), 0),
+        _wttr_desc(cur), _num(cur.get("humidity"), 0),
+        _num(cur.get("windspeedKmph"), 0))]
+    for i, day in enumerate(days[:2]):
+        label = "今天" if i == 0 else "明天"
+        hourly = (day.get("hourly") or [{}])[0]
+        piece = "%s %s–%s℃" % (label, _num(day.get("mintempC"), 0),
+                               _num(day.get("maxtempC"), 0))
+        rain = hourly.get("chanceofrain")
+        if rain not in (None, ""):
+            piece += "，降水概率 %s%%" % _num(rain, 0)
+        desc = _wttr_desc(hourly)
+        if desc:
+            piece += "，" + desc
+        parts.append(piece)
+    parts.append("数据来自 wttr.in")
+    return {"name": "weather", "label": "天气", "source": "wttr.in",
+            "query": city, "ok": True, "detail": "；".join(parts) + "。"}
+
+
 def weather_lookup(query: str, fetch: Callable[[str, Dict[str, str]], dict] = None,
                    context: Optional[dict] = None) -> dict:
     """查天气。返回统一结构，失败也返回结构，不抛异常给上层。"""
@@ -258,8 +309,24 @@ def weather_lookup(query: str, fetch: Callable[[str, Dict[str, str]], dict] = No
             "timezone": "auto", "forecast_days": "2",
         })
     except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+        try:
+            alt = _weather_wttr(city, fetch)
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError,
+                TypeError, KeyError):
+            alt = None
+        if alt:
+            return alt
         base["detail"] = "天气服务暂时连不上（%s）。" % type(e).__name__
         return base
+
+    if not (data or {}).get("current"):
+        try:
+            alt = _weather_wttr(city, fetch)
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError,
+                TypeError, KeyError):
+            alt = None
+        if alt:
+            return alt
 
     cur = (data or {}).get("current") or {}
     daily = (data or {}).get("daily") or {}

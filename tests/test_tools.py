@@ -20,6 +20,18 @@ FORECAST = {
               "weather_code": [2, 61]},
 }
 
+WTTR = {
+    "current_condition": [{"temp_C": "14", "FeelsLikeC": "11",
+                           "humidity": "49", "windspeedKmph": "9",
+                           "weatherDesc": [{"value": "Cloudy"}]}],
+    "weather": [
+        {"date": "2026-11-19", "maxtempC": "16", "mintempC": "11",
+         "hourly": [{"chanceofrain": "100", "weatherDesc": [{"value": "Light rain"}]}]},
+        {"date": "2026-11-20", "maxtempC": "15", "mintempC": "9",
+         "hourly": [{"chanceofrain": "20", "weatherDesc": [{"value": "Sunny"}]}]},
+    ],
+}
+
 
 class FakeFetch:
     def __init__(self, geo=None, forecast=None, error=None):
@@ -35,6 +47,18 @@ class FakeFetch:
         if url == tools.GEOCODE_URL:
             return self.geo
         return self.forecast
+
+
+class FallbackFetch(FakeFetch):
+    """地理编码正常，Open-Meteo 预报挂掉，wttr.in 正常。"""
+
+    def __call__(self, url, params):
+        self.calls.append((url, params))
+        if url == tools.GEOCODE_URL:
+            return self.geo
+        if url == tools.FORECAST_URL:
+            raise OSError("forecast down")
+        return WTTR
 
 
 class ExtractCityTest(unittest.TestCase):
@@ -118,6 +142,15 @@ class WeatherLookupTest(unittest.TestCase):
         res = weather_lookup("火星天气", fetch=FakeFetch(geo={"results": []}))
         self.assertFalse(res["ok"])
         self.assertIn("没找到", res["detail"])
+
+    def test_open_meteo_forecast_down_falls_back_to_wttr(self):
+        res = weather_lookup("郑州天气", fetch=FallbackFetch())
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["source"], "wttr.in")
+        self.assertIn("郑州现在 14℃", res["detail"])
+        self.assertIn("今天 11–16℃", res["detail"])
+        self.assertIn("小雨", res["detail"])
+        self.assertIn("wttr.in", res["detail"])
 
     def test_network_error_does_not_raise(self):
         res = weather_lookup("郑州天气", fetch=FakeFetch(error=OSError("down")))

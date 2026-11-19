@@ -4,7 +4,7 @@
 
 > 问资料，答得出来就带逐字引用，答不出来就明说；也能把主题整理成 Word 文档或 PPT。
 
-**当前版本 v0.76.3** ｜ 667 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.76.3）｜ Python 3.11 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
+**当前版本 v0.76.4** ｜ 668 条测试通过 ｜ 已部署到 `101.42.26.64`（线上 v0.76.3）｜ Python 3.11 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
 
 ![问答首页（琉璃主题）](docs/screens/home-glass-1440.png)
 
@@ -42,6 +42,7 @@
 - **硬约束不变**：引用仍逐字命中原文；失败重试一次后拒答；资料不足写缺口日志。
 - **线程记忆**：默认进程内，配 `DATABASE_URL` 后自动切到 PostgreSQL checkpoint；换账号拿旧线程号会新建线程。
 - **接口**：`POST /agent/stream`（SSE）；现有 `/chat`、`/chat/stream` 完全不动。
+- **实时问题不硬查**：天气 / 时间 / 计算需要标准问答里的工具，Agent 模式会直接提示切回标准问答，不拿知识库里不相关的片段凑答案。
 
 细节与取舍见 [Agent 层](docs/Agent层.md)。
 

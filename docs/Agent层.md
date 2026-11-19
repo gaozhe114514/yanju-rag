@@ -12,6 +12,8 @@
 - **不改现有接口**：`/ask`、`/chat`、`/chat/stream` 一行不动；Agent 单独走 `POST /agent/stream`。
 - **不放宽硬约束**：引用仍然逐字命中原文；校验失败最多重试一次；仍失败必须拒答并写缺口日志。
 - **不做无界工具循环**：最多一次换查询重试，避免模型在 2C 机器上反复检索、成本和延迟不可控。
+- **实时数据不进 Agent**：天气 / 时间 / 计算需要标准问答里的工具；`/agent/stream` 直接返回 `agent_live_unsupported`，前端给「切回标准问答再问」的一键退路，不拿知识库里不相关的片段凑答案。
+- 天气工具在 Open-Meteo 预报超时时回退 `wttr.in`（线上实测 Open-Meteo 预报不可达、wttr.in 正常）。
 - **工具选择是显式的**：知识问题固定走 `search_kb`，`plan` 节点只决定「是否检索 / 检索什么问题」，不让模型自由挑工具。这样引用来源可控、成本可预测；代价是它还不是通用 ReAct，多工具自由选择留到下一版。
 
 ## 状态图
@@ -145,7 +147,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 - 「执行过程」沿用原来的步骤表，能看到理解问题、拒答判断、生成、引用校验各自的耗时；
 - 切回标准问答就回到原来的 `/chat/stream`，历史对话不受影响。
 
-README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/prod-v0763-history-dark-1440.png`（线上版本页，8 条摘要）与 `prod-v0763-agent-dark-390.png`（线上手机输入设置 / Agent 轨迹）；线上 v0.76.2 的部署证据见 `prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
+README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/v0764-live-standard-dark-1440.png`（标准问答天气）与 `v0764-live-agent-dark-390.png`（Agent 实时问题退路）；线上 v0.76.3 的版本页与输入设置截图见 `prod-v0763-history-dark-1440.png` 与 `prod-v0763-agent-dark-390.png`；线上 v0.76.2 的部署证据见 `prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
 
 ## 为什么是 LangGraph 0.6
 
