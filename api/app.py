@@ -226,7 +226,7 @@ def enforce_guard(request: Request) -> None:
 
 
 def enforce_content(request: Request) -> None:
-    """题库浏览：只校验口令，不占问答额度。"""
+    """知识库浏览：只校验口令，不占问答额度。"""
     _enforce(request, False)
 
 
@@ -301,7 +301,7 @@ def _load() -> None:
     store = Store.from_env()
     if store is not None:
         store.init_schema()
-    # 用户资料库是唯一的检索语料；这里只准备向量模型，不再预载考试题库。
+    # 用户资料库是唯一的检索语料；这里只准备向量模型。
     embedder = BgeEmbedder() if mode != "bm25" else None
 
     provider_name = os.environ.get("KB_PROVIDER", "")

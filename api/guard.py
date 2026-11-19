@@ -2,7 +2,7 @@
 """访问口令 + 限流。
 
 公网部署时，谁拿到链接都能消耗 DeepSeek 额度，所以问答接口默认要求口令；
-再按 IP 做滑动窗口限流，另加一个全局每日上限兜底。题库浏览只校验口令，不占问答额度。
+再按 IP 做滑动窗口限流，另加一个全局每日上限兜底。知识库浏览只校验口令，不占问答额度。
 
 实现是单进程内存版，配合 `uvicorn --workers 1` 使用。多 worker / 多实例要换 Redis，
 否则每个进程各算各的。
@@ -152,7 +152,7 @@ class AccessGuard:
               peer: Optional[str] = None, limit: bool = True) -> Decision:
         """校验口令；limit=False 时只看口令，不计入问答额度。
 
-        题库浏览会频繁调用 /meta、/chunks，不该和 DeepSeek 问答共用 20 次/10 分钟
+        知识库浏览会频繁调用 /collections 及其子路径，不该和 DeepSeek 问答共用 20 次/10 分钟
         的额度，否则翻几页题就被限流了。
         """
         ip = self.client_ip(headers, peer)

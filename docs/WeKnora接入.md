@@ -7,7 +7,7 @@
 
 本项目的用户资料库可以整套交给 [腾讯开源 WeKnora](https://github.com/Tencent/WeKnora)：
 文档解析、切片、向量化、召回由它负责；**拒答闸门、生成、逐字引用校验仍在本项目**。
-内置「408 考研」语料不经过 WeKnora，永远走本地 Postgres。
+默认知识库与本地资料库不经过 WeKnora，始终走本地 Postgres。
 
 ## 1. 边界：只用它做进料与召回
 
@@ -111,4 +111,4 @@ curl -s http://127.0.0.1:8000/health | grep kb_backend
 - **片段 revision**：WeKnora 用 `content_revision` 做乐观锁，冲突回 409，界面提示
   「这段已被别处改过，点重新加载再来」，不会覆盖别人的修改。
 - **上传大小**：本项目限制单文件 20MB；WeKnora 侧还有自己的 `MAX_FILE_SIZE_MB`。
-- 内置 408 语料的题目 / 考点 / 统计不受影响；WeKnora 只接管用户自建资料库。
+- 默认知识库与本地资料库不受影响；WeKnora 只接管用户自建资料库。
