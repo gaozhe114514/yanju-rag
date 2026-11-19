@@ -4136,9 +4136,9 @@
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
             <button class="composer-chip input-settings-chip" id="input-settings-chip" type="button"
-                    aria-haspopup="dialog" title="输入设置：资料范围 / 回答方式 / 人格">
+                    aria-haspopup="dialog" title="输入设置：资料范围 / 人格">
               <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear"></use></svg>
-              <span id="input-settings-mode">标准</span>
+              <span id="input-settings-mode">设置</span>
             </button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
@@ -4514,8 +4514,6 @@
   const DECK_Q_KEY = '408-deck-questions-v1';
   // 问答当前依据的知识库：空字符串 = 内置 408 语料
   const COLLECTION_KEY = '408-chat-collection-v1';
-  // Agent 模式开关：设备级偏好，不上传；线程号跟着对话存在本机
-  const AGENT_MODE_KEY = '408-agent-mode-v1';
   const PREFS_KEY = '408-prefs-v1';
   // 侧栏收放是这台设备的视图状态，跟着屏幕大小走，不跟账号同步
   const SIDEBAR_KEY = '408-sidebar-collapsed-v1';
@@ -4809,7 +4807,6 @@
     collectionsCanCreateShared: false,
     collectionId: '',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
-    agentMode: loadJSON(AGENT_MODE_KEY, false) === true,
     chatPersonaId: ''
   };
 
@@ -5374,6 +5371,8 @@
       return '正在查' + ((evt && evt.label) || '实时数据') + '…';
     }
     if (stage === 'plan') return '正在理解问题…';
+    if (stage === 'route') return '正在判断怎么回答…';
+    if (stage === 'chat') return '正在回答…';
     if (stage === 'search') return '正在调用 search_kb 检索资料…';
     if (stage === 'retry') return '引用没对上原文，换个问法再查一次…';
     if (stage === 'refuse') return '资料不足，正在按规则拒答…';
@@ -5767,9 +5766,6 @@
     if (data.reason === 'agent_unavailable') {
       return data.notice || 'Agent 模式暂时不可用，请稍后再试。';
     }
-    if (data.reason === 'agent_live_unsupported') {
-      return data.notice || '这个问题需要实时数据工具；请把回答方式切回标准问答再问。';
-    }
     return data.collection
       ? '这个知识库里没有足够依据回答这个问题。可以换个问法，或往库里再补一些资料。'
       : '资料里没有足够依据回答这个问题。可以换个问法，或补充相关资料。';
@@ -5779,11 +5775,12 @@
     if (data.intent === 'chitchat') return ['badge neutral', '闲聊'];
     if (data.intent === 'clarify') return ['badge neutral', '需要补充'];
     if (data.mode === 'general') return ['badge', '已作答 · 通用知识'];
+    if (data.mode === 'agent' && data.route === 'chat') return ['badge', '已作答 · 通用对话'];
+    if (data.mode === 'agent' && data.route === 'tools') return ['badge', '已作答 · 工具结果'];
     if (data.refused) {
       let reason = data.collection ? '知识库未覆盖' : '资料未覆盖';
       if (data.reason === 'empty_collection') reason = '知识库还没有资料';
       else if (data.reason === 'agent_unavailable') reason = 'Agent 未启用';
-      else if (data.reason === 'agent_live_unsupported') reason = '需要标准问答';
       else if ((data.reason || '').indexOf('low_score') === 0) reason = '召回分数不足';
       else if ((data.reason || '').indexOf('low_margin') === 0) reason = '候选区分度不足';
       else if ((data.reason || '').indexOf('stat_failed') === 0) reason = '统计校验未通过';
@@ -5885,21 +5882,6 @@
   // 拒答卡片上补一句模型自己指出的缺口（v0.44）；系统码拒答没有缺口，只留退路（v0.46）
   function refuseNote(data, query) {
     const box = el('div', 'refuse-note' + (data.gap_detail ? '' : ' plain'));
-    if (data.reason === 'agent_live_unsupported') {
-      const back = el('button', 'link-btn', '切回标准问答再问 →');
-      back.type = 'button';
-      back.addEventListener('click', () => {
-        state.agentMode = false;
-        saveKey(AGENT_MODE_KEY, false);
-        renderInputSettingsChip();
-        const inp = $('#composer');
-        if (inp && query) inp.value = query;
-        if (query) send();
-        else if (inp) inp.focus();
-      });
-      box.appendChild(back);
-      return box;
-    }
     if (data.gap_detail) {
       box.appendChild(el('span', 'refuse-note-k', '缺口'));
       box.appendChild(el('span', null, data.gap_detail));
@@ -5989,14 +5971,20 @@
     } else if (data.mode === 'chat') {
       // 旧版日常对话的存量消息，仍按原样标注
       meta.appendChild(el('span', 'meta-note', '日常对话 · 未查资料'));
+    } else if (data.mode === 'agent' && data.route === 'chat') {
+      meta.appendChild(el('span', 'meta-note', '通用对话 · 未查资料'));
+    } else if (data.mode === 'agent' && data.route === 'tools') {
+      meta.appendChild(el('span', 'meta-note', '工具结果 · 未查资料'));
     } else if (data.intent !== 'chitchat') {
       meta.appendChild(el('span', 'meta-note ok',
         cites.length ? '引用已核对 · ' + cites.length + ' 条' : '引用已核对'));
     }
     if (data.mode === 'agent' && data.agent) {
       const calls = (data.agent.tool_calls || []).length;
-      meta.appendChild(el('span', 'meta-note' + (data.refused ? '' : ' ok'),
-        'Agent · ' + calls + ' 次 search_kb'));
+      const text = data.route === 'kb'
+        ? 'Agent · ' + calls + ' 次 search_kb'
+        : (data.route === 'tools' ? 'Agent · 工具' : 'Agent · 通用对话');
+      meta.appendChild(el('span', 'meta-note' + (data.refused ? '' : ' ok'), text));
     }
 
     // 用了什么工具要写出来：成功标来源，失败也明说，别让模型一句「查不到」糊过去
@@ -6223,22 +6211,12 @@
     // 先算出间隔再记时间，否则本次提问的间隔永远是 0。
     noteAskTime();
     try {
-      const agentMode = !!state.agentMode;
-      const body = agentMode ? {
+      const body = {
         query: text, history: history, style: style,
         thread_id: conv.agentThreadId || conv.id,
-        collection: state.chatCollection || ''
-      } : {
-        query: text, history: history,
-        style: style,
-        // auto = 先查资料；资料里没有依据时，改给标明「未查资料」的通用回答
-        mode: 'auto',
-        // 工具照常带上，服务端只在问法沾边时调用；资料有依据时一律忽略
+        collection: state.chatCollection || '',
         tools: enabledTools(),
-        // 学习进度只在本机，开「学习进度」工具时带摘要（不含原始记录）
-        study: enabledTools().indexOf('study') >= 0 ? studySummary() : {},
-        // 空字符串 = 内置 408 语料；否则只在这个知识库里检索
-        collection: state.chatCollection || ''
+        study: enabledTools().indexOf('study') >= 0 ? studySummary() : {}
       };
       await streamChat(body, evt => {
         if (evt.type === 'status') {
@@ -6256,9 +6234,9 @@
         } else if (evt.type === 'done') {
           finalData = evt.data;
         }
-      }, state.streamAbort.signal, agentMode ? '/agent/stream' : '/chat/stream');
+      }, state.streamAbort.signal, '/agent/stream');
       if (!finalData) throw new Error('连接中断，回答没有收完');
-      if (agentMode && finalData.thread_id) {
+      if (finalData.thread_id) {
         conv.agentThreadId = finalData.thread_id;
         if (finalData.thread_reset) {
           toast('原来的 Agent 线程属于其他账号，已换成新线程', 'err');
@@ -9548,7 +9526,7 @@
     // v0.63.2：换库只换之后的回答依据，不另开新对话（用户明确要求）
     if (state.page !== 'chat') go('chat');
     toast(id ? '之后的提问只用「' + c.name + '」里的资料'
-      : '之后的提问使用 408 题库（真题 + 考点）');
+      : '之后的提问使用公司知识库');
   }
 
   function deleteCollection(c) {
@@ -11560,14 +11538,10 @@
   function renderInputSettingsChip() {
     const chip = $('#input-settings-chip');
     if (!chip) return;
-    const mode = $('#input-settings-mode');
-    const agent = !!state.agentMode;
-    if (mode) mode.textContent = agent ? 'Agent' : '标准';
-    chip.classList.toggle('on', agent);
     const coll = activeCollection();
     const p = personaById(currentPersonaId());
+    chip.classList.remove('on');
     chip.title = '输入设置：资料 ' + (coll ? coll.name : '公司知识库') +
-      ' · ' + (agent ? 'Agent 编排' : '标准问答') +
       ' · 人格 ' + (p ? p.name : '默认');
   }
 
@@ -11575,22 +11549,7 @@
     const build = (items) => {
       const wrap = el('div', 'form-grid');
       wrap.appendChild(el('div', 'panel-sub',
-        '这里只影响之后的提问；引用逐字校验与拒答规则不变。'));
-
-      const mode = selectEl(
-        [['standard', '标准问答'], ['agent', 'Agent 编排']],
-        state.agentMode ? 'agent' : 'standard');
-      mode.addEventListener('change', () => {
-        state.agentMode = mode.value === 'agent';
-        saveKey(AGENT_MODE_KEY, state.agentMode);
-        renderInputSettingsChip();
-        toast(state.agentMode
-          ? '已切到 Agent：回答下会显示检索与校验过程'
-          : '已切回标准问答');
-      });
-      wrap.appendChild(field('回答方式', mode,
-        '标准问答快，资料不足时可给标明「资料未覆盖」的通用回答；' +
-        'Agent 会显示 search_kb 工具与逐字校验过程，资料不足直接拒答，响应稍慢。'));
+        '一个 Agent 会自动判断普通对话、查资料或调工具；这里只改资料范围和人格。'));
 
       const options = [['', '公司知识库（默认）']].concat(
         items.filter(c => c.name !== '公司知识库')
@@ -11606,7 +11565,7 @@
                 : '之后的提问使用公司知识库');
       });
       wrap.appendChild(field('资料范围', scope,
-        '408 题库是内置真题与考点；也可以在「知识空间 → 知识库」里导入自己的资料。'));
+        '公司知识库是默认资料范围；也可以在「知识空间 → 知识库」里导入自己的资料。'));
 
       const personas = [['', '默认助教']].concat(
         state.personas.map(p => [p.id, p.name]));

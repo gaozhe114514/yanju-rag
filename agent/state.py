@@ -28,6 +28,14 @@ class AgentState(TypedDict, total=False):
     query: str
     collection: str
     style: str
+    tools: List[str]
+    study: Dict[str, Any]
+
+    # route 节点的产出：chat / kb / tools
+    route: str
+    tool_names: List[str]
+    route_reason: str
+    tool_results: List[Dict[str, Any]]
 
     # plan 节点的产出
     intent: str                 # kb / chitchat / clarify

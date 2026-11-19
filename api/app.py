@@ -125,6 +125,9 @@ class AgentRequest(BaseModel):
     history: List[ChatTurn] = Field(default_factory=list)
     style: str = Field("", max_length=400)
     collection: str = Field("", max_length=64)
+    # 设置页里开着的工具名；Agent 自己决定用不用
+    tools: List[str] = Field(default_factory=list, max_length=8)
+    study: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MasteryMaterial(BaseModel):
@@ -666,49 +669,33 @@ def _agent_owner(request: Request) -> str:
     return "anon:%s" % tag
 
 
-_AGENT_LIVE_TOOLS = ("weather", "time", "calc")
-
-
-def _agent_live_question(query: str) -> bool:
-    """Agent 只查知识库、不调用实时工具；先认出来，给用户一条明确的退路。"""
-    return any(tool_will_run([name], query) for name in _AGENT_LIVE_TOOLS)
-
-
-def _agent_live_payload(t0: float, query: str = "", collection: str = "") -> dict:
-    notice = ("这个问题需要天气 / 时间 / 计算等实时工具；Agent 模式只查当前知识库，"
-              "不调用实时数据。请把回答方式切回标准问答再问。")
-    return {
-        "intent": "kb", "mode": "agent",
-        "collection": "" if _is_preset(collection) else collection,
-        "thread_id": "", "thread_reset": False,
-        "refused": True, "answer": "", "citations": [],
-        "reason": "agent_live_unsupported", "gap_detail": "",
-        "hits": [], "attempts": 0,
-        "latency_ms": int((time.time() - t0) * 1000),
-        "rewritten_query": "", "tool_calls": [],
-        "trace": {"intent": "kb", "rewritten_query": "", "steps": [
-            {"name": "回答方式", "ms": 0,
-             "detail": "实时数据问题需要标准问答里的天气 / 时间工具"}]},
-        "agent": {"checkpointer": "none", "thread_id": "",
-                  "thread_reset": False, "attempts": 0, "retry": False,
-                  "tool_calls": []},
-        "notice": notice,
-    }
-
-
-def _agent_deps(pipeline):
-    """把现有管线包成 Agent 依赖，检索与生成实现完全复用。"""
+def _agent_deps(pipeline, tools=None):
+    """把现有管线、通用对话、工具与路由包成 Agent 依赖。"""
     from agent.nodes import AgentDeps
+    from agent.route import route_query
+    from answer.daily import daily_reply, daily_stream
+    from answer.tools import run_tools, tool_context
+
+    provider = pipeline.provider
+    enabled = list(tools or [])
 
     return AgentDeps(
         search=lambda q, skip_rerank=False: pipeline.searcher.search(
             q, skip_rerank=skip_rerank),
         prepare=pipeline.prepare,
-        provider=pipeline.provider,
+        provider=provider,
         gate=pipeline.gate,
         agent=_state.get("agent"),
         prompt_mode=pipeline.prompt_mode,
         top_k=5,
+        tools=enabled,
+        router=lambda q, h, c: route_query(q, h, c, provider, enabled),
+        chat_reply=lambda q, h, s, tt="": daily_reply(
+            provider, q, h, s, tt),
+        chat_stream=lambda q, h, s, tt="": daily_stream(
+            provider, q, h, s, tt),
+        run_tools_fn=lambda names, q, study: run_tools(names, q, study),
+        tool_context_fn=tool_context,
     )
 
 
@@ -893,9 +880,12 @@ def _agent_payload(result, t0: float, query: str = "",
     citations = _citation_payload(result.citations, pool)
     rewritten = result.rewritten if result.rewritten != query else ""
     steps = list(result.steps or [])
+    route = getattr(result, "route", "kb") or "kb"
+    tool_results = list(getattr(result, "tools", []) or [])
     return {
         "intent": result.intent,
         "mode": "agent",
+        "route": route,
         "collection": "" if _is_preset(collection) else collection,
         "thread_id": result.thread_id,
         "thread_reset": bool(result.thread_reset),
@@ -909,6 +899,7 @@ def _agent_payload(result, t0: float, query: str = "",
         "latency_ms": int((time.time() - t0) * 1000),
         "rewritten_query": rewritten,
         "tool_calls": list(result.tool_calls or []),
+        "tools": tool_results,
         "trace": {
             "intent": result.intent,
             "rewritten_query": rewritten,
@@ -920,7 +911,9 @@ def _agent_payload(result, t0: float, query: str = "",
             "thread_reset": bool(result.thread_reset),
             "attempts": result.attempts,
             "retry": result.attempts > 1,
+            "route": route,
             "tool_calls": list(result.tool_calls or []),
+            "tools": tool_results,
         },
     }
 
@@ -1537,21 +1530,16 @@ def agent_stream(req: AgentRequest, request: Request,
             yield sse({"type": "done", "data": _agent_unavailable_payload(t0)})
             return
 
-        metrics.bump("agent_total")
-        if _agent_live_question(req.query):
-            metrics.bump("agent_refused")
-            yield sse({"type": "done", "data": _agent_live_payload(
-                t0, req.query, req.collection)})
-            return
-
-        deps = _agent_deps(pipeline)
+        deps = _agent_deps(pipeline, req.tools)
         owner = _agent_owner(request)
+        metrics.bump("agent_total")
         with _lock:
             for ev in runtime.stream(
                     deps, query=req.query, thread_id=req.thread_id,
                     owner=owner, history=_history(req),
                     style=_clean_style(req.style),
-                    collection=req.collection):
+                    collection=req.collection,
+                    tools=req.tools, study=req.study):
                 if ev.get("type") != "final":
                     yield sse(ev)
                     continue
@@ -1562,6 +1550,8 @@ def agent_stream(req: AgentRequest, request: Request,
                     metrics.bump("agent_retry")
                 if result.tool_calls:
                     metrics.bump("agent_tool_calls", len(result.tool_calls))
+                if result.tools:
+                    metrics.bump("agent_tool_calls", len(result.tools))
                 _log_gap(req.query, AnswerResult(
                     result.refused, reason=result.reason, hits=result.hits),
                     req.collection)

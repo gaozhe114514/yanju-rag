@@ -9,18 +9,21 @@
 这里不 import langgraph，纯 Python 就能测。
 """
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from answer.agent import QueryAgent, chitchat_reply
+from answer.daily import daily_reply, daily_stream
 from answer.aggregate import TableStats, check_counts
 from answer.prompt import build_messages
 from answer.providers import ProviderError, parse_payload
 from answer.stream import AnswerStream, generate_chunks
 from answer.verify import verify_payload
+from answer.tools import run_tools as run_tool_list, tool_context as tool_context_text
 from retrieval.search import SearchHit
 
 from .prompt import build_retry_messages, refine_query
+from .route import RouteDecision
 from .state import (AgentState, context_from_state, hit_to_dict, hits_from_state,
                     message, stats_from_state, stats_to_dict)
 from .tools import SearchKBTool
@@ -46,10 +49,31 @@ class AgentDeps:
     retry: bool = True
     refiner: Optional[Callable[[str, Sequence[str], Sequence[SearchHit]],
                                Tuple[str, str]]] = None
+    router: Optional[Callable] = None
+    chat_reply: Optional[Callable] = None
+    chat_stream: Optional[Callable] = None
+    run_tools_fn: Optional[Callable] = None
+    tool_context_fn: Optional[Callable] = None
+    tools: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if self.agent is None:
             self.agent = QueryAgent(None)
+        if self.chat_reply is None:
+            self.chat_reply = lambda q, h, st, tt="": daily_reply(
+                self.provider, q, h, st, tt)
+        if self.chat_stream is None:
+            self.chat_stream = lambda q, h, st, tt="": daily_stream(
+                self.provider, q, h, st, tt)
+        if self.run_tools_fn is None:
+            self.run_tools_fn = run_tool_list
+        if self.tool_context_fn is None:
+            self.tool_context_fn = tool_context_text
+
+    def route(self, query: str, history, collection: str) -> RouteDecision:
+        if self.router is None:
+            return RouteDecision("kb", [], "默认按资料问答")
+        return self.router(query, history, collection)
 
     def tool(self) -> SearchKBTool:
         return SearchKBTool(self.search, self.top_k)
@@ -321,6 +345,7 @@ def finalize_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = Non
     answer = str(state.get("answer") or "")
     _emit(emit, {"type": "status", "stage": "done", "refused": False})
     return {
+        "route": "kb",
         "messages": [message("assistant", answer)],
         "done": True,
     }
@@ -334,6 +359,7 @@ def refuse_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None)
             if reason.startswith("provider_error")
             else "资料里没有找到可引用的依据，已拒答。")
     return {
+        "route": "kb",
         "refused": True,
         "answer": "",
         "messages": [message("assistant", text)],
@@ -347,6 +373,7 @@ def direct_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None)
     answer = str(state.get("direct_answer") or "")
     _emit(emit, {"type": "status", "stage": "done", "refused": False})
     return {
+        "route": "chat",
         "answer": answer,
         "refused": False,
         "citations": [],
@@ -356,8 +383,121 @@ def direct_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None)
     }
 
 
+def route_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
+    """决定普通对话 / 查知识库 / 调工具。"""
+    t0 = time.time()
+    query = str(state.get("query") or "")
+    history = list(state.get("messages") or [])[:-1]
+    decision = deps.route(query, history, str(state.get("collection") or ""))
+    if decision.route not in ("chat", "kb", "tools"):
+        decision = RouteDecision("kb", [], "路由结果不合法，按资料问答")
+    if decision.route == "tools" and not decision.tools:
+        decision = RouteDecision("chat", [], "没有可用工具，按普通对话回答")
+    ms = int((time.time() - t0) * 1000)
+    _emit(emit, {"type": "status", "stage": "route", "route": decision.route,
+                 "tools": decision.tools, "reason": decision.reason})
+    return {
+        "route": decision.route,
+        "tool_names": list(decision.tools),
+        "route_reason": decision.reason,
+        "steps": _steps(state, "判断回答方式", ms,
+                        "%s：%s" % (decision.route, decision.reason or "自动判断")),
+        "timings": _timing(state, "route", ms),
+    }
+
+
+def chat_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
+    """普通对话：像日常助手一样回答，不查资料、不套引用。"""
+    t0 = time.time()
+    query = str(state.get("query") or "")
+    history = list(state.get("messages") or [])[:-1]
+    style = str(state.get("style") or "")
+    _emit(emit, {"type": "status", "stage": "chat"})
+    parts: List[str] = []
+    try:
+        for piece in deps.chat_stream(query, history, style):
+            if piece:
+                parts.append(piece)
+                _emit(emit, {"type": "delta", "text": piece})
+        answer = "".join(parts)
+    except Exception as e:
+        _emit(emit, {"type": "error", "message": "生成服务暂时不可用"})
+        return {
+            "route": "chat", "refused": True,
+            "reason": "provider_error: %s" % type(e).__name__,
+            "steps": _steps(state, "普通对话", int((time.time() - t0) * 1000),
+                            "生成失败"),
+            "done": True,
+        }
+    ms = int((time.time() - t0) * 1000)
+    return {
+        "route": "chat", "refused": False, "answer": answer,
+        "citations": [], "hits": [], "context": [], "tool_results": [],
+        "attempts": 0,
+        "messages": [message("assistant", answer)],
+        "steps": _steps(state, "普通对话", ms, "不查资料，直接回答"),
+        "timings": _timing(state, "generate", ms),
+        "done": True,
+    }
+
+
+def tools_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
+    """实时 / 外部工具：先取结果，再带着工具结果回答，不冒充资料引用。"""
+    t0 = time.time()
+    query = str(state.get("query") or "")
+    names = list(state.get("tool_names") or [])
+    _emit(emit, {"type": "status", "stage": "tool", "names": names})
+    results = deps.run_tools_fn(names, query, state.get("study") or {})
+    for result in results:
+        _emit(emit, {"type": "tool", "tool": result})
+    _emit(emit, {"type": "status", "stage": "chat", "tools": [
+        r.get("label") or r.get("name") for r in results]})
+    context = deps.tool_context_fn(results)
+    history = list(state.get("messages") or [])[:-1]
+    style = str(state.get("style") or "")
+    parts: List[str] = []
+    try:
+        for piece in deps.chat_stream(query, history, style, context):
+            if piece:
+                parts.append(piece)
+                _emit(emit, {"type": "delta", "text": piece})
+        answer = "".join(parts)
+    except Exception as e:
+        _emit(emit, {"type": "error", "message": "生成服务暂时不可用"})
+        return {
+            "route": "tools", "refused": True,
+            "reason": "provider_error: %s" % type(e).__name__,
+            "tool_results": results,
+            "steps": _steps(state, "工具调用", int((time.time() - t0) * 1000),
+                            "工具结果已取到，生成失败"),
+            "done": True,
+        }
+    ms = int((time.time() - t0) * 1000)
+    return {
+        "route": "tools", "refused": False, "answer": answer,
+        "citations": [], "hits": [], "context": [],
+        "tool_results": results, "attempts": 0,
+        "messages": [message("assistant", answer)],
+        "steps": _steps(state, "工具回答", ms,
+                        "工具：%s" % "、".join(
+                            str(r.get("label") or r.get("name") or "工具")
+                            for r in results)),
+        "timings": _timing(state, "generate", ms),
+        "done": True,
+    }
+
+
 def after_plan(state: AgentState) -> str:
-    return "direct" if state.get("intent") in ("chitchat", "clarify") else "search"
+    return "direct" if state.get("intent") in ("chitchat", "clarify") else "route"
+
+
+def after_route(state: AgentState) -> str:
+    route = state.get("route")
+    if route == "chat":
+        return "chat"
+    if route == "tools":
+        return "tools"
+    return "search"
 
 
 def after_gate(state: AgentState) -> str:

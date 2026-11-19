@@ -39,6 +39,8 @@ class AgentResult:
     errors: List[str] = field(default_factory=list)
     steps: List[Dict[str, Any]] = field(default_factory=list)
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    tools: List[Dict[str, Any]] = field(default_factory=list)
+    route: str = "kb"
     intent: str = "kb"
     rewritten: str = ""
     thread_id: str = ""
@@ -69,6 +71,8 @@ def _result_from_state(state: Dict[str, Any], thread_id: str, kind: str,
         errors=list(state.get("errors") or []),
         steps=list(state.get("steps") or []),
         tool_calls=list(state.get("tool_calls") or []),
+        tools=list(state.get("tool_results") or []),
+        route=str(state.get("route") or "kb"),
         intent=str(state.get("intent") or "kb"),
         rewritten=str(state.get("search_query") or ""),
         thread_id=thread_id,
@@ -97,7 +101,9 @@ class AgentRuntime:
         self.kind = kind
 
     def _prepare(self, deps: AgentDeps, query: str, thread_id: str,
-                 owner: str, history: List[Dict], style: str, collection: str):
+                 owner: str, history: List[Dict], style: str, collection: str,
+                 tools: Optional[List[str]] = None,
+                 study: Optional[Dict[str, Any]] = None):
         graph = build_agent_graph(deps, self.checkpointer)
         tid = clean_thread_id(thread_id) or uuid.uuid4().hex
         config = {"configurable": {"thread_id": tid}}
@@ -123,6 +129,12 @@ class AgentRuntime:
             "query": query,
             "collection": collection,
             "style": (style or "")[:400],
+            "tools": list(tools or []),
+            "study": dict(study or {}),
+            "route": "",
+            "tool_names": [],
+            "route_reason": "",
+            "tool_results": [],
             "intent": "",
             "search_query": "",
             "plan_note": "",
@@ -153,10 +165,13 @@ class AgentRuntime:
 
     def run(self, deps: AgentDeps, query: str, thread_id: str = "",
             owner: str = "", history: Optional[List[Dict]] = None,
-            style: str = "", collection: str = "") -> AgentResult:
+            style: str = "", collection: str = "",
+            tools: Optional[List[str]] = None,
+            study: Optional[Dict[str, Any]] = None) -> AgentResult:
         t0 = time.time()
         graph, config, tid, input_state, reset = self._prepare(
-            deps, query, thread_id, owner, history or [], style, collection)
+            deps, query, thread_id, owner, history or [], style, collection,
+            tools, study)
         try:
             final = graph.invoke(input_state, config)
         except Exception as e:
@@ -168,11 +183,14 @@ class AgentRuntime:
 
     def stream(self, deps: AgentDeps, query: str, thread_id: str = "",
                owner: str = "", history: Optional[List[Dict]] = None,
-               style: str = "", collection: str = "") -> Iterator[Dict[str, Any]]:
+               style: str = "", collection: str = "",
+               tools: Optional[List[str]] = None,
+               study: Optional[Dict[str, Any]] = None) -> Iterator[Dict[str, Any]]:
         """先吐 status/tool/delta/reset，最后吐一个 type=final 的结果。"""
         t0 = time.time()
         graph, config, tid, input_state, reset = self._prepare(
-            deps, query, thread_id, owner, history or [], style, collection)
+            deps, query, thread_id, owner, history or [], style, collection,
+            tools, study)
         final_state: Dict[str, Any] = {}
         try:
             for mode, chunk in graph.stream(
