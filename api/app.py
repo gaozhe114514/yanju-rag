@@ -619,6 +619,19 @@ def _collection_ref(collection: str) -> str:
     return collection or ""
 
 
+def _default_collection_item(user: Optional[Dict]) -> Optional[Dict]:
+    """把内置默认库整理成列表项：未登录也能看到，标 builtin 后只读。"""
+    cid = _state.get("default_collection") or ""
+    lib = _state.get("library")
+    if not cid or lib is None:
+        return None
+    coll = lib.get_collection(cid)
+    if coll is None:
+        return None
+    coll["builtin"] = True
+    return describe(user, coll, "")
+
+
 def _pipeline_for(collection: str):
     """按知识库取问答管线；用户库各自一份，库里资料变了就重建。
 
@@ -2165,11 +2178,11 @@ def _members_payload(cid: str, coll: Dict) -> Dict:
 @app.get("/collections")
 def collections_list(request: Request,
                      _: None = Depends(enforce_content)) -> dict:
-    """当前账号能看到的自建资料库。
+    """当前账号能看到的资料库。
 
-    408 题库（真题 + 考点）不再作为「知识库」返回：它在题库页和练习里用，
-    知识库页只列用户自己的库（公司库 + 个人库）。未登录不返回任何库，
-    前端据此提示登录，而不是把公司库藏起来装不存在。
+    默认知识库是内置只读库，未登录也能看到、能提问、能看引用原文；
+    公司库和个人库仍然需要登录。没有登录时只返回默认库，前端据此在
+    知识库页提示「登录后可看公司库和个人库」。
     """
     user = _optional_user(request)
     wk = _weknora()
@@ -2182,6 +2195,10 @@ def collections_list(request: Request,
                                      visibility=VISIBILITY_SHARED,
                                      owner_id=""), "")
                  for c in raw]
+        if user is None:
+            default = _default_collection_item(user)
+            if default is not None:
+                items.insert(0, default)
         return {"items": items,
                 "storage": "weknora", "backend": "weknora",
                 "need_login": user is None,
@@ -2189,7 +2206,12 @@ def collections_list(request: Request,
     lib = _library()
     items = []
     for coll in lib.list_collections():
+        coll["builtin"] = _is_preset(coll.get("id") or "")
         if not user:
+            # 未登录只放出内置默认库（只读）；公司库和个人库仍要登录。
+            if not coll["builtin"]:
+                continue
+            items.append(describe(user, coll, ""))
             continue
         if coll.get("visibility") == VISIBILITY_PRIVATE \
                 and coll.get("owner_id") != user["id"]:
@@ -2197,7 +2219,6 @@ def collections_list(request: Request,
         role = _member_role(coll, user)
         if not can_read(user, coll, role):
             continue
-        coll["builtin"] = _is_preset(coll.get("id") or "")
         items.append(describe(user, coll, role))
     return {"items": items,
             "storage": _state.get("storage", "memory"), "backend": "local",

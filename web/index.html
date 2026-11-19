@@ -4201,7 +4201,7 @@
           <span class="bank-meta" id="lib-meta"></span>
         </div>
         <div class="deck-grid" id="lib-grid"></div>
-        <div class="practice-note">内置的 408 语料只读；自建知识库保存在服务端，问答只引用这个库里切出来的原文，库外的知识不会补进来。</div>
+        <div class="practice-note">默认知识库内置只读、免登录可试用；自建知识库保存在服务端，问答只引用这个库里切出来的原文，库外的知识不会补进来。</div>
       </div>
     </section>
 
@@ -9437,14 +9437,16 @@
       if (!logged) {
         const panel = el('div', 'empty-panel lib-login');
         panel.appendChild(el('div', 'lib-login-title',
-          '登录后使用默认知识库和个人知识库'));
+          '登录后使用公司知识库和个人知识库'));
         panel.appendChild(el('div', 'lib-login-text',
-          '默认知识库由管理员维护、登录后可读；个人知识库只有你自己能看。'));
+          '默认知识库不用登录就能提问和看引用；公司知识库登录后全员可读，个人知识库只有你自己能看。'));
         const btn = el('button', 'primary', '去登录账号');
         btn.addEventListener('click', () => showAuthGate('login'));
         panel.appendChild(btn);
         grid.appendChild(panel);
-        setLibraryMeta('登录后查看公司库');
+        setLibraryMeta(preset.length
+          ? '默认知识库免登录可用 · 登录后查看公司库和个人库'
+          : '登录后查看公司库和个人库');
         return;
       }
 
@@ -9506,9 +9508,11 @@
     card.appendChild(el('div', 'deck-desc',
       c.description || '还没有说明。'));
     const foot = el('div', 'deck-foot');
-    foot.appendChild(el('span', null, c.builtin
+    // 默认知识库按资料计数；老的题库型内置库仍按题/考点显示
+    const stat = c.builtin && (c.questions || c.knowledge)
       ? (c.questions || 0) + ' 题 · ' + (c.knowledge || 0) + ' 考点'
-      : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段'));
+      : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段';
+    foot.appendChild(el('span', null, stat));
     foot.appendChild(el('span', null, c.builtin ? '只读'
       : (c.can_write ? '可编辑' : '只读')));
     card.appendChild(foot);
