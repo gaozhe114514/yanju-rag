@@ -169,5 +169,12 @@ class DeepSeekChatStreamTest(unittest.TestCase):
         self.assertNotIn("response_format", body)
 
 
+
+class ToolDisclaimerTest(unittest.TestCase):
+    def test_general_questions_do_not_mention_tools(self):
+        from answer.daily import DAILY_SYSTEM
+        self.assertIn("不要提工具", DAILY_SYSTEM)
+        self.assertIn("普通知识", DAILY_SYSTEM)
+
 if __name__ == "__main__":
     unittest.main()
