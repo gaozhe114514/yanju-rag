@@ -55,7 +55,7 @@ class UnifiedGraphTest(unittest.TestCase):
         self.runtime = AgentRuntime(InMemorySaver(), "memory")
 
     def make_deps(self, route, answer, tools=None, seen=None,
-                  enabled=None, tool_calls=None):
+                  enabled=None, tool_calls=None, provider=None):
         def chat_stream(query, history, style, tool_text=""):
             if seen is not None:
                 seen.append(tool_text)
@@ -70,7 +70,7 @@ class UnifiedGraphTest(unittest.TestCase):
         return AgentDeps(
             search=lambda q, skip_rerank=False: [HIT],
             prepare=lambda q, hits: (hits, None),
-            provider=object(),
+            provider=provider or object(),
             gate=RefusalGate(0, 0),
             router=lambda q, h, c: RouteDecision(route, tools or [], "test"),
             chat_stream=chat_stream,
@@ -100,6 +100,25 @@ class UnifiedGraphTest(unittest.TestCase):
         self.assertEqual(res.tools[0]["name"], "weather")
         self.assertIn("12℃", res.answer)
         self.assertIn("郑州现在 12℃", seen[0])
+
+    def test_official_site_followup_guesses_domain_when_history_has_none(self):
+        class P:
+            def complete(self, messages, **kwargs):
+                return "www.weaver.com.cn"
+
+        calls = []
+        deps = self.make_deps("tools", "官网首页介绍……", ["search"], enabled=[
+            "search", "fetch"], tool_calls=calls, provider=P())
+        res = self.runtime.run(
+            deps, query="你能从泛微官网查到吗", thread_id="t3", owner="user:1",
+            history=[
+                {"role": "user", "content": "泛微网络是什么类型的公司"},
+                {"role": "assistant", "content": "泛微网络做协同管理与 OA 软件。"},
+            ],
+            tools=["search", "fetch"])
+        self.assertFalse(res.refused)
+        self.assertEqual(calls[0][0], ["fetch"])
+        self.assertEqual(calls[0][1], "https://www.weaver.com.cn")
 
     def test_official_site_followup_fetches_url_from_history(self):
         calls = []

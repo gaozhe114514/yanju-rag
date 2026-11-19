@@ -448,6 +448,9 @@ _SITE_RE = re.compile(
     r"(?:https?://)?(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\.(?:com|cn|org|net)"
     r"(?:/[^\s，。；！？\"'<>]*)?", re.IGNORECASE)
 _OFFICIAL_RE = re.compile(r"官网|官方网站|网站|网页|主页")
+_SITE_GUESS_SYSTEM = """用户想查某个公司或机构的官网。只返回它的官网域名，
+例如 www.example.com；不确定就返回空字符串。不要解释，不要返回搜索结果页，不要编造。
+"""
 
 
 def _tool_query(state: AgentState, query: str) -> str:
@@ -466,6 +469,47 @@ def _tool_query(state: AgentState, query: str) -> str:
     return base or query
 
 
+def _history_site(state: AgentState) -> str:
+    history = list(state.get("messages") or [])[:-1]
+    for m in reversed(history):
+        if m.get("role") != "assistant":
+            continue
+        found = _SITE_RE.search(str(m.get("content") or ""))
+        if found:
+            url = found.group(0)
+            if not url.lower().startswith(("http://", "https://")):
+                url = "https://" + url.lstrip("/")
+            return url
+    return ""
+
+
+def _guess_site(provider, query: str, state: AgentState) -> str:
+    """模型知道官网域名时先给出候选，再由 web_fetch 真抓；不确定就不猜。"""
+    if provider is None or not hasattr(provider, "complete"):
+        return ""
+    history = list(state.get("messages") or [])[:-1]
+    prev = ""
+    for m in reversed(history):
+        if m.get("role") == "user" and str(m.get("content") or "").strip():
+            prev = str(m.get("content") or "").strip()
+            break
+    text = (prev + "\n" + query).strip()[:600]
+    try:
+        raw = provider.complete(
+            [{"role": "system", "content": _SITE_GUESS_SYSTEM},
+             {"role": "user", "content": text}],
+            temperature=0.0, max_tokens=40, json_mode=False)
+    except Exception:
+        return ""
+    found = _SITE_RE.search(str(raw or ""))
+    if not found:
+        return ""
+    url = found.group(0)
+    if not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url.lstrip("/")
+    return url
+
+
 def tools_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
     """实时 / 外部工具：先取结果，再带着工具结果回答，不冒充资料引用。"""
     t0 = time.time()
@@ -475,18 +519,10 @@ def tools_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
     # 「你能从官网查到吗」这类追问：上一轮回答里已经给了网址，就直接抓正文，
     # 不拿一句没有主语的问法去搜索。
     if _OFFICIAL_RE.search(query) and "fetch" in (deps.tools or []):
-        history = list(state.get("messages") or [])[:-1]
-        for m in reversed(history):
-            if m.get("role") != "assistant":
-                continue
-            found = _SITE_RE.search(str(m.get("content") or ""))
-            if found:
-                url = found.group(0)
-                if not url.lower().startswith(("http://", "https://")):
-                    url = "https://" + url.lstrip("/")
-                names = ["fetch"]
-                tool_query = url
-                break
+        url = _history_site(state) or _guess_site(deps.provider, tool_query, state)
+        if url:
+            names = ["fetch"]
+            tool_query = url
     _emit(emit, {"type": "status", "stage": "tool", "names": names})
     results = deps.run_tools_fn(names, tool_query, state.get("study") or {})
     for result in results:

@@ -4,7 +4,7 @@
 
 > 一个会查资料、也能正常聊天的通用 Agent：答得出来就带逐字引用，答不出来就明说。
 
-**当前版本 v0.77.3** ｜ 465 条测试通过 ｜ Python 3.11 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
+**当前版本 v0.77.4** ｜ 466 条测试通过 ｜ Python 3.11 · FastAPI · LangGraph · PostgreSQL 16 + pgvector · 单文件前端，无构建步骤
 
 ![问答首页（琉璃主题）](docs/screens/home-glass-1440.png)
 
