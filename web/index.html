@@ -9492,9 +9492,10 @@
     const card = el('div', 'deck-card');
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
+    // 卡片先进库里看资料；想直接问答用卡片上的「用它提问」
     const open = () => {
-      if (c.builtin) { useCollection(c); return; }
-      go('collection', c.id);
+      if (c.id) { go('collection', c.id); return; }
+      useCollection(c);
     };
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => {
@@ -9774,7 +9775,12 @@
       const addBox = $('#lib-add');
       if (addBox) addBox.hidden = !canWrite;
       const readonly = $('#lib-readonly');
-      if (readonly) readonly.hidden = canWrite;
+      if (readonly) {
+        readonly.hidden = canWrite;
+        readonly.textContent = c.visibility === 'builtin'
+          ? '默认知识库是内置示例资料，只读；登录后可以建自己的知识库并上传资料。'
+          : '这个知识库对你只读。公司库的写权限由管理员或被指定的成员维护；个人库只有建库人自己能改。';
+      }
       const delBtn = $('#lib-del');
       if (delBtn) delBtn.hidden = !canManage;
       const membersBtn = $('#lib-members');
