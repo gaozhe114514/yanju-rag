@@ -30,6 +30,8 @@ RUN rm -rf \
       /app/tests/test_qgen.py /app/tests/test_seed_knowledge.py \
       /app/tests/test_tutor.py /app/tests/test_mastery_access.py \
       /app/tests/test_mastery_session.py /app/tests/test_analysis.py \
-      /app/tests/test_store_pg.py
+      /app/tests/test_store_pg.py \
+ && mkdir -p /app/data/work /app/logs \
+ && chown -R appuser:appuser /app/data /app/logs
 
 USER appuser

@@ -6583,7 +6583,7 @@
   }
 
   function renderCollectionPage(id) {
-    if (!id || id === PRESET_DECK.id) { go('library'); return; }
+    if (!id) { go('library'); return; }
     state.collectionId = id;
     const docs = clearNode('#lib-docs');
     if (docs) docs.replaceChildren();

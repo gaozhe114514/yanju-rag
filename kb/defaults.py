@@ -49,7 +49,7 @@ def ensure_default_library(lib: Library, docs_dir: Optional[Path] = None) -> Opt
         try:
             lib.create_collection(DEFAULT_NAME, DEFAULT_DESC,
                                   owner_id="", visibility="shared",
-                                  created_by="system")
+                                  created_by="")
         except LibraryError:
             pass  # 多进程同时启动时可能已被另一个进程创建
         rows = lib.list_collections()
