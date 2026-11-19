@@ -3,7 +3,7 @@
 #   docker build -f deploy/Dockerfile.hotfix -t yanju-rag:v0770 .
 #   docker tag yanju-rag:v0770 yanju-rag:latest
 #   docker compose up -d --no-build
-FROM cs408-rag:latest
+FROM yanju-rag:legacy-v0764
 
 USER root
 WORKDIR /app
