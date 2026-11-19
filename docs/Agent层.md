@@ -137,7 +137,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 
 ## 前端
 
-输入条的「回答方式」胶囊打开二选一弹层（标准问答 / Agent 编排），弹层里写清两种方式的差异；「资料」「人格」胶囊也带 2 字前缀，资料范围与执行方式不再像两个并列模式。选 Agent 后（设备级偏好，不上传）：
+输入条只保留一个「输入设置」按钮（齿轮 + 当前回答方式），点开是一张设置卡片，三个选择项分别是回答方式（标准问答 / Agent 编排）、资料范围与人格；资料范围与执行方式不再像两个并列模式。选 Agent 后（设备级偏好，不上传）：
 
 - 请求改走 `/agent/stream`，对话 id 作为 `thread_id`；
 - 阶段提示会显示「正在调用 search_kb」「检索完成，命中 N 条」「换个问法再查一次」；
@@ -145,7 +145,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 - 「执行过程」沿用原来的步骤表，能看到理解问题、拒答判断、生成、引用校验各自的耗时；
 - 切回标准问答就回到原来的 `/chat/stream`，历史对话不受影响。
 
-README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/prod-v0762-mode-dark-1440.png`（线上回答方式弹层）与 `data/work/prod-v0762-agent-dark-390.png`（线上手机 Agent 轨迹）。
+README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/v0763-settings-dark-1440.png`（输入设置卡片）与 `v0763-agent-dark-390.png`（手机 Agent 轨迹）；线上 v0.76.2 的部署证据见 `prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
 
 ## 为什么是 LangGraph 0.6
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.76.2">
+  <meta name="app-version" content="0.76.3">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -2070,16 +2070,12 @@
     }
     .composer-chip:hover { border-color: var(--line-strong); color: var(--brand); }
     .composer-chip.on { background: var(--wash); border-color: transparent; color: var(--brand-dark); }
-    .chip-kicker { color: var(--muted); margin-right: 4px; white-space: nowrap; }
-    .composer-chip.on .chip-kicker { color: inherit; opacity: .75; }
-    .chip-kicker-short { display: none; }
-    #answer-mode-chip { max-width: 118px; }
-    #answer-mode-chip.on { font-weight: 600; }
-    #answer-mode-chip.on::after {
-      content: ''; display: inline-block; width: 5px; height: 5px;
-      margin-left: 5px; border-radius: 50%; background: currentColor;
-      vertical-align: 1px;
+    .input-settings-chip {
+      display: inline-flex; align-items: center; gap: 6px; max-width: 112px;
+      padding: 6px 10px; font-size: 12px; color: var(--ink-3);
     }
+    .input-settings-chip svg { width: 16px; height: 16px; flex: none; }
+    .input-settings-chip.on { font-weight: 600; }
 
     @media (max-width: 860px) {
       .space-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
@@ -2092,9 +2088,7 @@
       .subnav { flex-wrap: nowrap; overflow-x: auto; }
       .subnav button { flex: none; }
       .composer-chip { max-width: 96px; padding: 4px 7px; }
-      .chip-kicker-full { display: none; }
-      .chip-kicker-short { display: inline; }
-      #answer-mode-chip { max-width: 92px; }
+      .input-settings-chip { max-width: 96px; padding: 5px 8px; }
       .list-row { flex-direction: column; gap: 8px; }
       .list-actions { width: 100%; justify-content: flex-start; }
       .toolbar .grow { min-width: 0; }
@@ -2134,7 +2128,7 @@
 
     @media (max-width: 380px) {
       .composer-chip { max-width: 72px; padding: 4px 6px; font-size: 10.5px; }
-      #answer-mode-chip { max-width: 78px; }
+      .input-settings-chip { max-width: 72px; }
     }
 
     /* ---------- 流式对话（对齐 DeepTutor 的对话列） ---------- */
@@ -4142,16 +4136,10 @@
           <textarea id="composer" rows="1" maxlength="500"
                     placeholder="有问题，直接问…"></textarea>
           <div class="composer-bar">
-            <button class="composer-chip" id="collection-chip" type="button"
-                    aria-haspopup="dialog" title="查哪些资料：内置 408 题库，或你导入的知识库">
-              <span class="chip-kicker">资料</span><span id="collection-chip-name">408 题库</span>
-            </button>
-            <button class="composer-chip" id="persona-chip" type="button" aria-haspopup="dialog" title="用哪种语气讲；引用与拒答规则不变">
-              <span class="chip-kicker">人格</span><span id="persona-chip-name">默认</span>
-            </button>
-            <button class="composer-chip" id="answer-mode-chip" type="button"
-                    aria-haspopup="dialog" title="回答方式：标准问答，或 Agent 编排">
-              <span class="chip-kicker chip-kicker-full">回答方式</span><span class="chip-kicker chip-kicker-short">方式</span><span id="answer-mode-name">标准</span>
+            <button class="composer-chip input-settings-chip" id="input-settings-chip" type="button"
+                    aria-haspopup="dialog" title="输入设置：资料范围 / 回答方式 / 人格">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear"></use></svg>
+              <span id="input-settings-mode">标准</span>
             </button>
             <button class="send" id="send" aria-label="发送" title="发送">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
@@ -9417,14 +9405,7 @@
   }
 
   function renderCollectionChip() {
-    const chip = $('#collection-chip');
-    if (!chip) return;
-    const c = activeCollection();
-    const name = $('#collection-chip-name');
-    if (name) name.textContent = c ? c.name : '408 题库';
-    chip.classList.toggle('on', !!c);
-    chip.title = c ? '当前只用「' + c.name + '」里的资料回答'
-      : '不选库时回答依据是 408 题库（真题 + 考点）';
+    renderInputSettingsChip();
   }
 
   function openAccountSettings() {
@@ -11015,42 +10996,6 @@
     return card;
   }
 
-  function openCollectionPicker() {
-    const wrap = el('div', 'form-grid');
-    const list = el('div', 'stack');
-    const mk = (c) => {
-      const row = el('button', 'list-row');
-      row.type = 'button';
-      row.style.textAlign = 'left';
-      row.style.cursor = 'pointer';
-      const main = el('div', 'list-main');
-      main.appendChild(el('div', 'list-title', c.name));
-      main.appendChild(el('div', 'list-meta', c.builtin
-        ? '内置 · ' + (c.questions || 0) + ' 题 · ' + (c.knowledge || 0) + ' 考点'
-        : (c.documents || 0) + ' 篇资料 · ' + (c.chunks || 0) + ' 段'));
-      row.appendChild(main);
-      if ((state.chatCollection || '') === (c.builtin ? '' : c.id)) {
-        row.appendChild(el('span', 'badge', '使用中'));
-      }
-      row.addEventListener('click', () => { closeModal(); useCollection(c); });
-      list.appendChild(row);
-    };
-    fetchCollections(true).then(items => {
-      // 408 题库不再作为「知识库」返回，但仍是默认的问答依据，这里补一行
-      const meta = state.meta || {};
-      mk({id: '', name: '408 题库（真题 + 考点）', builtin: true,
-          questions: meta.chunks || 0, knowledge: meta.knowledge || 0});
-      items.forEach(mk);
-      wrap.appendChild(list);
-      const acts = el('div', 'form-actions');
-      const manage = el('button', 'ghost', '管理知识库');
-      manage.addEventListener('click', () => { closeModal(); go('library'); });
-      acts.appendChild(manage);
-      wrap.appendChild(acts);
-      openModal('选择知识库', wrap);
-    });
-  }
-
   /* ---------- 学习空间 ---------- */
   function renderSpace() {
     const root = clearNode('#space-groups');
@@ -11591,91 +11536,88 @@
   }
 
   function renderPersonaChip() {
-    const chip = $('#persona-chip');
-    if (!chip) return;
-    const p = personaById(currentPersonaId());
-    const name = $('#persona-chip-name');
-    if (name) name.textContent = p ? p.name : '默认';
-    chip.classList.toggle('on', !!p);
-    chip.title = p ? '当前人格：' + p.name : '选择人格预设';
+    renderInputSettingsChip();
   }
 
-  function renderAnswerModeChip() {
-    const chip = $('#answer-mode-chip');
-    const name = $('#answer-mode-name');
+  function renderInputSettingsChip() {
+    const chip = $('#input-settings-chip');
     if (!chip) return;
+    const mode = $('#input-settings-mode');
     const agent = !!state.agentMode;
-    if (name) name.textContent = agent ? 'Agent' : '标准';
+    if (mode) mode.textContent = agent ? 'Agent' : '标准';
     chip.classList.toggle('on', agent);
-    chip.title = agent
-      ? '当前回答方式：Agent 编排；回答下会显示检索工具与校验过程'
-      : '回答方式：标准问答；点这里切换为 Agent 或查看两者区别';
+    const coll = activeCollection();
+    const p = personaById(currentPersonaId());
+    chip.title = '输入设置：资料 ' + (coll ? coll.name : '408 题库') +
+      ' · ' + (agent ? 'Agent 编排' : '标准问答') +
+      ' · 人格 ' + (p ? p.name : '默认');
   }
 
-  function openAnswerModePicker() {
-    const wrap = el('div', 'form-grid');
-    wrap.appendChild(el('div', 'panel-sub',
-      '「资料」决定查哪些内容；这里只选回答怎么执行。两种方式都逐字校验引用，共用同一个知识库。'));
-    const list = el('div', 'stack');
-    const mk = (agent, title, desc) => {
-      const row = el('button', 'list-row');
-      row.type = 'button';
-      row.style.textAlign = 'left';
-      row.style.cursor = 'pointer';
-      const main = el('div', 'list-main');
-      main.appendChild(el('div', 'list-title', title));
-      main.appendChild(el('div', 'list-meta', desc));
-      row.appendChild(main);
-      if (!!state.agentMode === agent) row.appendChild(el('span', 'badge', '使用中'));
-      row.addEventListener('click', () => {
-        state.agentMode = agent;
-        saveKey(AGENT_MODE_KEY, agent);
-        renderAnswerModeChip();
-        closeModal();
-        toast(agent ? '已切到 Agent：回答下会显示检索与校验过程'
-                    : '已切回标准问答');
+  function openInputSettings() {
+    const build = (items) => {
+      const wrap = el('div', 'form-grid');
+      wrap.appendChild(el('div', 'panel-sub',
+        '这里只影响之后的提问；引用逐字校验与拒答规则不变。'));
+
+      const mode = selectEl(
+        [['standard', '标准问答'], ['agent', 'Agent 编排']],
+        state.agentMode ? 'agent' : 'standard');
+      mode.addEventListener('change', () => {
+        state.agentMode = mode.value === 'agent';
+        saveKey(AGENT_MODE_KEY, state.agentMode);
+        renderInputSettingsChip();
+        toast(state.agentMode
+          ? '已切到 Agent：回答下会显示检索与校验过程'
+          : '已切回标准问答');
       });
-      list.appendChild(row);
-    };
-    mk(false, '标准问答',
-       '快；资料不足时，界面会改给一段标明「资料未覆盖」的通用回答。');
-    mk(true, 'Agent 编排',
-       '规划 → 调用 search_kb 检索 → 拒答判断 → 生成 → 逐字校验；显示工具与耗时，资料不足直接拒答，响应会稍慢。');
-    wrap.appendChild(list);
-    openModal('选择回答方式', wrap);
-  }
+      wrap.appendChild(field('回答方式', mode,
+        '标准问答快，资料不足时可给标明「资料未覆盖」的通用回答；' +
+        'Agent 会显示 search_kb 工具与逐字校验过程，资料不足直接拒答，响应稍慢。'));
 
-  function openPersonaPicker() {
-    const wrap = el('div', 'form-grid');
-    const list = el('div', 'stack');
-    const mk = (id, name, desc) => {
-      const row = el('button', 'list-row');
-      row.type = 'button';
-      row.style.textAlign = 'left';
-      row.style.cursor = 'pointer';
-      const main = el('div', 'list-main');
-      main.appendChild(el('div', 'list-title', name));
-      if (desc) main.appendChild(el('div', 'list-meta', desc));
-      row.appendChild(main);
-      if (currentPersonaId() === id) row.appendChild(el('span', 'badge', '使用中'));
-      row.addEventListener('click', () => {
-        state.chatPersonaId = id;
+      const options = [['', '408 题库（真题 + 考点）']].concat(
+        items.map(c => [c.id, c.name]));
+      if (state.chatCollection && !items.some(c => c.id === state.chatCollection)) {
+        options.push([state.chatCollection, '当前知识库']);
+      }
+      const scope = selectEl(options, state.chatCollection || '');
+      scope.addEventListener('change', () => {
+        setChatCollection(scope.value);
+        const c = activeCollection();
+        toast(c ? '之后的提问只用「' + c.name + '」里的资料'
+                : '之后的提问使用 408 题库（真题 + 考点）');
+      });
+      wrap.appendChild(field('资料范围', scope,
+        '408 题库是内置真题与考点；也可以在「学习空间 → 知识库」里导入自己的资料。'));
+
+      const personas = [['', '默认助教']].concat(
+        state.personas.map(p => [p.id, p.name]));
+      const persona = selectEl(personas, currentPersonaId());
+      persona.addEventListener('change', () => {
+        state.chatPersonaId = persona.value;
         const conv = activeConv();
-        if (conv) { conv.personaId = id; saveConvs(); }
+        if (conv) { conv.personaId = persona.value; saveConvs(); }
         renderPersonaChip();
-        closeModal();
+        toast(persona.value ? '之后的回答会换一种讲法' : '已切回默认助教');
       });
-      list.appendChild(row);
+      wrap.appendChild(field('人格', persona,
+        '只影响措辞、语气和组织顺序；事实、引用与拒答规则不变。'));
+
+      const acts = el('div', 'form-actions');
+      const lib = el('button', 'ghost', '管理知识库');
+      lib.type = 'button';
+      lib.addEventListener('click', () => { closeModal(); go('library'); });
+      const per = el('button', 'ghost', '管理人格');
+      per.type = 'button';
+      per.addEventListener('click', () => { closeModal(); go('personas'); });
+      const done = el('button', 'primary', '完成');
+      done.type = 'button';
+      done.addEventListener('click', closeModal);
+      acts.append(lib, per, done);
+      wrap.appendChild(acts);
+      openModal('输入设置', wrap);
     };
-    mk('', '默认助教', '直接、克制，只讲资料里有的。');
-    state.personas.forEach(p => mk(p.id, p.name, p.desc || p.style));
-    wrap.appendChild(list);
-    const acts = el('div', 'form-actions');
-    const manage = el('button', 'ghost', '管理预设');
-    manage.addEventListener('click', () => { closeModal(); go('personas'); });
-    acts.appendChild(manage);
-    wrap.appendChild(acts);
-    openModal('选择人格', wrap);
+
+    fetchCollections().then(build).catch(() => build([]));
   }
 
   /* ---------- 技能 ---------- */
@@ -17207,8 +17149,6 @@
     $$('#space-subnav button').forEach(b => {
       b.addEventListener('click', () => go(b.dataset.space));
     });
-    const personaChip = $('#persona-chip');
-    if (personaChip) personaChip.addEventListener('click', openPersonaPicker);
     const todayAsk = $('#today-ask');
     if (todayAsk) {
       todayAsk.addEventListener('submit', e => {
@@ -17268,11 +17208,9 @@
     });
     $('#bank-more').addEventListener('click', () => fetchBank(false));
 
-    const collectionChip = $('#collection-chip');
-    if (collectionChip) collectionChip.addEventListener('click', openCollectionPicker);
-    const modeChip = $('#answer-mode-chip');
-    if (modeChip) modeChip.addEventListener('click', openAnswerModePicker);
-    renderAnswerModeChip();
+    const settingsChip = $('#input-settings-chip');
+    if (settingsChip) settingsChip.addEventListener('click', openInputSettings);
+    renderInputSettingsChip();
     $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
     const libDrop = $('#lib-drop');
