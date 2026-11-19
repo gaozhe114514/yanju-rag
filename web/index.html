@@ -9432,7 +9432,10 @@
       const mine = items.filter(c => !c.builtin && c.visibility === 'private');
       const logged = !!state.account.user;
 
-      preset.forEach(c => grid.appendChild(collectionCardNode(c)));
+      if (preset.length) {
+        grid.appendChild(el('div', 'lib-section-title', '默认知识库'));
+        preset.forEach(c => grid.appendChild(collectionCardNode(c)));
+      }
 
       if (!logged) {
         const panel = el('div', 'empty-panel lib-login');
@@ -9451,7 +9454,7 @@
       }
 
       if (shared.length) {
-        grid.appendChild(el('div', 'lib-section-title', '默认知识库'));
+        grid.appendChild(el('div', 'lib-section-title', '公司知识库'));
         shared.forEach(c => grid.appendChild(collectionCardNode(c)));
       }
       grid.appendChild(el('div', 'lib-section-title', '我的知识库'));
@@ -9573,7 +9576,7 @@
     personal.value = 'private';
     vis.appendChild(personal);
     if (isAdmin) {
-      const shared = el('option', null, '默认知识库 · 登录后全员可读');
+      const shared = el('option', null, '公司知识库 · 登录后全员可读');
       shared.value = 'shared';
       vis.appendChild(shared);
     }
@@ -9582,7 +9585,7 @@
     wrap.appendChild(field('说明', desc, '说明只显示在知识库卡片上，不进入问答提示词。'));
     wrap.appendChild(field('类型', vis, isAdmin
       ? '公司库登录后全员可读，写权限由管理员或被指定的成员维护；个人库只有你自己能看。'
-      : '个人知识库只有你自己能看；默认知识库由管理员创建。'));
+      : '个人知识库只有你自己能看；公司知识库由管理员创建。'));
     const acts = el('div', 'form-actions');
     const cancel = el('button', 'ghost', '取消');
     cancel.addEventListener('click', closeModal);
@@ -9596,7 +9599,7 @@
         .then(c => {
           closeModal();
           state.collectionsLoaded = false;
-          toast(c.visibility === 'shared' ? '默认知识库已创建' : '个人知识库已创建');
+          toast(c.visibility === 'shared' ? '公司知识库已创建' : '个人知识库已创建');
           go('collection', c.id);
         })
         .catch(e => {
@@ -9615,7 +9618,7 @@
     if (!c || c.visibility !== 'shared' || c.weknora) return;
     const wrap = el('div', 'form-grid');
     wrap.appendChild(el('div', 'chunk-note',
-      '默认知识库登录后全员可读；这里指定谁能改资料。建库人和管理员始终可改，个人库没有成员。'));
+      '公司知识库登录后全员可读；这里指定谁能改资料。建库人和管理员始终可改，个人库没有成员。'));
     const list = el('div', 'stack member-list');
     wrap.appendChild(list);
 
