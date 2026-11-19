@@ -51,6 +51,7 @@ from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
 from answer.qgen import generate_questions
 from answer.stream import sse
 from kb import PRESET_COLLECTION, Library, LibraryError
+from kb.defaults import ensure_default_library
 from kb.parsers import ParseError, extension_of, extract_document
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
@@ -485,6 +486,16 @@ def _load() -> None:
     library = Library(store=store, embedder=searcher.embedder, mode=mode,
                       k_fuse=fuse_k, state_path=library_state)
 
+    # 默认资料范围：内置「公司知识库」；示例资料随代码走，换真实资料时直接改库。
+    default_coll = ensure_default_library(library)
+    default_id = (default_coll or {}).get("id", "")
+    default_searcher = library.searcher(default_id) if default_id else None
+    default_pipeline = (
+        AnswerPipeline(default_searcher, provider, gate=gate, prompt_mode="doc")
+        if default_searcher is not None
+        else AnswerPipeline(searcher, provider, gate=gate))
+    print("默认知识库：%s" % ((default_coll or {}).get("name") or "408 题库（回退）"))
+
     # 配了 WeKnora 就把「用户知识库」的进料、切片、召回交给它；
     # 内置 408 语料仍走本项目的检索（引用校验与拒答两边完全一致）。
     weknora = WeKnora()
@@ -500,7 +511,8 @@ def _load() -> None:
         print("知识库管理员：%s" % "、".join(promoted))
 
     _state.update({
-        "pipeline": AnswerPipeline(searcher, provider, gate=gate),
+        "pipeline": default_pipeline,
+        "default_collection": default_id,
         "library": library,
         "weknora": weknora if weknora.configured else None,
         "gate": gate,
@@ -593,7 +605,8 @@ async def request_log_middleware(request: Request, call_next):
 
 
 def _is_preset(collection: str) -> bool:
-    return not collection or collection == PRESET_COLLECTION
+    default = _state.get("default_collection")
+    return not collection or bool(default and collection == default)
 
 
 def _pipeline_for(collection: str):

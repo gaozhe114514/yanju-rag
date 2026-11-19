@@ -1495,7 +1495,7 @@
       .today-ask input { min-height: 38px; }
       .tabbar {
         position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-        display: grid; grid-template-columns: repeat(5, 1fr);
+        display: grid; grid-template-columns: repeat(4, 1fr);
         padding: 5px 8px calc(5px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
         background: color-mix(in srgb, var(--bg) 96%, transparent);
@@ -2082,7 +2082,7 @@
       .kanban-board { grid-template-columns: 1fr; }
       .kanban-col { min-height: 120px; }
       .page-head-row { gap: 16px; }
-      .tabbar { grid-template-columns: repeat(5, 1fr); padding-left: 2px; padding-right: 2px; }
+      .tabbar { grid-template-columns: repeat(4, 1fr); padding-left: 2px; padding-right: 2px; }
       .tabbar button { font-size: 10px; gap: 2px; padding: 3px 0; }
       .tabbar .nav-ico svg { width: 17px; height: 17px; }
       .subnav { flex-wrap: nowrap; overflow-x: auto; }
@@ -4038,8 +4038,7 @@
     <button class="new-chat" id="new-chat" title="新建对话"><span class="new-chat-ico">＋</span><span class="new-chat-label">新建对话</span></button>
     <nav class="nav" id="nav">
       <button data-page="chat" class="active" title="问答"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span><span class="nav-label">问答</span></button>
-      <button data-page="learning" title="学习"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span><span class="nav-label">学习</span></button>
-      <button data-page="space" title="学习空间"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span><span class="nav-label">学习空间</span></button>
+      <button data-page="space" title="知识空间"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span><span class="nav-label">知识空间</span></button>
       <button data-page="create" title="创作"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span><span class="nav-label">创作</span></button>
       <button data-page="kanban" title="任务清单"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span><span class="nav-label">任务清单</span></button>
     </nav>
@@ -4053,7 +4052,7 @@
         <span id="token-label">未配置口令</span>
         <span class="token-gear"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear"></use></svg></span>
       </button>
-      <div class="side-note"><span id="side-facts">正在读取题库…</span><br>资料里没有的，会直说没有</div>
+      <div class="side-note"><span id="side-facts">正在连接知识库…</span><br>资料里没有的，会直说没有</div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -4457,8 +4456,7 @@
 
 <nav class="tabbar" id="tabbar" aria-label="主要页面">
   <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
-  <button data-page="learning"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-route"></use></svg></span>学习</button>
-  <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>学习空间</button>
+  <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>知识空间</button>
   <button data-page="create"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>创作</button>
   <button data-page="kanban"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span>任务清单</button>
 </nav>
@@ -4548,7 +4546,7 @@
     knowledge: {title: '考点', sub: ''},
     graph: {title: '知识图谱', sub: ''},
     practice: {title: '练习', sub: ''},
-    space: {title: '学习空间', sub: ''},
+    space: {title: '知识空间', sub: ''},
     history: {title: '聊天历史', sub: ''},
     notebooks: {title: '笔记本', sub: ''},
     personas: {title: '人格预设', sub: ''},
@@ -5764,7 +5762,7 @@
         : '生成的答案没能逐字对上题库原文，已按规则拒答。可以换个问法再试。';
     }
     if (data.reason === 'empty_collection') {
-      return '这个知识库还没有资料。先去「学习空间 → 知识库」里加一篇，再回来问。';
+      return '这个知识库还没有资料。先去「知识空间 → 知识库」里加一篇，再回来问。';
     }
     if (data.reason === 'agent_unavailable') {
       return data.notice || 'Agent 模式暂时不可用，请稍后再试。';
@@ -5918,15 +5916,16 @@
     return box;
   }
 
-  // 「资料未覆盖」多半不是模型不行，而是提问时还停在「408 题库」范围：
+  // 「资料未覆盖」多半不是模型不行，而是提问时还停在公司知识库：
   // 用户导入过的资料在别的库里，这里直接给一条换库重问的退路。
   function libraryFallbackHint(msg) {
     const box = el('div', 'refuse-note');
     box.appendChild(el('span', 'refuse-note-k', '资料范围'));
-    const text = el('span', null, '刚才只查了 408 题库（真题 + 考点）。');
+    const text = el('span', null, '刚才只查了公司知识库。');
     box.appendChild(text);
     fetchCollections().then(items => {
-      const libs = (items || []).filter(c => c && !c.builtin);
+      const libs = (items || []).filter(c => c && !c.builtin &&
+        c.name !== '公司知识库');
       if (!libs.length || !box.isConnected) { box.remove(); return; }
       const lib = libs.slice().sort((a, b) =>
         String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
@@ -6691,7 +6690,7 @@
     if (!t.item) {
       box.replaceChildren(el('div', 'today-question-loading', state.meta
         ? '题库里还没有可练的单选题。先到「问答」问一句，或到「题库」看看。'
-        : '正在读取题库…'));
+        : '正在连接知识库…'));
       return;
     }
 
@@ -9185,7 +9184,7 @@
 
   /* ---------- routing / events ---------- */
   // 页面和详情都进地址栏：刷新、分享链接、浏览器后退都能回到原处。
-  /* ---------- v0.22 学习空间 / 精通之路 / 任务看板 ---------- */
+  /* ---------- v0.22 知识空间 / 精通之路 / 任务看板 ---------- */
   function uid(prefix) {
     return prefix + '-' + Date.now().toString(36) + '-' +
       Math.random().toString(36).slice(2, 7);
@@ -11021,7 +11020,7 @@
     return card;
   }
 
-  /* ---------- 学习空间 ---------- */
+  /* ---------- 知识空间 ---------- */
   function renderSpace() {
     const root = clearNode('#space-groups');
     if (!root) return;
@@ -11046,13 +11045,7 @@
         {page: 'notebooks', icon: 'i-book', title: '笔记本',
          desc: '把答案、引用和自己的手记收在一起。',
          count: state.notebooks.length + ' 个笔记本'},
-        {page: 'bank', icon: 'i-list', title: '题库',
-         desc: '内置 408 真题是预置题库，也可以导入或用自己的资料出题。',
-         count: (1 + state.decks.length) + ' 个题库' +
-           (meta.chunks != null ? ' · ' + meta.chunks + ' 道真题' : '')},
-        {page: 'knowledge', icon: 'i-book', title: '考点',
-         desc: '考点卡片与关联真题，按章节查看。',
-         count: meta.knowledge != null ? meta.knowledge + ' 张卡片' : '考点卡片'}
+
       ]},
       {label: '个性化', items: [
         {page: 'personas', icon: 'i-users', title: '人格预设',
@@ -11573,7 +11566,7 @@
     chip.classList.toggle('on', agent);
     const coll = activeCollection();
     const p = personaById(currentPersonaId());
-    chip.title = '输入设置：资料 ' + (coll ? coll.name : '408 题库') +
+    chip.title = '输入设置：资料 ' + (coll ? coll.name : '公司知识库') +
       ' · ' + (agent ? 'Agent 编排' : '标准问答') +
       ' · 人格 ' + (p ? p.name : '默认');
   }
@@ -11599,8 +11592,9 @@
         '标准问答快，资料不足时可给标明「资料未覆盖」的通用回答；' +
         'Agent 会显示 search_kb 工具与逐字校验过程，资料不足直接拒答，响应稍慢。'));
 
-      const options = [['', '408 题库（真题 + 考点）']].concat(
-        items.map(c => [c.id, c.name]));
+      const options = [['', '公司知识库（默认）']].concat(
+        items.filter(c => c.name !== '公司知识库')
+          .map(c => [c.id, c.name]));
       if (state.chatCollection && !items.some(c => c.id === state.chatCollection)) {
         options.push([state.chatCollection, '当前知识库']);
       }
@@ -11609,10 +11603,10 @@
         setChatCollection(scope.value);
         const c = activeCollection();
         toast(c ? '之后的提问只用「' + c.name + '」里的资料'
-                : '之后的提问使用 408 题库（真题 + 考点）');
+                : '之后的提问使用公司知识库');
       });
       wrap.appendChild(field('资料范围', scope,
-        '408 题库是内置真题与考点；也可以在「学习空间 → 知识库」里导入自己的资料。'));
+        '408 题库是内置真题与考点；也可以在「知识空间 → 知识库」里导入自己的资料。'));
 
       const personas = [['', '默认助教']].concat(
         state.personas.map(p => [p.id, p.name]));
