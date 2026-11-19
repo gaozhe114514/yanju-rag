@@ -10,9 +10,9 @@ from typing import Dict, List, Optional
 from .library import Library, LibraryError
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_NAME = "公司知识库"
-DEFAULT_DESC = "示例公司知识库；内容仅用于演示引用，可替换为公司真实资料"
-DEFAULT_DIR = ROOT / "data" / "curated" / "company"
+DEFAULT_NAME = "默认知识库"
+DEFAULT_DESC = "内置示例资料；无需登录即可试用，只读，可替换为公司真实资料"
+DEFAULT_DIR = ROOT / "data" / "curated" / "default"
 
 
 def load_default_docs(docs_dir: Optional[Path] = None) -> List[Dict[str, str]]:
@@ -34,7 +34,7 @@ def load_default_docs(docs_dir: Optional[Path] = None) -> List[Dict[str, str]]:
         out.append({
             "title": title or path.stem,
             "text": text,
-            "source": "data/curated/company/%s" % path.name,
+            "source": "data/curated/default/%s" % path.name,
         })
     return out
 

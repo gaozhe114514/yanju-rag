@@ -24,7 +24,7 @@ class DefaultDocsTest(unittest.TestCase):
             lib = Library(mode="bm25")
             first = ensure_default_library(lib, docs)
             self.assertIsNotNone(first)
-            self.assertEqual(first["name"], "公司知识库")
+            self.assertEqual(first["name"], "默认知识库")
             self.assertEqual(len(lib.list_documents(first["id"])), 1)
             again = ensure_default_library(lib, docs)
             self.assertEqual(again["id"], first["id"])

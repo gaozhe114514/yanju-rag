@@ -5904,16 +5904,16 @@
     return box;
   }
 
-  // 「资料未覆盖」多半不是模型不行，而是提问时还停在公司知识库：
+  // 「资料未覆盖」多半不是模型不行，而是提问时还停在默认知识库：
   // 用户导入过的资料在别的库里，这里直接给一条换库重问的退路。
   function libraryFallbackHint(msg) {
     const box = el('div', 'refuse-note');
     box.appendChild(el('span', 'refuse-note-k', '资料范围'));
-    const text = el('span', null, '刚才只查了公司知识库。');
+    const text = el('span', null, '刚才只查了默认知识库。');
     box.appendChild(text);
     fetchCollections().then(items => {
       const libs = (items || []).filter(c => c && !c.builtin &&
-        c.name !== '公司知识库');
+        c.name !== '默认知识库');
       if (!libs.length || !box.isConnected) { box.remove(); return; }
       const lib = libs.slice().sort((a, b) =>
         String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
@@ -9437,9 +9437,9 @@
       if (!logged) {
         const panel = el('div', 'empty-panel lib-login');
         panel.appendChild(el('div', 'lib-login-title',
-          '登录后使用公司知识库和个人知识库'));
+          '登录后使用默认知识库和个人知识库'));
         panel.appendChild(el('div', 'lib-login-text',
-          '公司知识库由管理员维护、登录后可读；个人知识库只有你自己能看。'));
+          '默认知识库由管理员维护、登录后可读；个人知识库只有你自己能看。'));
         const btn = el('button', 'primary', '去登录账号');
         btn.addEventListener('click', () => showAuthGate('login'));
         panel.appendChild(btn);
@@ -9449,7 +9449,7 @@
       }
 
       if (shared.length) {
-        grid.appendChild(el('div', 'lib-section-title', '公司知识库'));
+        grid.appendChild(el('div', 'lib-section-title', '默认知识库'));
         shared.forEach(c => grid.appendChild(collectionCardNode(c)));
       }
       grid.appendChild(el('div', 'lib-section-title', '我的知识库'));
@@ -9532,7 +9532,7 @@
     // v0.63.2：换库只换之后的回答依据，不另开新对话（用户明确要求）
     if (state.page !== 'chat') go('chat');
     toast(id ? '之后的提问只用「' + c.name + '」里的资料'
-      : '之后的提问使用公司知识库');
+      : '之后的提问使用默认知识库');
   }
 
   function deleteCollection(c) {
@@ -9569,7 +9569,7 @@
     personal.value = 'private';
     vis.appendChild(personal);
     if (isAdmin) {
-      const shared = el('option', null, '公司知识库 · 登录后全员可读');
+      const shared = el('option', null, '默认知识库 · 登录后全员可读');
       shared.value = 'shared';
       vis.appendChild(shared);
     }
@@ -9578,7 +9578,7 @@
     wrap.appendChild(field('说明', desc, '说明只显示在知识库卡片上，不进入问答提示词。'));
     wrap.appendChild(field('类型', vis, isAdmin
       ? '公司库登录后全员可读，写权限由管理员或被指定的成员维护；个人库只有你自己能看。'
-      : '个人知识库只有你自己能看；公司知识库由管理员创建。'));
+      : '个人知识库只有你自己能看；默认知识库由管理员创建。'));
     const acts = el('div', 'form-actions');
     const cancel = el('button', 'ghost', '取消');
     cancel.addEventListener('click', closeModal);
@@ -9592,7 +9592,7 @@
         .then(c => {
           closeModal();
           state.collectionsLoaded = false;
-          toast(c.visibility === 'shared' ? '公司知识库已创建' : '个人知识库已创建');
+          toast(c.visibility === 'shared' ? '默认知识库已创建' : '个人知识库已创建');
           go('collection', c.id);
         })
         .catch(e => {
@@ -9611,7 +9611,7 @@
     if (!c || c.visibility !== 'shared' || c.weknora) return;
     const wrap = el('div', 'form-grid');
     wrap.appendChild(el('div', 'chunk-note',
-      '公司知识库登录后全员可读；这里指定谁能改资料。建库人和管理员始终可改，个人库没有成员。'));
+      '默认知识库登录后全员可读；这里指定谁能改资料。建库人和管理员始终可改，个人库没有成员。'));
     const list = el('div', 'stack member-list');
     wrap.appendChild(list);
 
@@ -11547,7 +11547,7 @@
     const coll = activeCollection();
     const p = personaById(currentPersonaId());
     chip.classList.remove('on');
-    chip.title = '输入设置：资料 ' + (coll ? coll.name : '公司知识库') +
+    chip.title = '输入设置：资料 ' + (coll ? coll.name : '默认知识库') +
       ' · 人格 ' + (p ? p.name : '默认');
   }
 
@@ -11557,8 +11557,8 @@
       wrap.appendChild(el('div', 'panel-sub',
         '一个 Agent 会自动判断普通对话、查资料或调工具；这里只改资料范围和人格。'));
 
-      const options = [['', '公司知识库（默认）']].concat(
-        items.filter(c => c.name !== '公司知识库')
+      const options = [['', '默认知识库（默认）']].concat(
+        items.filter(c => c.name !== '默认知识库')
           .map(c => [c.id, c.name]));
       if (state.chatCollection && !items.some(c => c.id === state.chatCollection)) {
         options.push([state.chatCollection, '当前知识库']);
@@ -11568,10 +11568,10 @@
         setChatCollection(scope.value);
         const c = activeCollection();
         toast(c ? '之后的提问只用「' + c.name + '」里的资料'
-                : '之后的提问使用公司知识库');
+                : '之后的提问使用默认知识库');
       });
       wrap.appendChild(field('资料范围', scope,
-        '公司知识库是默认资料范围；也可以在「知识空间 → 知识库」里导入自己的资料。'));
+        '默认知识库是默认资料范围；也可以在「知识空间 → 知识库」里导入自己的资料。'));
 
       const personas = [['', '默认助教']].concat(
         state.personas.map(p => [p.id, p.name]));

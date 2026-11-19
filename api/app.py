@@ -497,7 +497,7 @@ def _load() -> None:
         AnswerPipeline(default_searcher, provider, gate=gate, prompt_mode="doc")
         if default_searcher is not None
         else AnswerPipeline(searcher, provider, gate=gate))
-    print("默认知识库：%s" % ((default_coll or {}).get("name") or "408 题库（回退）"))
+    print("默认知识库：%s" % ((default_coll or {}).get("name") or "未就绪"))
 
     # 配了 WeKnora 就把「用户知识库」的进料、切片、召回交给它；
     # 内置 408 语料仍走本项目的检索（引用校验与拒答两边完全一致）。
@@ -2087,7 +2087,7 @@ def _collection_view(cid: str) -> Dict:
     coll = _library().get_collection(cid)
     if coll is None:
         raise HTTPException(status_code=404, detail="资料库不存在")
-    coll["builtin"] = False
+    coll["builtin"] = _is_preset(cid)
     return coll
 
 
@@ -2197,6 +2197,7 @@ def collections_list(request: Request,
         role = _member_role(coll, user)
         if not can_read(user, coll, role):
             continue
+        coll["builtin"] = _is_preset(coll.get("id") or "")
         items.append(describe(user, coll, role))
     return {"items": items,
             "storage": _state.get("storage", "memory"), "backend": "local",
