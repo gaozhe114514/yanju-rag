@@ -6,6 +6,7 @@ from answer import tools
 from answer.tools import (calc_lookup, code_lookup, extract_city, run_tools,
                           time_lookup, tool_context, tool_will_run,
                           weather_label, weather_lookup, web_fetch, web_search)
+from answer.tools import _search_terms
 
 GEO = {"results": [{"name": "郑州", "admin1": "河南",
                     "latitude": 34.75778, "longitude": 113.64861}]}
@@ -277,6 +278,15 @@ class CodeToolTest(unittest.TestCase):
         self.assertFalse(tool_will_run(["calc"], "bin(42) 是多少"))
         self.assertTrue(tool_will_run(["calc"], "12*8 等于多少"))
         self.assertFalse(tool_will_run(["code"], "今天几号"))
+
+
+class SearchCueTest(unittest.TestCase):
+    def test_official_site_question_fires_search(self):
+        self.assertTrue(tool_will_run(["search"], "你能从官网查到吗"))
+
+    def test_search_terms_drop_politeness_and_site_words(self):
+        term = _search_terms("泛微网络是什么类型的公司 你能从官网查到吗")
+        self.assertEqual(term, "泛微网络是什么类型的公司")
 
 
 RSS = """<?xml version="1.0" encoding="utf-8"?><rss><channel>

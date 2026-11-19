@@ -112,8 +112,9 @@ _WHEN = {
         r"千克|公斤|斤|克|毫克|吨|小时|分钟|秒|天|摄氏度|华氏度|℃|℉)",
         re.IGNORECASE),
     "search": re.compile(
-        r"搜一下|搜索|搜搜|网上|最新|新闻|实时|价格|比分|汇率|行情|"
-        r"热搜|发生了什么|谁赢了", re.IGNORECASE),
+        r"搜一下|搜索|搜搜|网上|官网|官方网站|网站|网页|上网|在线查|"
+        r"最新|新闻|实时|价格|比分|汇率|行情|热搜|发生了什么|谁赢了",
+        re.IGNORECASE),
     "fetch": re.compile(r"https?://[^\s，。；！？\"'<>]+", re.IGNORECASE),
     "code": re.compile(
         r"0[bxo][0-9a-fA-F]+|\b(?:bin|hex|oct|ord|chr|sum|range|sorted)\s*\(|"
@@ -786,8 +787,11 @@ def _strip_tags(text: str) -> str:
 
 def _search_terms(query: str) -> str:
     text = re.sub(
-        r"(帮我|请|麻烦)?(搜一下|搜索一下|搜搜|搜索|查一下|查查|查下|网上|最新)",
+        r"(帮我|请|麻烦|你能|你可以|能不能|可不可以|可以)?"
+        r"(搜一下|搜索一下|搜搜|搜索|查一下|查查|查下|查到|"
+        r"从官网|官方网站|官网|网上|上网|在线查|最新)",
         " ", str(query or ""))
+    text = re.sub(r"(吗|呢|啊|呀|吧)\s*$", " ", text)
     text = re.sub(r"[，。！？?!；;]+", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return (text or str(query or ""))[:120]

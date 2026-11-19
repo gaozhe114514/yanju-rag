@@ -98,6 +98,12 @@ class TableStatsTest(unittest.TestCase):
         self.assertIn(18, stats.numbers)
         self.assertIn(12, stats.numbers)
 
+    def test_class_size_count_is_available(self):
+        stats = table_stats(roster_chunks(), "这个班有多少人")
+        self.assertIsNotNone(stats)
+        self.assertIn("有效数据 30 行", stats.text)
+        self.assertIn(30, stats.numbers)
+
     def test_headerless_table_does_not_lose_the_first_row(self):
         # 线上那份名单的 xlsx 没有表头：第一行就是陈畅，被当成表头吃掉后
         # 变成 29 行、男 17。第一行带长学号，必须按数据处理。

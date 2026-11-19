@@ -8,6 +8,7 @@
 
 这里不 import langgraph，纯 Python 就能测。
 """
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -441,13 +442,53 @@ def chat_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
     }
 
 
+_TOOL_FOLLOW_RE = re.compile(
+    r"^(你|能|可以|帮|再|那|它|这个|该|上面|刚才)|官网|官方网站|网站|网页")
+_SITE_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\.(?:com|cn|org|net)"
+    r"(?:/[^\s，。；！？\"'<>]*)?", re.IGNORECASE)
+_OFFICIAL_RE = re.compile(r"官网|官方网站|网站|网页|主页")
+
+
+def _tool_query(state: AgentState, query: str) -> str:
+    """追问式工具请求补上上一轮的用户问题，别只拿「你能从官网查到吗」去搜。"""
+    base = str(state.get("search_query") or query or "").strip()
+    if base and base != query:
+        return base
+    history = list(state.get("messages") or [])[:-1]
+    prev = ""
+    for m in reversed(history):
+        if m.get("role") == "user" and str(m.get("content") or "").strip():
+            prev = str(m.get("content") or "").strip()
+            break
+    if prev and _TOOL_FOLLOW_RE.search(query or ""):
+        return (prev + " " + (query or "")).strip()
+    return base or query
+
+
 def tools_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
     """实时 / 外部工具：先取结果，再带着工具结果回答，不冒充资料引用。"""
     t0 = time.time()
     query = str(state.get("query") or "")
     names = list(state.get("tool_names") or [])
+    tool_query = _tool_query(state, query)
+    # 「你能从官网查到吗」这类追问：上一轮回答里已经给了网址，就直接抓正文，
+    # 不拿一句没有主语的问法去搜索。
+    if _OFFICIAL_RE.search(query) and "fetch" in (deps.tools or []):
+        history = list(state.get("messages") or [])[:-1]
+        for m in reversed(history):
+            if m.get("role") != "assistant":
+                continue
+            found = _SITE_RE.search(str(m.get("content") or ""))
+            if found:
+                url = found.group(0)
+                if not url.lower().startswith(("http://", "https://")):
+                    url = "https://" + url.lstrip("/")
+                names = ["fetch"]
+                tool_query = url
+                break
     _emit(emit, {"type": "status", "stage": "tool", "names": names})
-    results = deps.run_tools_fn(names, query, state.get("study") or {})
+    results = deps.run_tools_fn(names, tool_query, state.get("study") or {})
     for result in results:
         _emit(emit, {"type": "tool", "tool": result})
     _emit(emit, {"type": "status", "stage": "chat", "tools": [

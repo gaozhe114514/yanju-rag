@@ -33,16 +33,29 @@ class RouteRulesTest(unittest.TestCase):
                         ["weather", "time", "calc"])
         self.assertEqual(d.route, "kb")
 
+    def test_official_site_question_goes_to_search(self):
+        d = route_query("你能从官网查到吗", [], "", None,
+                        ["search", "fetch"])
+        self.assertEqual(d.route, "tools")
+        self.assertIn("search", d.tools)
+
 
 class UnifiedGraphTest(unittest.TestCase):
     def setUp(self):
         self.runtime = AgentRuntime(InMemorySaver(), "memory")
 
-    def make_deps(self, route, answer, tools=None, seen=None):
+    def make_deps(self, route, answer, tools=None, seen=None,
+                  enabled=None, tool_calls=None):
         def chat_stream(query, history, style, tool_text=""):
             if seen is not None:
                 seen.append(tool_text)
             yield answer
+
+        def run_tools(names, query, study):
+            if tool_calls is not None:
+                tool_calls.append((list(names), query))
+            return [{"name": "weather", "label": "天气", "ok": True,
+                     "source": "wttr.in", "detail": "郑州现在 12℃。"}]
 
         return AgentDeps(
             search=lambda q, skip_rerank=False: [HIT],
@@ -52,10 +65,9 @@ class UnifiedGraphTest(unittest.TestCase):
             router=lambda q, h, c: RouteDecision(route, tools or [], "test"),
             chat_stream=chat_stream,
             chat_reply=lambda q, h, s, tt="": answer,
-            run_tools_fn=lambda names, q, study: [
-                {"name": "weather", "label": "天气", "ok": True,
-                 "source": "wttr.in", "detail": "郑州现在 12℃。"}],
+            run_tools_fn=run_tools,
             tool_context_fn=lambda results: "天气：郑州现在 12℃。",
+            tools=list(enabled or []),
         )
 
     def test_chat_route_has_no_citations(self):
@@ -78,6 +90,22 @@ class UnifiedGraphTest(unittest.TestCase):
         self.assertEqual(res.tools[0]["name"], "weather")
         self.assertIn("12℃", res.answer)
         self.assertIn("郑州现在 12℃", seen[0])
+
+    def test_official_site_followup_fetches_url_from_history(self):
+        calls = []
+        deps = self.make_deps("tools", "官网首页介绍……", ["search"], enabled=[
+            "search", "fetch"], tool_calls=calls)
+        res = self.runtime.run(
+            deps, query="你能从官网查到吗", thread_id="t2", owner="user:1",
+            history=[
+                {"role": "user", "content": "泛微网络是什么类型的公司"},
+                {"role": "assistant",
+                 "content": "可以看官网 www.weaver.com.cn 的产品介绍。"},
+            ],
+            tools=["search", "fetch"])
+        self.assertFalse(res.refused)
+        self.assertEqual(calls[0][0], ["fetch"])
+        self.assertEqual(calls[0][1], "https://www.weaver.com.cn")
 
 
 if __name__ == "__main__":
