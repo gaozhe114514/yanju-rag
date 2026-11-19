@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.78.5">
+  <meta name="app-version" content="0.79.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -4346,6 +4346,14 @@
      desc: '查最新消息用；默认走 Bing RSS，不需要密钥，服务器配了搜索 API 会更稳。'},
     {key: 'stock', name: '股票行情',
      desc: '查 A 股最新价、涨跌幅、今开昨收与高低点；数据来自腾讯行情，不需要密钥。'},
+    {key: 'exchange', name: '汇率换算',
+     desc: '查人民币与美元、欧元、日元、港币、英镑等常用货币的汇率；数据来自新浪财经。'},
+    {key: 'air', name: '空气质量',
+     desc: '查城市当前 AQI、PM2.5、PM10；数据来自 Open-Meteo，不需要密钥。'},
+    {key: 'ip', name: 'IP / 域名归属',
+     desc: '查 IP 或域名对应的国家、地区、城市与运营商；数据来自 ipwho.is。'},
+    {key: 'convert', name: '单位换算',
+     desc: '长度、重量、温度、存储单位换算，本地计算，不联网。'},
     {key: 'fetch', name: '网页正文',
      desc: '问句里带链接时抓取该页正文；只抓公网 http/https，外部内容按不可信数据处理。'}
   ];

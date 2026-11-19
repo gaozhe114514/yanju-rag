@@ -104,7 +104,7 @@ class ChatRequest(BaseModel):
     # chat = 旧版日常对话，不检索、不带引用
     mode: str = Field("auto", max_length=8)
     # 设置里开着的工具名（服务端只认 answer/tools.py 的注册表）；资料模式一律忽略
-    tools: List[str] = Field(default_factory=list, max_length=8)
+    tools: List[str] = Field(default_factory=list, max_length=16)
     # 学习进度只存在浏览器里，由前端带一份摘要给「学习进度」工具用
     study: Dict[str, Any] = Field(default_factory=dict)
 
@@ -118,7 +118,7 @@ class AgentRequest(BaseModel):
     style: str = Field("", max_length=400)
     collection: str = Field("", max_length=64)
     # 设置页里开着的工具名；Agent 自己决定用不用
-    tools: List[str] = Field(default_factory=list, max_length=8)
+    tools: List[str] = Field(default_factory=list, max_length=16)
     study: Dict[str, Any] = Field(default_factory=dict)
 
 

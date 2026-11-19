@@ -73,6 +73,38 @@ EXTERNAL_TOOLS = {
             "required": ["query"],
         },
     },
+    "exchange": {
+        "name": "get_exchange_rate",
+        "label": "汇率换算",
+        "description": "查常用货币汇率，例如美元兑人民币；用户问汇率、换汇时使用。",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "货币对，例如「美元兑人民币」"}},
+            "required": ["query"]},
+    },
+    "air": {
+        "name": "get_air_quality",
+        "label": "空气质量",
+        "description": "查城市当前 AQI、PM2.5、PM10；问空气质量、雾霾时使用。",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "城市名"}},
+            "required": ["query"]},
+    },
+    "ip": {
+        "name": "lookup_ip",
+        "label": "IP / 域名归属",
+        "description": "查 IP 或域名的国家、地区、城市与运营商。",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "IP 或域名"}},
+            "required": ["query"]},
+    },
+    "convert": {
+        "name": "convert_units",
+        "label": "单位换算",
+        "description": "长度、重量、温度、存储单位换算，例如 5 公里等于多少英里。",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "带数值和两个单位的问法"}},
+            "required": ["query"]},
+    },
     "fetch": {
         "name": "fetch_url",
         "label": "网页正文",
@@ -164,7 +196,7 @@ def execute(tool_name: str, args: Dict[str, Any], overview=None) -> Dict[str, An
         query = str((args or {}).get("expression") or (args or {}).get("query") or "")
     elif key == "fetch":
         query = str((args or {}).get("url") or (args or {}).get("query") or "")
-    elif key in ("search", "stock"):
+    elif key in ("search", "stock", "exchange", "air", "ip", "convert"):
         query = str((args or {}).get("query") or "")
     else:
         query = str((args or {}).get("query") or "")

@@ -66,6 +66,22 @@ TOOLS: Dict[str, Dict[str, str]] = {
         "label": "股票行情",
         "desc": "查 A 股最新价、涨跌幅、今开昨收、最高最低；给定公司名或 6 位代码，数据来自腾讯行情。",
     },
+    "exchange": {
+        "label": "汇率换算",
+        "desc": "查人民币与美元、欧元、日元、港币、英镑等常用货币的汇率；数据来自新浪财经。",
+    },
+    "air": {
+        "label": "空气质量",
+        "desc": "查城市当前 AQI、PM2.5、PM10；数据来自 Open-Meteo，不需要密钥。",
+    },
+    "ip": {
+        "label": "IP / 域名归属",
+        "desc": "查 IP 或域名对应的国家、地区、城市与运营商；数据来自 ipwho.is。",
+    },
+    "convert": {
+        "label": "单位换算",
+        "desc": "长度、重量、温度、存储单位的换算，本地计算，不联网。",
+    },
 }
 
 # WMO 天气码 → 中文；模型只拿这句，不做二次推断
@@ -123,6 +139,15 @@ _WHEN = {
     "stock": re.compile(
         r"股价|股票|行情|收盘|开盘|涨跌|涨幅|跌幅|市值|市盈率|换手率|"
         r"K线|A股|港股|美股|[036]\d{5}", re.IGNORECASE),
+    "exchange": re.compile(
+        r"汇率|兑换|换汇|美元|美金|欧元|日元|港币|港元|英镑|澳元|加元|"
+        r"瑞郎|新加坡元", re.IGNORECASE),
+    "air": re.compile(r"空气质量|雾霾|PM2\.5|PM10|AQI|空气指数|污染", re.IGNORECASE),
+    "ip": re.compile(r"IP地址|IP归属|归属地|哪个国家|哪個國家|运营商|域名解析|"
+                     r"(?:\d{1,3}\.){3}\d{1,3}", re.IGNORECASE),
+    "convert": re.compile(r"换算|等于多少|是多少.*(?:公里|千米|米|厘米|毫米|英里|"
+                          r"英尺|英寸|斤|公斤|千克|克|吨|磅|GB|MB|KB|TB|"
+                          r"摄氏度|华氏度|℃|℉)", re.IGNORECASE),
     "code": re.compile(
         r"0[bxo][0-9a-fA-F]+|\b(?:bin|hex|oct|ord|chr|sum|range|sorted)\s*\(|"
         r"位运算|进制(?:转换|换算)|代码|执行一下|运行一下|运行这段|跑一下|print\s*\(",
@@ -1100,6 +1125,26 @@ def web_fetch(query: str, context: Optional[dict] = None) -> dict:
     return base
 
 
+def exchange_lookup(query: str, context: Optional[dict] = None) -> dict:
+    from .everyday import exchange_lookup as impl
+    return impl(query, context)
+
+
+def air_lookup(query: str, fetch=None, context: Optional[dict] = None) -> dict:
+    from .everyday import air_lookup as impl
+    return impl(query, fetch, context)
+
+
+def ip_lookup(query: str, context: Optional[dict] = None) -> dict:
+    from .everyday import ip_lookup as impl
+    return impl(query, context)
+
+
+def convert_lookup(query: str, context: Optional[dict] = None) -> dict:
+    from .everyday import convert_lookup as impl
+    return impl(query, context)
+
+
 _HANDLERS = {
     "weather": weather_lookup,
     "time": time_lookup,
@@ -1108,6 +1153,10 @@ _HANDLERS = {
     "fetch": web_fetch,
     "code": code_lookup,
     "stock": stock_lookup,
+    "exchange": exchange_lookup,
+    "air": air_lookup,
+    "ip": ip_lookup,
+    "convert": convert_lookup,
 }
 
 
