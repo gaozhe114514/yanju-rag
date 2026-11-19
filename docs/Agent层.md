@@ -147,7 +147,7 @@ curl -N http://127.0.0.1:8000/agent/stream \
 - 「执行过程」沿用原来的步骤表，能看到理解问题、拒答判断、生成、引用校验各自的耗时；
 - 切回标准问答就回到原来的 `/chat/stream`，历史对话不受影响。
 
-README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/v0764-live-standard-dark-1440.png`（标准问答天气）与 `v0764-live-agent-dark-390.png`（Agent 实时问题退路）；线上 v0.76.3 的版本页与输入设置截图见 `prod-v0763-history-dark-1440.png` 与 `prod-v0763-agent-dark-390.png`；线上 v0.76.2 的部署证据见 `prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
+README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地验收截图（深色主题）见 `data/work/prod-v0764-live-standard-dark-1440.png`（线上标准问答天气）与 `prod-v0764-live-agent-dark-390.png`（线上 Agent 实时问题退路）；线上 v0.76.3 的版本页截图见 `prod-v0763-history-dark-1440.png`；线上 v0.76.2 的部署证据见 `prod-v0762-mode-dark-1440.png` 与 `prod-v0762-agent-dark-390.png`。
 
 ## 为什么是 LangGraph 0.6
 
