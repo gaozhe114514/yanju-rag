@@ -245,6 +245,18 @@ class PipelineTest(unittest.TestCase):
         # 30 行全在 prompt 里
         self.assertIn(FEMALES[-1], prompt)
 
+    def test_large_roster_still_counts_with_stats_limit(self):
+        text = roster_text() + "\n" + ("补充说明" * 8000)
+        chunks = doc_chunks(text)
+        self.assertGreater(sum(len(c.text) for c in chunks), 30000)
+        provider = FakeProvider([payload("这个班一共有 30 人。")])
+        pipe = AnswerPipeline(FakeSearcher(chunks, top=2), provider,
+                              prompt_mode="doc")
+        res = pipe.answer("这个班有多少人")
+        self.assertFalse(res.refused, res.reason)
+        self.assertEqual(len(res.context), len(chunks))
+        self.assertIn("有效数据 30 行", provider.calls[0][-1]["content"])
+
     def test_list_question_also_reads_the_whole_table(self):
         lines = ["工作表：就业登记", "学号 | 姓名 | 就业状态"]
         for i in range(1, 31):

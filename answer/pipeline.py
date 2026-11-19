@@ -6,8 +6,10 @@ from typing import Dict, List, Optional
 
 from retrieval.search import HybridSearcher, SearchHit
 
-from .aggregate import (MAX_SCAN_CHARS, PARTIAL_NOTE, TableStats,
-                        check_counts, needs_full_doc, table_stats)
+from .aggregate import (MAX_SCAN_CHARS, MAX_STATS_CHARS, PARTIAL_NOTE,
+                        TableStats, check_counts, is_agg_question,
+                        is_count_question, is_list_question, needs_full_doc,
+                        table_stats)
 from .gate import RefusalGate
 from .prompt import build_messages, build_retry_messages
 from .providers import ProviderError, parse_payload
@@ -57,9 +59,14 @@ class AnswerPipeline:
             return hits, None
         if needs_full_doc(query):
             total = sum(len(c.text) for c in chunks)
-            if total > MAX_SCAN_CHARS:
+            # 统计 / 列举类只需要表格统计文本，不需要把整库原文都塞进 prompt；
+            # 名额允许读到 4 万字，常见的班级名单 / 花名册不会因为刚过 3 万就拒答。
+            stats_query = (is_count_question(query) or is_list_question(query)
+                           or is_agg_question(query))
+            limit = MAX_STATS_CHARS if stats_query else MAX_SCAN_CHARS
+            if total > limit:
                 return hits, TableStats(
-                    text=PARTIAL_NOTE % (total, MAX_SCAN_CHARS), partial=True)
+                    text=PARTIAL_NOTE % (total, limit), partial=True)
             seen = {h.chunk.id for h in hits}
             context = list(hits) + [SearchHit(c, 0.0) for c in chunks
                                     if c.id not in seen]
