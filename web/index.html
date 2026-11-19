@@ -5179,7 +5179,7 @@
     try {
       const h = await fetch('/health').then(r => r.json());
       state.health = h;
-      const bits = [(h.collections || 0) + ' 个知识库', h.mode || '—'];
+      const bits = ['知识库问答', h.mode || '—'];
       $('#health-pill').textContent = bits.join(' · ');
       const facts = $('#side-facts');
       if (facts) facts.textContent = bits.join(' · ');
