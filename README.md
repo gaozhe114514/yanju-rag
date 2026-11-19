@@ -106,7 +106,7 @@ py -3.11 -m unittest discover -s tests -t . -v
 | [语料说明](docs/语料说明.md) | 五卷真题、答案与解析的来源与草稿状态 |
 | [数据管线](docs/数据管线.md) | 真题 → 结构化题库的五步流程与验收门槛 |
 | [部署](docs/部署.md) | 云服务器 ECS 上的 Docker + Nginx + 口令 + 限流，含部署记录 |
-| [更新记录](docs/更新记录.md) | 从 v0.24 至今每个版本改了什么、怎么验证的 |
+| [更新记录](docs/更新记录.md) | 按里程碑合并的版本摘要，细节回 git log |
 | [全链路流程图](docs/流程图.html) | 离线建库 → 在线问答 → 前端页面；单文件 HTML，浏览器直接打开 |
 
 参考资料：[WeKnora 接入](docs/WeKnora接入.md)、[精通之路与 DeepTutor 对照](docs/精通之路-DeepTutor对照.md)、[借鉴 WeKnora 的改造方案](docs/借鉴WeKnora-改造方案.md)。
