@@ -5512,7 +5512,13 @@
         const hit = box.querySelector('mark');
         if (hit && hit.scrollIntoView) hit.scrollIntoView({block: 'center'});
       })
-      .catch(e => toast('打不开资料原文：' + e.message, 'err'));
+      .catch(e => {
+        if (e.status === 401) {
+          showAuthNeeded('登录后才能查看引用原文');
+          return;
+        }
+        toast('打不开资料原文：' + e.message, 'err');
+      });
   }
 
   /* ---------- sidebar / auth ---------- */
@@ -16892,7 +16898,13 @@
         const hit = box.querySelector('mark');
         if (hit && hit.scrollIntoView) hit.scrollIntoView({block: 'center'});
       })
-      .catch(e => toast('打不开资料原文：' + e.message, 'err'));
+      .catch(e => {
+        if (e.status === 401) {
+          showAuthNeeded('登录后才能查看引用原文');
+          return;
+        }
+        toast('打不开资料原文：' + e.message, 'err');
+      });
   }
 
   function graphResize() {

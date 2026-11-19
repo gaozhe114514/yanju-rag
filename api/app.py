@@ -612,6 +612,13 @@ def _is_preset(collection: str) -> bool:
     return not collection or bool(default and collection == default)
 
 
+def _collection_ref(collection: str) -> str:
+    """引用跳转要拿到真实库 id：默认公司库虽然走 preset 管线，也必须有 id。"""
+    if _is_preset(collection):
+        return _state.get("default_collection") or ""
+    return collection or ""
+
+
 def _pipeline_for(collection: str):
     """按知识库取问答管线；用户库各自一份，库里资料变了就重建。
 
@@ -855,7 +862,7 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
         "intent": plan.intent if plan else "kb",
         "mode": "kb",
         # 前端据此把引用跳回知识库原文；空字符串表示内置 408 语料
-        "collection": "" if _is_preset(collection) else collection,
+        "collection": _collection_ref(collection),
         "refused": res.refused,
         "answer": res.answer,
         "citations": citations,
@@ -886,7 +893,7 @@ def _agent_payload(result, t0: float, query: str = "",
         "intent": result.intent,
         "mode": "agent",
         "route": route,
-        "collection": "" if _is_preset(collection) else collection,
+        "collection": _collection_ref(collection),
         "thread_id": result.thread_id,
         "thread_reset": bool(result.thread_reset),
         "refused": result.refused,
@@ -950,7 +957,7 @@ def _general_payload(res, answer: str, t0: float, plan=None,
     return {
         "intent": plan.intent if plan else "kb",
         "mode": "general",
-        "collection": "" if _is_preset(collection) else collection,
+        "collection": _collection_ref(collection),
         "refused": False,
         "answer": answer,
         "citations": [],
