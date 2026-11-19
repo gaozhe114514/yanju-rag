@@ -8,12 +8,13 @@
 
 这里不 import langgraph，纯 Python 就能测。
 """
+import json
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from answer.agent import QueryAgent, chitchat_reply
+from answer.agent import QueryAgent, chitchat_reply, normalize_history
 from answer.daily import daily_reply, daily_stream
 from answer.aggregate import TableStats, check_counts
 from answer.prompt import build_messages
@@ -27,6 +28,8 @@ from .prompt import build_retry_messages, refine_query
 from .route import RouteDecision
 from .state import (AgentState, context_from_state, hit_to_dict, hits_from_state,
                     message, stats_from_state, stats_to_dict)
+from .tool_calls import (KB_OVERVIEW, SEARCH_KB, execute as execute_tool_call,
+                         openai_message_content, tool_specs)
 from .tools import SearchKBTool
 
 CLARIFY_TEXT = ("我不确定你指的是哪道题。可以把题号或关键词补上，"
@@ -55,6 +58,7 @@ class AgentDeps:
     chat_stream: Optional[Callable] = None
     run_tools_fn: Optional[Callable] = None
     tool_context_fn: Optional[Callable] = None
+    overview: Optional[Callable[[], Dict[str, Any]]] = None
     tools: List[str] = field(default_factory=list)
 
     def __post_init__(self):
@@ -382,6 +386,189 @@ def direct_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None)
         "messages": [message("assistant", answer)],
         "done": True,
     }
+
+
+AGENT_SYSTEM = """你是「言据」的通用助手。你可以直接回答，也可以调用工具。
+
+规则：
+1. 用户问公司资料、产品手册、制度流程、自己的文档或知识库内容时，调用 search_kb；
+   回答必须基于检索到的原文并带逐字引用，由后续链路校验。
+2. 用户问「这个库有多少资料 / 有哪些文档」时，调用 kb_overview。
+3. 问某家外部公司 / 某款产品是什么、属于什么行业，直接用已有知识回答；
+   只有问最新动态、新闻、价格、官网地址或实时信息时，才调用 search_web；
+   已知官网或用户给了链接时调用 fetch_url。工具失败就说明失败，不要声称不能联网。
+4. 天气、时间、计算、代码分别用对应工具。
+5. 普通知识、概念、情绪、生活类问题直接回答，不调用工具，也不要提工具、路由或
+   「没有取到工具结果」。
+6. 不要编造引用、网址、页码或实时数据；不需要工具时直接给出答案。
+7. 同一个工具同一轮不要重复调用；拿到工具结果后直接回答，或说明没查到，
+   不要为了「再查一次」反复调用。用纯文本，不要 Markdown 标记。
+"""
+
+
+def _normalize_call(call: Dict[str, Any]) -> Dict[str, Any]:
+    fn = call.get("function") or {}
+    name = str(fn.get("name") or call.get("name") or "")
+    raw = fn.get("arguments") or call.get("arguments") or "{}"
+    try:
+        args = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+    except (ValueError, TypeError):
+        args = {}
+    return {"id": str(call.get("id") or ""), "name": name,
+            "arguments": args if isinstance(args, dict) else {}}
+
+
+def _legacy_agent(state: AgentState, deps: AgentDeps,
+                  emit: Optional[Emit] = None):
+    """没有原生函数调用能力时，退回原来的规则 / LLM 路由。"""
+    query = str(state.get("query") or "")
+    history = list(state.get("messages") or [])[:-1]
+    decision = deps.route(query, history, str(state.get("collection") or ""))
+    if decision.route == "kb":
+        return {
+            "route": "kb", "intent": "kb", "search_query": query,
+            "need_kb": True, "tool_names": [],
+            "steps": _steps(state, "判断回答方式", 0, "kb：%s" % (decision.reason or "")),
+        }
+    if decision.route == "tools":
+        names = list(decision.tools)
+        tool_query = query
+        if _OFFICIAL_RE.search(query) and "fetch" in (deps.tools or []):
+            url = _history_site(state) or _guess_site(deps.provider, query, state)
+            if url:
+                names = ["fetch"]
+                tool_query = url
+        results = deps.run_tools_fn(names, tool_query, state.get("study") or {})
+        for result in results:
+            _emit(emit, {"type": "tool", "tool": result})
+        context = deps.tool_context_fn(results)
+        parts = []
+        try:
+            for piece in deps.chat_stream(query, history,
+                                          str(state.get("style") or ""), context):
+                parts.append(piece)
+                _emit(emit, {"type": "delta", "text": piece})
+        except Exception as e:
+            return {"route": "tools", "refused": True,
+                    "reason": "provider_error: %s" % type(e).__name__,
+                    "tool_results": results, "done": True}
+        answer = "".join(parts)
+        return {"route": "tools", "refused": False, "answer": answer,
+                "tool_results": results, "citations": [],
+                "messages": [message("assistant", answer)], "done": True}
+    parts = []
+    try:
+        for piece in deps.chat_stream(query, history, str(state.get("style") or "")):
+            parts.append(piece)
+            _emit(emit, {"type": "delta", "text": piece})
+    except Exception as e:
+        return {"route": "chat", "refused": True,
+                "reason": "provider_error: %s" % type(e).__name__, "done": True}
+    answer = "".join(parts)
+    return {"route": "chat", "refused": False, "answer": answer,
+            "citations": [], "messages": [message("assistant", answer)],
+            "done": True}
+
+
+def agent_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
+    """标准函数调用循环：模型自己选工具，最多两轮工具调用。"""
+    t0 = time.time()
+    query = str(state.get("query") or "")
+    history = list(state.get("messages") or [])[:-1]
+    if not hasattr(deps.provider, "chat_tools"):
+        return _legacy_agent(state, deps, emit)
+
+    messages: List[Dict[str, Any]] = [{"role": "system", "content": AGENT_SYSTEM}]
+    messages.extend(normalize_history(history, 8))
+    messages.append({"role": "user", "content": query})
+    specs = tool_specs(deps.tools)
+    executed: List[Dict[str, Any]] = []
+    used = set()
+    last_text = ""
+    for round_no in range(2):
+        active_specs = [s for s in specs
+                        if s["function"]["name"] not in used]
+        _emit(emit, {"type": "status", "stage": "route", "route": "auto",
+                     "tools": [s["function"]["name"] for s in active_specs]})
+        try:
+            if active_specs:
+                resp = deps.provider.chat_tools(messages, active_specs,
+                                                max_tokens=900)
+            else:
+                resp = {"role": "assistant",
+                        "content": deps.provider.complete(
+                            messages, temperature=0.2, max_tokens=900),
+                        "tool_calls": []}
+        except Exception as e:
+            _emit(emit, {"type": "error", "message": "生成服务暂时不可用"})
+            return {"route": "chat", "refused": True,
+                    "reason": "provider_error: %s" % type(e).__name__, "done": True}
+        text = str(resp.get("content") or "").strip()
+        calls = [_normalize_call(c) for c in (resp.get("tool_calls") or [])]
+        if not calls:
+            last_text = text
+            break
+
+        # 检索工具优先：把控制权交回原检索 / 拒答 / 逐字校验链路。
+        for call in calls:
+            if call["name"] == SEARCH_KB:
+                search_query = str(call["arguments"].get("query") or query).strip()
+                ms = int((time.time() - t0) * 1000)
+                return {
+                    "route": "kb", "intent": "kb", "need_kb": True,
+                    "search_query": search_query, "tool_results": executed,
+                    "tool_names": [],
+                    "steps": _steps(state, "模型选择工具", ms,
+                                    "search_kb：%s" % search_query),
+                    "timings": _timing(state, "route", ms),
+                }
+
+        assistant = {"role": "assistant", "content": text or "",
+                     "tool_calls": []}
+        for i, call in enumerate(calls):
+            result = execute_tool_call(call["name"], call["arguments"],
+                                       deps.overview)
+            result["name"] = result.get("name") or call["name"]
+            used.add(call["name"])
+            executed.append(result)
+            _emit(emit, {"type": "tool", "tool": result})
+            assistant["tool_calls"].append({
+                "id": call["id"] or ("call_%d" % (len(executed) - 1)),
+                "type": "function",
+                "function": {"name": call["name"],
+                             "arguments": json.dumps(call["arguments"],
+                                                    ensure_ascii=False)},
+            })
+            messages.append(assistant)
+            assistant = {"role": "assistant", "content": text or "",
+                         "tool_calls": []}
+            messages.append({
+                "role": "tool",
+                "tool_call_id": call["id"] or ("call_%d" % (len(executed) - 1)),
+                "content": openai_message_content(result)[:4000],
+            })
+        # 继续下一轮，让模型读完工具结果再回答
+        continue
+
+    answer = last_text or "工具已经返回结果，但我这次没能组织出答案，请换个问法再试。"
+    _emit(emit, {"type": "delta", "text": answer})
+    route = "tools" if executed else "chat"
+    ms = int((time.time() - t0) * 1000)
+    return {
+        "route": route, "refused": False, "answer": answer,
+        "citations": [], "tool_results": executed,
+        "messages": [message("assistant", answer)],
+        "steps": _steps(state, "模型回答", ms,
+                        "工具：%s" % "、".join(
+                            str(r.get("label") or r.get("name")) for r in executed)
+                        if executed else "直接回答"),
+        "timings": _timing(state, "generate", ms),
+        "done": True,
+    }
+
+
+def after_agent(state: AgentState) -> str:
+    return "search" if state.get("need_kb") else "end"
 
 
 def route_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):

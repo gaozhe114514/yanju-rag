@@ -1,8 +1,14 @@
 {
-  "version": "0.77.4",
+  "version": "0.78.0",
   "released": "2026-11-19",
   "name": "言据",
   "history": [
+    {
+      "version": "0.78.0",
+      "date": "2026-11-19",
+      "title": "Agent 改成原生函数调用",
+      "notes": "按 LangGraph create_react_agent、LlamaIndex FunctionAgent、Dify Agent、RAGFlow Agentic RAG 的通行做法，Agent 不再维护关键词路由器：每次请求把 search_kb、kb_overview、天气、时间、计算、代码、网页搜索、网页正文的工具定义交给 DeepSeek，由模型自己调用；工具循环最多两轮、同一工具不重复；调用 search_kb 后仍走原拒答闸门与逐字引用校验。外部公司介绍默认直接回答，不再误走知识库或反复搜索。测试 473 条通过。"
+    },
     {
       "version": "0.77.4",
       "date": "2026-11-19",

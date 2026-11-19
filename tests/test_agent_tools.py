@@ -10,8 +10,11 @@ from agent.prompt import refine_query
 from agent.runtime import AgentRuntime, clean_thread_id
 from agent.state import (hit_from_dict, hit_to_dict, stats_from_state,
                          stats_to_dict)
+from agent.tool_calls import (KB_OVERVIEW, SEARCH_KB as CALL_SEARCH_KB,
+                             execute as execute_tool, tool_specs)
 from agent.tools import SEARCH_KB, SEARCH_KB_SCHEMA, SearchKBTool
 from answer.aggregate import TableStats
+from answer.gate import RefusalGate
 from retrieval.chunk import Chunk
 from retrieval.search import SearchHit
 
@@ -44,6 +47,80 @@ class SearchKBToolTest(unittest.TestCase):
         self.assertEqual(SEARCH_KB_SCHEMA["name"], SEARCH_KB)
         self.assertIn("query", SEARCH_KB_SCHEMA["parameters"]["properties"])
         self.assertEqual(SEARCH_KB_SCHEMA["parameters"]["required"], ["query"])
+
+
+class ToolCallSpecTest(unittest.TestCase):
+    def test_specs_always_include_rag_tools(self):
+        names = [s["function"]["name"] for s in tool_specs([])]
+        self.assertIn(CALL_SEARCH_KB, names)
+        self.assertIn(KB_OVERVIEW, names)
+        self.assertNotIn("get_weather", names)
+
+    def test_enabled_external_tools_are_added(self):
+        names = [s["function"]["name"] for s in tool_specs(["weather", "calc"])]
+        self.assertIn("get_weather", names)
+        self.assertIn("calculate", names)
+
+    def test_kb_overview_counts_documents(self):
+        out = execute_tool(KB_OVERVIEW, {}, lambda: {
+            "name": "默认知识库", "documents": 6, "chunks": 6,
+            "titles": ["A", "B"]})
+        self.assertTrue(out["ok"])
+        self.assertIn("6 篇资料", out["detail"])
+        self.assertIn("A、B", out["detail"])
+
+    def test_calc_tool_runs_without_network(self):
+        out = execute_tool("calculate", {"expression": "12*8"})
+        self.assertTrue(out["ok"])
+        self.assertIn("96", out["detail"])
+
+
+class NativeToolLoopTest(unittest.TestCase):
+    class P:
+        def __init__(self, replies):
+            self.replies = list(replies)
+
+        def chat_tools(self, messages, tools, **kwargs):
+            return self.replies.pop(0)
+
+    def deps(self, provider):
+        from agent.nodes import AgentDeps
+
+        return AgentDeps(
+            search=lambda q, skip_rerank=False: [],
+            prepare=lambda q, hits: (hits, None),
+            provider=provider,
+            gate=RefusalGate(0, 0),
+            overview=lambda: {"name": "默认知识库", "documents": 6,
+                              "chunks": 6, "titles": ["说明"]},
+            tools=["weather"],
+        )
+
+    def test_no_tool_call_is_chat(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+        from agent.runtime import AgentRuntime
+        p = self.P([{"content": "直接回答。", "tool_calls": []}])
+        res = AgentRuntime(InMemorySaver(), "memory").run(
+            self.deps(p), query="解释一下复利是什么", thread_id="n1",
+            owner="user:1")
+        self.assertEqual(res.route, "chat")
+        self.assertEqual(res.answer, "直接回答。")
+
+    def test_kb_overview_runs_then_answers(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+        from agent.runtime import AgentRuntime
+        p = self.P([
+            {"content": "", "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": KB_OVERVIEW, "arguments": "{}"}}]},
+            {"content": "这个库有 6 篇资料。", "tool_calls": []},
+        ])
+        res = AgentRuntime(InMemorySaver(), "memory").run(
+            self.deps(p), query="这个库有多少资料", thread_id="n2",
+            owner="user:1")
+        self.assertEqual(res.route, "tools")
+        self.assertEqual(res.tools[0]["name"], KB_OVERVIEW)
+        self.assertIn("6 篇", res.answer)
 
 
 class StateSerializationTest(unittest.TestCase):

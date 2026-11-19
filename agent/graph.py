@@ -9,11 +9,11 @@ from typing import Any, Optional
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 
-from .nodes import (AgentDeps, after_generate, after_gate, after_plan,
-                    after_route, after_verify, chat_node, direct_node,
-                    finalize_node, gate_node, generate_node, plan_node,
-                    refuse_node, route_node, search_node, tools_node,
-                    verify_node)
+from .nodes import (AgentDeps, after_agent, after_generate, after_gate,
+                    after_plan, after_verify, agent_node, chat_node,
+                    direct_node, finalize_node, gate_node, generate_node,
+                    plan_node, refuse_node, route_node, search_node,
+                    tools_node, verify_node)
 from .state import AgentState
 
 
@@ -31,6 +31,7 @@ def build_agent_graph(deps: AgentDeps, checkpointer: Optional[Any] = None):
     graph = StateGraph(AgentState)
     graph.add_node("plan", _wrap(plan_node, deps))
     graph.add_node("direct", _wrap(direct_node, deps))
+    graph.add_node("agent", _wrap(agent_node, deps))
     graph.add_node("route", _wrap(route_node, deps))
     graph.add_node("chat", _wrap(chat_node, deps))
     graph.add_node("tools", _wrap(tools_node, deps))
@@ -43,13 +44,10 @@ def build_agent_graph(deps: AgentDeps, checkpointer: Optional[Any] = None):
 
     graph.add_edge(START, "plan")
     graph.add_conditional_edges("plan", after_plan,
-                                {"direct": "direct", "route": "route"})
+                                {"direct": "direct", "route": "agent"})
     graph.add_edge("direct", END)
-    graph.add_conditional_edges("route", after_route,
-                                {"chat": "chat", "tools": "tools",
-                                 "search": "search_kb"})
-    graph.add_edge("chat", END)
-    graph.add_edge("tools", END)
+    graph.add_conditional_edges("agent", after_agent,
+                                {"search": "search_kb", "end": END})
     graph.add_edge("search_kb", "gate")
     graph.add_conditional_edges("gate", after_gate,
                                 {"generate": "generate", "refuse": "refuse"})

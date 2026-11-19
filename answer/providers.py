@@ -124,6 +124,36 @@ class DeepSeekProvider:
                     time.sleep(1.0)
         raise last
 
+    def chat_tools(self, messages: List[Dict], tools: List[Dict],
+                   temperature: float = 0.2,
+                   max_tokens: int = 800,
+                   tool_choice: str = "auto") -> Dict:
+        """原生函数调用：返回 assistant message（可能带 tool_calls）。"""
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        last = None
+        for attempt in range(2):
+            try:
+                resp = self._post(body)
+                msg = resp["choices"][0]["message"]
+                return {
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": list(msg.get("tool_calls") or []),
+                }
+            except (ProviderError, KeyError, IndexError, TypeError) as e:
+                last = e if isinstance(e, ProviderError) else ProviderError(
+                    "DeepSeek 工具调用响应异常：%s" % e)
+                if attempt == 0:
+                    time.sleep(1.0)
+        raise last
+
     def generate(self, messages: List[Dict], hits: Optional[Sequence[SearchHit]] = None,
                  **_) -> str:
         return self.complete(messages, temperature=self.temperature,

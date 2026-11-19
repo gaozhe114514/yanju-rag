@@ -536,7 +536,7 @@ def _agent_owner(request: Request) -> str:
     return "anon:%s" % tag
 
 
-def _agent_deps(pipeline, tools=None):
+def _agent_deps(pipeline, tools=None, collection=""):
     """把现有管线、通用对话、工具与路由包成 Agent 依赖。"""
     from agent.nodes import AgentDeps
     from agent.route import route_query
@@ -545,6 +545,24 @@ def _agent_deps(pipeline, tools=None):
 
     provider = pipeline.provider
     enabled = list(tools or [])
+
+    def overview():
+        chunks = list(getattr(pipeline.searcher, "chunks", []) or [])
+        titles = []
+        for chunk in chunks:
+            title = (chunk.title
+                     or (chunk.source_ref or {}).get("document_title") or "")
+            if title and title not in titles:
+                titles.append(title)
+        name = "默认知识库"
+        if collection and not _is_preset(collection):
+            try:
+                coll = _library().get_collection(collection) or {}
+            except Exception:
+                coll = {}
+            name = coll.get("name") or name
+        return {"name": name, "documents": len(titles),
+                "chunks": len(chunks), "titles": titles}
 
     return AgentDeps(
         search=lambda q, skip_rerank=False: pipeline.searcher.search(
@@ -563,6 +581,7 @@ def _agent_deps(pipeline, tools=None):
             provider, q, h, s, tt),
         run_tools_fn=lambda names, q, study: run_tools(names, q, study),
         tool_context_fn=tool_context,
+        overview=overview,
     )
 
 
@@ -1375,7 +1394,7 @@ def agent_stream(req: AgentRequest, request: Request,
             yield sse({"type": "done", "data": _agent_unavailable_payload(t0)})
             return
 
-        deps = _agent_deps(pipeline, req.tools)
+        deps = _agent_deps(pipeline, req.tools, req.collection)
         owner = _agent_owner(request)
         metrics.bump("agent_total")
         with _lock:

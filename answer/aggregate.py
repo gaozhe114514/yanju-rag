@@ -137,6 +137,10 @@ def _tables(lines: Sequence[str]) -> List[dict]:
             continue
         if "|" not in line:
             continue
+        # Markdown 表格的分隔行 |---|---| 不是数据；把它吃掉，
+        # 否则「这个班有多少人」会多报一行。
+        if re.fullmatch(r"[\s|:\-]+", line) and "-" in line:
+            continue
         cells = [c.strip() for c in _SEP.split(line)]
         if len(cells) < 2:
             continue

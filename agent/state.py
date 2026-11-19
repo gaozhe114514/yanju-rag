@@ -33,6 +33,7 @@ class AgentState(TypedDict, total=False):
 
     # route 节点的产出：chat / kb / tools
     route: str
+    need_kb: bool
     tool_names: List[str]
     route_reason: str
     tool_results: List[Dict[str, Any]]

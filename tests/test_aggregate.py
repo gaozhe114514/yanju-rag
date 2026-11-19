@@ -104,6 +104,17 @@ class TableStatsTest(unittest.TestCase):
         self.assertIn("有效数据 30 行", stats.text)
         self.assertIn(30, stats.numbers)
 
+    def test_markdown_separator_is_not_counted_as_data(self):
+        text = "\n".join([
+            "| 学号 | 姓名 | 性别 |",
+            "|---|---|---|",
+            "| 20230001 | 甲 | 男 |",
+            "| 20230002 | 乙 | 女 |",
+        ])
+        stats = table_stats(doc_chunks(text), "这个班有多少人")
+        self.assertIn("有效数据 2 行", stats.text)
+        self.assertIn(2, stats.numbers)
+
     def test_headerless_table_does_not_lose_the_first_row(self):
         # 线上那份名单的 xlsx 没有表头：第一行就是陈畅，被当成表头吃掉后
         # 变成 29 行、男 17。第一行带长学号，必须按数据处理。
