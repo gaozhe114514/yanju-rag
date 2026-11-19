@@ -62,6 +62,10 @@ TOOLS: Dict[str, Dict[str, str]] = {
         "label": "代码执行",
         "desc": "算进制、位运算和简单推导式；只执行白名单里的表达式，不能导入模块、读写文件或联网。",
     },
+    "stock": {
+        "label": "股票行情",
+        "desc": "查 A 股最新价、涨跌幅、今开昨收、最高最低；给定公司名或 6 位代码，数据来自腾讯行情。",
+    },
 }
 
 # WMO 天气码 → 中文；模型只拿这句，不做二次推断
@@ -116,6 +120,9 @@ _WHEN = {
         r"最新|新闻|实时|价格|比分|汇率|行情|热搜|发生了什么|谁赢了",
         re.IGNORECASE),
     "fetch": re.compile(r"https?://[^\s，。；！？\"'<>]+", re.IGNORECASE),
+    "stock": re.compile(
+        r"股价|股票|行情|收盘|开盘|涨跌|涨幅|跌幅|市值|市盈率|换手率|"
+        r"K线|A股|港股|美股|[036]\d{5}", re.IGNORECASE),
     "code": re.compile(
         r"0[bxo][0-9a-fA-F]+|\b(?:bin|hex|oct|ord|chr|sum|range|sorted)\s*\(|"
         r"位运算|进制(?:转换|换算)|代码|执行一下|运行一下|运行这段|跑一下|print\s*\(",
@@ -776,6 +783,105 @@ def code_lookup(query: str, context: Optional[dict] = None) -> dict:
     return base
 
 
+# ---------- 股票行情 ----------
+
+STOCK_HINT_URL = "https://smartbox.gtimg.cn/s3/"
+STOCK_QUOTE_URL = "https://qt.gtimg.cn/q="
+_STOCK_CODE_RE = re.compile(r"([036][0-9]{5})")
+_STOCK_NOISE_RE = re.compile(
+    r"(帮我|请|麻烦|查一下|查查|查下|看看|最近|最近的|现在|今天|他|她|它|"
+    r"这家|这个|公司|的|股价|股票|行情|收盘|开盘|涨跌|多少|怎么样|如何|"
+    r"[，。！？?!；;])", re.IGNORECASE)
+
+
+def _stock_candidates(query: str):
+    text = str(query or "")
+    code = _STOCK_CODE_RE.search(text)
+    if code:
+        return [(code.group(1), "")]
+    term = _STOCK_NOISE_RE.sub(" ", text)
+    term = re.sub(r"\s+", " ", term).strip()[:40]
+    if not term:
+        return []
+    # smartbox 返回 GBK 编码的 v_hint；单独取原始字节解码
+    url = STOCK_HINT_URL + "?" + urllib.parse.urlencode({"q": term, "t": "all"})
+    req = urllib.request.Request(url, headers={
+        "User-Agent": UA, "Referer": "https://finance.qq.com"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        raw = resp.read()
+    text = raw.decode("gbk", "ignore")
+    out = []
+    for m in re.finditer(r"([a-z]{2})~(\d{6})~([^~]*)~", text):
+        market, code, name = m.group(1), m.group(2), m.group(3)
+        try:
+            name = json.loads('"' + name + '"')
+        except ValueError:
+            pass
+        if market in ("sh", "sz", "bj") and code[0] in "036":
+            out.append((code, name))
+    return out[:3]
+
+
+def stock_lookup(query: str, context: Optional[dict] = None) -> dict:
+    base = {"name": "stock", "label": "股票行情", "source": "腾讯行情",
+            "detail": "", "ok": False}
+    try:
+        candidates = _stock_candidates(query)
+    except Exception as e:
+        base["detail"] = "股票代码查询失败（%s）。" % type(e).__name__
+        return base
+    if not candidates:
+        base["detail"] = "没找到对应的 A 股代码；可以说公司全称或 6 位股票代码。"
+        return base
+    code, name = candidates[0]
+    market = "sh" if code[0] == "6" else ("bj" if code[0] == "8" else "sz")
+    try:
+        url = STOCK_QUOTE_URL + market + code
+        req = urllib.request.Request(url, headers={
+            "User-Agent": UA, "Referer": "https://finance.qq.com"})
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            raw = resp.read().decode("gbk", "ignore")
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        base["detail"] = "行情接口暂时连不上（%s）。" % type(e).__name__
+        return base
+    m = re.search(r'="([^"]+)"', raw)
+    if not m:
+        base["detail"] = "行情接口没有返回数据。"
+        return base
+    fields = m.group(1).split("~")
+    if len(fields) < 35:
+        base["detail"] = "行情数据格式不完整。"
+        return base
+    try:
+        current = float(fields[3])
+        prev = float(fields[4])
+        open_ = float(fields[5])
+        change = float(fields[31])
+        pct = float(fields[32])
+        high = float(fields[33])
+        low = float(fields[34])
+        when = fields[30]
+    except (ValueError, IndexError):
+        base["detail"] = "行情数据解析失败。"
+        return base
+    stamp = when
+    if len(when) == 14:
+        stamp = "%s-%s-%s %s:%s" % (when[:4], when[4:6], when[6:8],
+                                    when[8:10], when[10:12])
+    trend = "涨" if change > 0 else ("跌" if change < 0 else "平")
+    base.update({
+        "ok": True,
+        "source": "腾讯行情",
+        "query": "%s %s" % (name or "", code),
+        "detail": ("%s（%s）最新价 %.2f 元，%s %.2f%%（%+.2f 元）；"
+                   "今开 %.2f，昨收 %.2f，最高 %.2f，最低 %.2f。"
+                   "数据时间：%s。"
+                   % (name or fields[1], code, current, trend, abs(pct),
+                      change, open_, prev, high, low, stamp)),
+    })
+    return base
+
+
 # ---------- 网页搜索 ----------
 
 def _strip_tags(text: str) -> str:
@@ -1001,6 +1107,7 @@ _HANDLERS = {
     "search": web_search,
     "fetch": web_fetch,
     "code": code_lookup,
+    "stock": stock_lookup,
 }
 
 

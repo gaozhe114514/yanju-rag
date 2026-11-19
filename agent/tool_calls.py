@@ -62,6 +62,17 @@ EXTERNAL_TOOLS = {
             "required": ["query"],
         },
     },
+    "stock": {
+        "name": "get_stock_quote",
+        "label": "股票行情",
+        "description": "查 A 股最新价、涨跌幅、今开昨收、最高最低；用户问股价、股票行情时使用。",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string",
+                                     "description": "公司名或 6 位股票代码"}},
+            "required": ["query"],
+        },
+    },
     "fetch": {
         "name": "fetch_url",
         "label": "网页正文",
@@ -153,7 +164,7 @@ def execute(tool_name: str, args: Dict[str, Any], overview=None) -> Dict[str, An
         query = str((args or {}).get("expression") or (args or {}).get("query") or "")
     elif key == "fetch":
         query = str((args or {}).get("url") or (args or {}).get("query") or "")
-    elif key == "search":
+    elif key in ("search", "stock"):
         query = str((args or {}).get("query") or "")
     else:
         query = str((args or {}).get("query") or "")

@@ -280,6 +280,18 @@ class CodeToolTest(unittest.TestCase):
         self.assertFalse(tool_will_run(["code"], "今天几号"))
 
 
+class StockToolTest(unittest.TestCase):
+    def test_stock_is_registered_and_fires(self):
+        self.assertIn("stock", tools.TOOLS)
+        self.assertTrue(tool_will_run(["stock"], "查一下泛微网络最近的股价"))
+        self.assertTrue(tool_will_run(["stock"], "603039 最新股价"))
+
+    def test_stock_code_is_extracted(self):
+        from answer.tools import _STOCK_CODE_RE
+        self.assertEqual(_STOCK_CODE_RE.findall("看看 603039 的股价"),
+                         ["603039"])
+
+
 class SearchCueTest(unittest.TestCase):
     def test_official_site_question_fires_search(self):
         self.assertTrue(tool_will_run(["search"], "你能从官网查到吗"))
