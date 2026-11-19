@@ -71,6 +71,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 _state = {}
 _lock = threading.Lock()
+# Agent 流式请求最多两路并发：一路卡住时另一路仍能回答；
+# 超过并发直接回「忙」，不要排队到一两分钟。
+_agent_slots = threading.Semaphore(2)
 GUARD = AccessGuard.from_env()
 
 # 工具调用打的是外部接口，和检索（含精排，2C 机器上 5~7 秒）并行跑，
@@ -1397,7 +1400,12 @@ def agent_stream(req: AgentRequest, request: Request,
         deps = _agent_deps(pipeline, req.tools, req.collection)
         owner = _agent_owner(request)
         metrics.bump("agent_total")
-        with _lock:
+        if not _agent_slots.acquire(timeout=2):
+            yield sse({"type": "error",
+                       "message": "服务器正忙，请稍等几秒再试"})
+            yield sse({"type": "done", "data": _agent_unavailable_payload(t0)})
+            return
+        try:
             for ev in runtime.stream(
                     deps, query=req.query, thread_id=req.thread_id,
                     owner=owner, history=_history(req),
@@ -1421,6 +1429,8 @@ def agent_stream(req: AgentRequest, request: Request,
                     req.collection)
                 yield sse({"type": "done", "data": with_cache_meta(
                     _agent_payload(result, t0, req.query, req.collection))})
+        finally:
+            _agent_slots.release()
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache",

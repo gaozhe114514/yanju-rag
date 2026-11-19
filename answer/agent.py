@@ -159,7 +159,7 @@ class QueryAgent:
         raw = self.provider.complete(
             [{"role": "system", "content": _UNDERSTAND_SYSTEM},
              {"role": "user", "content": user}],
-            temperature=0.0, max_tokens=220, json_mode=True)
+            temperature=0.0, max_tokens=220, json_mode=True, retries=1)
         obj = parse_payload(raw)
         intent = "clarify" if obj.get("intent") == "clarify" else "kb"
         rewritten = (obj.get("query") or "").strip()

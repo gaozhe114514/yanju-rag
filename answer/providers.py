@@ -71,7 +71,7 @@ class DeepSeekProvider:
     """DeepSeek Chat Completions，OpenAI 兼容协议，只用标准库。"""
 
     def __init__(self, api_key: str = "", model: str = "deepseek-chat",
-                 base_url: str = "", timeout: int = 60,
+                 base_url: str = "", timeout: int = 0,
                  temperature: float = 0.2, max_tokens: int = 800):
         self.api_key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
         if not self.api_key:
@@ -79,7 +79,7 @@ class DeepSeekProvider:
         self.model = model
         self.base_url = (base_url or os.environ.get(
             "DEEPSEEK_BASE_URL", "https://api.deepseek.com")).rstrip("/")
-        self.timeout = timeout
+        self.timeout = int(timeout or os.environ.get("KB_LLM_TIMEOUT", "45"))
         self.temperature = temperature
         self.max_tokens = max_tokens
 
@@ -100,7 +100,8 @@ class DeepSeekProvider:
             raise ProviderError("DeepSeek 请求失败：%s" % e)
 
     def complete(self, messages: List[Dict], temperature: float = 0.0,
-                 max_tokens: int = 200, json_mode: bool = False) -> str:
+                 max_tokens: int = 200, json_mode: bool = False,
+                 retries: int = 2) -> str:
         """通用补全，供查询改写等轻量任务使用。"""
         body = {
             "model": self.model,
@@ -111,7 +112,7 @@ class DeepSeekProvider:
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         last = None
-        for attempt in range(2):
+        for attempt in range(max(1, int(retries))):
             try:
                 resp = self._post(body)
                 try:
@@ -127,7 +128,8 @@ class DeepSeekProvider:
     def chat_tools(self, messages: List[Dict], tools: List[Dict],
                    temperature: float = 0.2,
                    max_tokens: int = 800,
-                   tool_choice: str = "auto") -> Dict:
+                   tool_choice: str = "auto",
+                   retries: int = 1) -> Dict:
         """原生函数调用：返回 assistant message（可能带 tool_calls）。"""
         body = {
             "model": self.model,
@@ -138,7 +140,7 @@ class DeepSeekProvider:
             "max_tokens": max_tokens,
         }
         last = None
-        for attempt in range(2):
+        for attempt in range(max(1, int(retries))):
             try:
                 resp = self._post(body)
                 msg = resp["choices"][0]["message"]

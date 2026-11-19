@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.78.1">
+  <meta name="app-version" content="0.78.2">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -4952,40 +4952,71 @@
     const headers = {'Content-Type': 'application/json', 'Accept': 'text/event-stream'};
     if (state.token) headers['X-Access-Token'] = state.token;
     if (state.account.token) headers['Authorization'] = 'Bearer ' + state.account.token;
-    const resp = await fetch(path || '/chat/stream', {
-      method: 'POST', headers, body: JSON.stringify(body), signal
-    });
-    if (!resp.ok) {
-      let data = null;
-      try { data = await resp.json(); } catch (e) {}
-      const err = new Error((data && data.detail) || ('HTTP ' + resp.status));
-      err.status = resp.status;
-      err.data = data;
-      throw err;
+    // 服务端偶尔会卡在一次模型调用里；50 秒没有任何新事件就主动断开，
+    // 不要把「正在理解问题…」一直挂在屏幕上。
+    const ctrl = new AbortController();
+    let timedOut = false;
+    let idleTimer = null;
+    const arm = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        ctrl.abort();
+      }, 50000);
+    };
+    const forwardAbort = () => ctrl.abort();
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener('abort', forwardAbort);
     }
-    if (!resp.body || !resp.body.getReader) {
-      throw new Error('当前浏览器不支持流式输出');
-    }
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buf = '';
-    while (true) {
-      const step = await reader.read();
-      if (step.done) break;
-      buf += decoder.decode(step.value, {stream: true});
-      let cut;
-      while ((cut = buf.indexOf('\n\n')) >= 0) {
-        const block = buf.slice(0, cut);
-        buf = buf.slice(cut + 2);
-        const raw = block.split('\n')
-          .filter(line => line.indexOf('data:') === 0)
-          .map(line => line.slice(5).trim())
-          .join('');
-        if (!raw) continue;
-        let evt = null;
-        try { evt = JSON.parse(raw); } catch (e) { continue; }
-        onEvent(evt);
+    arm();
+    try {
+      const resp = await fetch(path || '/chat/stream', {
+        method: 'POST', headers, body: JSON.stringify(body), signal: ctrl.signal
+      });
+      if (!resp.ok) {
+        let data = null;
+        try { data = await resp.json(); } catch (e) {}
+        const err = new Error((data && data.detail) || ('HTTP ' + resp.status));
+        err.status = resp.status;
+        err.data = data;
+        throw err;
       }
+      if (!resp.body || !resp.body.getReader) {
+        throw new Error('当前浏览器不支持流式输出');
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buf = '';
+      while (true) {
+        arm();
+        const step = await reader.read();
+        if (step.done) break;
+        buf += decoder.decode(step.value, {stream: true});
+        let cut;
+        while ((cut = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const raw = block.split('\n')
+            .filter(line => line.indexOf('data:') === 0)
+            .map(line => line.slice(5).trim())
+            .join('');
+          if (!raw) continue;
+          let evt = null;
+          try { evt = JSON.parse(raw); } catch (e) { continue; }
+          onEvent(evt);
+        }
+      }
+    } catch (e) {
+      if (timedOut) {
+        const err = new Error('回答超时（50 秒没有新进展），已停止，请重试');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      throw e;
+    } finally {
+      clearTimeout(idleTimer);
+      if (signal) signal.removeEventListener('abort', forwardAbort);
     }
   }
 
@@ -5889,7 +5920,9 @@
         input.value = text;
         autoGrow();
       }
-      if (e.name === 'AbortError') {
+      if (e.name === 'TimeoutError') {
+        toast(e.message, 'err');
+      } else if (e.name === 'AbortError') {
         toast('已停止生成');
       } else if (e.status === 401) {
         showAuthNeeded('访问口令无效或已过期，请重新输入。');
