@@ -12,9 +12,13 @@ from answer.providers import ProviderError, parse_payload
 from answer.tools import tool_will_run
 
 KB_CUES = (
-    "资料", "文档", "知识库", "笔记", "讲义", "手册", "公司", "产品",
+    "资料", "文档", "知识库", "笔记", "讲义", "手册",
     "制度", "流程", "规范", "报销", "请假", "合同", "报价", "项目",
     "部署", "接口", "功能", "使用说明", "我的库",
+    # 「公司」「产品」单独出现太宽：问外部公司是什么类型不该查自己的库，
+    # 只有这些指向内部资料的说法才算知识库问题。
+    "我们公司", "公司资料", "公司制度", "公司流程", "公司产品",
+    "公司内部", "公司规定", "内部资料", "公司文档",
 )
 CHAT_CUES = (
     "我", "心情", "累", "不想", "难过", "开心", "烦", "焦虑", "建议",
@@ -23,8 +27,9 @@ CHAT_CUES = (
 ROUTE_SYSTEM = """你是「言据」的回答路由器，只输出 JSON：
 {"route":"chat"|"kb"|"tools","tools":["weather"],"reason":"一句话"}
 
-- chat：寒暄、情绪、生活、通用知识，不需要公司资料，也不需要实时工具；
-- kb：问题需要查公司资料 / 用户自己的文档 / 知识库；
+- chat：寒暄、情绪、生活、行业常识，以及「某家外部公司 / 某款产品是什么」这类
+  不需要用户自己资料的通用问题；
+- kb：问题明确指向用户自己的文档、公司内部制度 / 流程 / 产品手册或知识库；
 - tools：需要实时数据或外部网页，tools 从给定的可用工具里选；
 - 不要回答问题，只做路由；reason 不超过 40 字。
 """
@@ -81,6 +86,11 @@ def route_query(query: str, history: Optional[Sequence[dict]], collection: str,
             if route == "tools" and picked:
                 return RouteDecision("tools", picked,
                                      str(obj.get("reason") or "")[:80], "llm")
+            if route == "kb" and not collection and not any(
+                    cue in (query or "") for cue in KB_CUES):
+                # 模型容易把「泛微网络是什么公司」当成公司资料问题；
+                # 没选库、也没有内部资料线索时，按普通对话回答。
+                return RouteDecision("chat", [], "通用问题，不需要查资料", "rule")
             if route in ("chat", "kb"):
                 return RouteDecision(route, [],
                                      str(obj.get("reason") or "")[:80], "llm")

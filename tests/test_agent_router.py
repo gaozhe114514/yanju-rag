@@ -33,6 +33,16 @@ class RouteRulesTest(unittest.TestCase):
                         ["weather", "time", "calc"])
         self.assertEqual(d.route, "kb")
 
+    def test_external_company_question_goes_to_chat(self):
+        d = route_query("泛微网络是个什么类型的公司", [], "", None,
+                        ["weather", "time", "calc", "search", "fetch"])
+        self.assertEqual(d.route, "chat")
+
+    def test_internal_company_docs_go_to_kb(self):
+        d = route_query("我们公司的报销流程是什么", [], "", None,
+                        ["weather", "time", "calc"])
+        self.assertEqual(d.route, "kb")
+
     def test_official_site_question_goes_to_search(self):
         d = route_query("你能从官网查到吗", [], "", None,
                         ["search", "fetch"])
