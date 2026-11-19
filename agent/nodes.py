@@ -394,9 +394,10 @@ AGENT_SYSTEM = """你是「言据」的通用助手。你可以直接回答，�
 1. 用户问公司资料、产品手册、制度流程、自己的文档或知识库内容时，调用 search_kb；
    回答必须基于检索到的原文并带逐字引用，由后续链路校验。
 2. 用户问「这个库有多少资料 / 有哪些文档」时，调用 kb_overview。
-3. 问某家外部公司 / 某款产品是什么、属于什么行业，直接用已有知识回答；
-   只有问最新动态、新闻、价格、官网地址或实时信息时，才调用 search_web；
-   已知官网或用户给了链接时调用 fetch_url。工具失败就说明失败，不要声称不能联网。
+3. 问某家外部公司 / 某款产品是什么、属于什么行业，即使带着「你知道吗」，
+   也直接用已有知识回答，不要调用 search_kb；只有问最新动态、新闻、价格、
+   官网地址或实时信息时，才调用 search_web；已知官网或用户给了链接时调用 fetch_url。
+   工具失败就说明失败，不要声称不能联网。
 4. 天气、时间、计算、代码分别用对应工具。
 5. 普通知识、概念、情绪、生活类问题直接回答，不调用工具，也不要提工具、路由或
    「没有取到工具结果」。
@@ -512,6 +513,26 @@ def agent_node(state: AgentState, deps: AgentDeps, emit: Optional[Emit] = None):
         # 检索工具优先：把控制权交回原检索 / 拒答 / 逐字校验链路。
         for call in calls:
             if call["name"] == SEARCH_KB:
+                from .route import KB_CUES
+                if (not str(state.get("collection") or "")
+                        and not any(cue in query for cue in KB_CUES)):
+                    # 问外部公司 / 通用知识却误调了 search_kb：直接回答，
+                    # 不要让默认库的 0 分片段把它拖成拒答。
+                    parts = []
+                    try:
+                        for piece in deps.chat_stream(
+                                query, history, str(state.get("style") or "")):
+                            parts.append(piece)
+                            _emit(emit, {"type": "delta", "text": piece})
+                    except Exception as e:
+                        return {"route": "chat", "refused": True,
+                                "reason": "provider_error: %s" % type(e).__name__,
+                                "done": True}
+                    answer = "".join(parts)
+                    return {"route": "chat", "refused": False, "answer": answer,
+                            "citations": [],
+                            "messages": [message("assistant", answer)],
+                            "done": True}
                 search_query = str(call["arguments"].get("query") or query).strip()
                 ms = int((time.time() - t0) * 1000)
                 return {

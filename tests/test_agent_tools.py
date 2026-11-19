@@ -106,6 +106,24 @@ class NativeToolLoopTest(unittest.TestCase):
         self.assertEqual(res.route, "chat")
         self.assertEqual(res.answer, "直接回答。")
 
+    def test_external_company_question_does_not_use_search_kb(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+        from agent.runtime import AgentRuntime
+        p = self.P([
+            {"content": "", "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": CALL_SEARCH_KB,
+                             "arguments": "{\"query\": \"泛微网络是什么类型的公司\"}"}}]},
+        ])
+        deps = self.deps(p)
+        deps.chat_stream = lambda q, h, st, tt="": iter(["泛微网络是一家 OA 软件公司。"])
+        res = AgentRuntime(InMemorySaver(), "memory").run(
+            deps, query="你知道泛微网络是什么类型的公司吗", thread_id="n3",
+            owner="user:1")
+        self.assertEqual(res.route, "chat")
+        self.assertFalse(res.refused)
+        self.assertIn("OA", res.answer)
+
     def test_kb_overview_runs_then_answers(self):
         from langgraph.checkpoint.memory import InMemorySaver
         from agent.runtime import AgentRuntime

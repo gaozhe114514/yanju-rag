@@ -78,8 +78,9 @@ SEARCH_KB_SPEC = {
     "type": "function",
     "function": {
         "name": SEARCH_KB,
-        "description": ("在用户当前的知识库里检索可引用的原文。问公司资料、产品手册、"
-                        "制度流程、自己的文档或知识库内容时使用。"),
+        "description": ("只在用户自己的知识库里检索可引用原文：公司内部制度 / 流程、"
+                        "产品手册、用户上传的文档。问某家外部公司或产品是什么、"
+                        "属于什么行业时不要用本工具，直接用已有知识回答。"),
         "parameters": {
             "type": "object",
             "properties": {"query": {"type": "string", "description": "检索问题"}},
