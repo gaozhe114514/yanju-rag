@@ -1,0 +1,35 @@
+# 在已有运行时镜像上叠代码层：不重新下载 2.3GB 精排模型。
+# 用法（服务器仓库目录）：
+#   docker build -f deploy/Dockerfile.hotfix -t yanju-rag:v0770 .
+#   docker tag yanju-rag:v0770 yanju-rag:latest
+#   docker compose up -d --no-build
+FROM cs408-rag:latest
+
+USER root
+WORKDIR /app
+
+COPY . /app
+
+# 旧镜像里可能还带着考试功能的文件；新仓库已不含它们，这里显式删掉。
+RUN rm -rf \
+      /app/pipeline \
+      /app/data/raw /app/data/eval /app/data/out /app/data/work \
+      /app/data/curated/408_notes \
+      /app/data/curated/knowledge.jsonl \
+      /app/data/curated/2019_analysis.jsonl \
+      /app/data/curated/2021_analysis.jsonl \
+      /app/data/curated/2024_analysis.jsonl \
+      /app/scripts/seed_408_knowledge.py \
+      /app/api/catalog.py /app/api/knowledge.py /app/api/graph.py \
+      /app/answer/qgen.py /app/answer/tutor.py \
+      /app/answer/eval_answer.py /app/answer/eval_gate.py /app/answer/cli.py \
+      /app/retrieval/eval.py /app/retrieval/cli.py \
+      /app/db/load.py \
+      /app/tests/test_catalog.py /app/tests/test_graph.py \
+      /app/tests/test_knowledge.py /app/tests/test_pipeline.py \
+      /app/tests/test_qgen.py /app/tests/test_seed_knowledge.py \
+      /app/tests/test_tutor.py /app/tests/test_mastery_access.py \
+      /app/tests/test_mastery_session.py /app/tests/test_analysis.py \
+      /app/tests/test_store_pg.py
+
+USER appuser
