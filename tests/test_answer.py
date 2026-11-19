@@ -207,17 +207,16 @@ class KnowledgePromptTest(unittest.TestCase):
         )
         return SearchHit(ch, 0.88)
 
-    def test_format_hits_marks_source_type(self):
+    def test_format_hits_marks_document_source(self):
         from retrieval.chunk import Chunk
         from retrieval.search import SearchHit
-        hits = [self._knowledge_hit(),
-                SearchHit(Chunk("2019-408-10", 10, "快速排序的题"), 0.5)]
+        hits = [SearchHit(Chunk("doc-1-001", 1, "快速排序的题",
+                                kind="doc", title="排序笔记"), 0.5)]
         text = format_hits(hits)
-        self.assertIn("类型=考点", text)
-        self.assertIn("章节=排序", text)
-        self.assertIn("类型=真题", text)
-        # 考点卡片没有“答案/解析”字段，不能凭空生成这两行
-        self.assertNotIn("答案：", text.split("类型=真题")[0])
+        self.assertIn("来源=资料库", text)
+        self.assertIn("文档=排序笔记", text)
+        self.assertNotIn("类型=真题", text)
+        self.assertNotIn("答案：", text)
 
     def test_knowledge_citation_verified(self):
         hits = [self._knowledge_hit()]

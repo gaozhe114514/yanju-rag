@@ -10,8 +10,8 @@ from unittest import mock
 
 from answer.cache import namespace
 from answer.pipeline import AnswerPipeline
-from answer.prompt import SYSTEM_PROMPT, SYSTEM_PROMPT_DOC, build_messages, format_hits
-from kb import PRESET_COLLECTION, Library, LibraryError
+from answer.prompt import SYSTEM_PROMPT_DOC, build_messages, format_hits
+from kb import Library, LibraryError
 from kb.chunking import split_text
 from retrieval.chunk import Chunk
 from retrieval.search import SearchHit
@@ -81,12 +81,6 @@ class CollectionTest(unittest.TestCase):
     def test_empty_name_rejected(self):
         with self.assertRaises(LibraryError):
             make_library().create_collection("   ")
-
-    def test_preset_collection_is_not_a_row(self):
-        lib = make_library()
-        self.assertIsNone(lib.get_collection(PRESET_COLLECTION))
-        with self.assertRaises(LibraryError):
-            lib.delete_collection(PRESET_COLLECTION)
 
     def test_delete_collection_drops_documents_and_searcher(self):
         lib = make_library()
@@ -458,9 +452,9 @@ class DocPromptTest(unittest.TestCase):
         self.assertEqual(msgs[0]["content"], SYSTEM_PROMPT_DOC)
         self.assertNotIn("408", msgs[0]["content"])
 
-    def test_default_mode_keeps_exam_prompt(self):
+    def test_default_mode_is_doc_prompt(self):
         msgs = build_messages("快速排序复杂度", [self._hit()])
-        self.assertEqual(msgs[0]["content"], SYSTEM_PROMPT)
+        self.assertEqual(msgs[0]["content"], SYSTEM_PROMPT_DOC)
 
     def test_citation_still_must_be_verbatim(self):
         class P:
@@ -493,7 +487,7 @@ class CacheNamespaceTest(unittest.TestCase):
 
     def test_preset_keeps_original_namespace(self):
         base = namespace(self.BASE)
-        self.assertEqual(namespace(self.BASE, "", PRESET_COLLECTION, True), base)
+        self.assertEqual(namespace(self.BASE, "", "lib-default", True), base)
         self.assertEqual(namespace(self.BASE, "", "", True), base)
 
     def test_style_fingerprint_isolates_partners(self):

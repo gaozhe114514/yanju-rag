@@ -164,7 +164,7 @@ README 配图用 `docs/screens/agent-glass-1440.png`（琉璃默认）；本地�
 | 引用逐字命中原文 | `verify_node` 调用与主链路相同的 `verify_payload` |
 | 校验失败重试一次 | `verify → search_kb` 条件边，`attempt < 2` |
 | 仍失败拒答 | `refuse_node` + `_log_gap` 写缺口 |
-| 一道题 / 一张考点卡 = 一个 chunk | 检索层没动，chunk 结构与切分不变 |
+| 一段资料 = 一个 chunk | 检索层没动，chunk 结构与切分不变 |
 | E 级校验错误不进检索库 | 离线管线没动，Agent 只读检索结果 |
 | 不硬编答案 | 资料不足走 `refuse`，不生成通用答案 |
 

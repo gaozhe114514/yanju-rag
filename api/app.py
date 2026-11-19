@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""HTTP 服务：多轮问答 Agent + 题库浏览 + 健康检查。
+"""HTTP 服务：多轮问答 Agent + 知识库 + 健康检查。
 
 启动（仓库根目录）：
   py -m uvicorn api.app:app --host 0.0.0.0 --port 8000
 
 环境变量：
-  DATABASE_URL      PostgreSQL 连接串；设置后语料/向量/浏览查询都走数据库
-  KB_INPUT          题库 JSONL，逗号分隔，默认 2019/2020/2021/2023/2024 五卷
+  DATABASE_URL      PostgreSQL 连接串；设置后知识库、账号与缓存都走数据库
   KB_MODE           bm25 / hybrid / hybrid-rerank / hybrid-ce，默认 hybrid
   KB_FUSE_K         进入精排的候选数，默认 10
   KB_PROVIDER       mock / deepseek；默认有 DEEPSEEK_API_KEY 就用 deepseek
@@ -43,24 +42,19 @@ from answer.daily import (daily_reply, daily_stream, general_reply,
 from answer import docgen
 from answer.pipeline import AnswerPipeline, AnswerResult
 from answer.tools import run_tools, tool_context, tool_will_run
-from answer.tutor import run_turn as tutor_turn
 from answer.cache import (cache_key, cacheable, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
 from answer.providers import DeepSeekProvider, ExtractiveProvider, ProviderError
-from answer.qgen import generate_questions
 from answer.stream import sse
-from kb import PRESET_COLLECTION, Library, LibraryError
+from kb import Library, LibraryError
 from kb.defaults import ensure_default_library
 from kb.parsers import ParseError, extension_of, extract_document
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
-from retrieval.chunk import build_chunk, build_knowledge_chunk, load_questions
-from retrieval.search import build_searcher
+from retrieval.vector import BgeEmbedder
 
 from db.store import Store
 
-from .catalog import (brief, detail, filter_questions, format_subject_counts,
-                      subject_counts)
 from .access import (ASSIGNABLE_ROLES, VISIBILITY_PRIVATE,
                      VISIBILITY_SHARED, can_manage, can_read, can_write,
                      describe, is_admin)
@@ -68,13 +62,8 @@ from .accounts import AccountError, AccountService
 from .feedback import (feedback_stats as jsonl_feedback_stats,
                        log_feedback as jsonl_log_feedback, normalize_feedback)
 from .gap import gap_detail, gap_stats, log_gap
-from .graph import build_graph
 from .guard import AccessGuard
 from . import metrics
-from .knowledge import (filter_knowledge, know_brief, know_detail,
-                        knowledge_chapters, knowledge_for_question,
-                        knowledge_subject_counts, knowledge_tree,
-                        load_knowledge, related_knowledge_by_question)
 from .tools_runtime import TOOL_WAIT_S, _live_query, _split_tools, _tool_results
 from .version import version_info
 
@@ -93,7 +82,7 @@ class AskRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=500)
     # 讲解风格（人格预设 / 技能 / 学习记忆），只影响措辞，不改变引用规则
     style: str = Field("", max_length=400)
-    # 检索哪个知识库：空字符串 / cs408 = 内置 408 语料，其余是用户自建资料库
+    # 检索哪个知识库：空字符串 = 默认知识库，其余是用户自建资料库
     collection: str = Field("", max_length=64)
 
 
@@ -130,95 +119,6 @@ class AgentRequest(BaseModel):
     study: Dict[str, Any] = Field(default_factory=dict)
 
 
-class MasteryMaterial(BaseModel):
-    """学习者勾的素材：key 决定服务端能不能自己去读，detail 是前端手里的摘要。"""
-    key: str = Field("", max_length=200)
-    label: str = Field("", max_length=100)
-    kind: str = Field("", max_length=20)
-    detail: str = Field("", max_length=2000)
-
-
-class MasteryAttempt(BaseModel):
-    """一次作答的证据：对错、难度、时间。掌握由这些算，不由模型说。"""
-    ok: bool = False
-    diff: int = Field(1, ge=1, le=5)
-    at: int = 0
-    kind: str = Field("quiz", max_length=12)
-
-
-class MasteryPoint(BaseModel):
-    id: str = Field("", max_length=60)
-    name: str = Field("", max_length=100)
-    type: str = Field("concept", max_length=20)
-    done: bool = False
-    attempts: List[MasteryAttempt] = Field(default_factory=list)
-    masteredAt: int = 0
-    manual: bool = False
-    # v0.37 退路工具：跳过 / 修题只记次数，不记作答；暂缓把知识点挪出当前队列
-    skips: int = 0
-    repairs: int = 0
-    deferredAt: int = 0
-    deferredReason: str = Field("", max_length=200)
-
-
-class MasteryModule(BaseModel):
-    id: str = Field("", max_length=40)
-    name: str = Field("", max_length=80)
-    objective: str = Field("", max_length=300)
-    points: List[MasteryPoint] = Field(default_factory=list)
-
-
-class MasteryOutline(BaseModel):
-    name: str = Field("", max_length=60)
-    modules: List[MasteryModule] = Field(default_factory=list)
-
-
-class MasteryQuiz(BaseModel):
-    """挂在学习者那里的一道题；key 只在服务端判分时用，不画到界面上。"""
-    questionId: str = Field("", max_length=60)
-    kpId: str = Field("", max_length=60)
-    prompt: str = Field("", max_length=1200)
-    options: List[Dict[str, str]] = Field(default_factory=list)
-    key: str = Field("", max_length=40)
-    explanation: str = Field("", max_length=1200)
-    difficulty: int = Field(2, ge=1, le=5)
-    kind: str = Field("quiz", max_length=12)
-    key_points: List[str] = Field(default_factory=list)
-
-
-class MasteryAnswer(BaseModel):
-    questionId: str = Field("", max_length=60)
-    choice: str = Field("", max_length=20)
-    text: str = Field("", max_length=2000)
-
-
-class MasteryControl(BaseModel):
-    """题卡上的退路：跳过 / 这题有问题 / 暂缓这个知识点。"""
-    kind: str = Field("", max_length=12)
-    questionId: str = Field("", max_length=60)
-    kpId: str = Field("", max_length=60)
-    note: str = Field("", max_length=400)
-
-
-class MasteryTurnRequest(BaseModel):
-    """精通之路的一轮导师会话。状态放在浏览器，这里只收一份快照。"""
-    goal: str = Field("", max_length=2000)
-    emoji: str = Field("", max_length=12)
-    subject: str = Field("", max_length=20)
-    materials: List[MasteryMaterial] = Field(default_factory=list)
-    learner: Dict[str, str] = Field(default_factory=dict)
-    outline: MasteryOutline = Field(default_factory=MasteryOutline)
-    messages: List[ChatTurn] = Field(default_factory=list)
-    message: str = Field("", max_length=2000)
-    # v0.35：三条模式。没传时按有没有大纲推。
-    mode: str = Field("", max_length=12)
-    pending: Optional[MasteryQuiz] = None
-    answer: Optional[MasteryAnswer] = None
-    control: Optional[MasteryControl] = None
-    review: List[str] = Field(default_factory=list)
-    now: int = 0
-
-
 class CollectionRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=40)
     description: str = Field("", max_length=200)
@@ -250,13 +150,6 @@ class ChunkUpdateRequest(BaseModel):
     revision: Optional[int] = Field(None, ge=0)
 
 
-class GenerateQuestionsRequest(BaseModel):
-    # 用户粘贴的资料；出题结果只存在浏览器，服务端不落盘
-    text: str = Field(..., min_length=80, max_length=20000)
-    count: int = Field(5, ge=1, le=10)
-    title: str = Field("", max_length=80)
-
-
 class CreateOutlineRequest(BaseModel):
     topic: str = Field(..., min_length=2, max_length=100)
     kind: str = Field("doc", pattern="^(doc|slides)$")
@@ -270,15 +163,6 @@ class CreateExportRequest(BaseModel):
     outline: Dict[str, Any] = Field(default_factory=dict)
     # PPT 配色：陶土 / 墨蓝 / 黑白；md、docx 忽略
     style: str = Field("clay", pattern="^(clay|ink|mono)$")
-
-
-class EvalResultRequest(BaseModel):
-    """一次评测的摘要；payload 原样存，前端/CLI 自己解释。"""
-    name: str = Field(..., min_length=1, max_length=120)
-    mode: str = Field("", max_length=40)
-    total: int = Field(0, ge=0, le=100000)
-    passed: int = Field(0, ge=0, le=100000)
-    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class FeedbackRequest(BaseModel):
@@ -397,56 +281,28 @@ def _init_agent_runtime() -> None:
         print("Agent 未启用：%s" % _state["agent_error"])
 
 
+class _EmptySearcher:
+    """默认库还没资料时的空检索器：链路照常启动，问题由拒答闸门处理。"""
+
+    embedder = None
+    chunks: List[Any] = []
+
+    def search(self, query: str, skip_rerank: bool = False) -> List[Any]:
+        return []
+
+
 def _load() -> None:
-    raw = os.environ.get(
-        "KB_INPUT",
-        "data/work/2019_draft.jsonl,data/work/2020_draft.jsonl,"
-        "data/work/2021_draft.jsonl,data/work/2023_draft.jsonl,"
-        "data/work/2024_draft.jsonl")
-    paths = [_resolve(p.strip()) for p in raw.split(",") if p.strip()]
-    missing = [p for p in paths if not os.path.exists(p)]
-    if missing:
-        raise RuntimeError("题库文件不存在：%s" % ", ".join(missing))
-
-    questions = load_questions(paths)
-
-    # 考点卡片默认从仓库里的 curated 目录读；显式设置 KB_KNOWLEDGE 时必须存在。
-    know_env = os.environ.get("KB_KNOWLEDGE")
-    know_path = _resolve(know_env or "data/curated/knowledge.jsonl")
-    if know_env and not os.path.exists(know_path):
-        raise RuntimeError("考点文件不存在：%s" % know_path)
-    knowledge = (load_knowledge(know_path, "data/curated/knowledge.jsonl")
-                 if os.path.exists(know_path) else [])
-
-    chunk_ids = {q["id"] for q in questions}
-    clash = [c["id"] for c in knowledge if c["id"] in chunk_ids]
-    if clash:
-        raise RuntimeError("考点 id 与题目 id 冲突：%s" % ", ".join(clash))
-
-    chunks = [build_chunk(q) for q in questions]
-    chunks.extend(build_knowledge_chunk(c, c["_file"], c["_line"]) for c in knowledge)
     mode = os.environ.get("KB_MODE", "hybrid")
     # CPU 上精排 10 个候选约 7 秒/次；30 个要约 27 秒，R@1 只差 0 点。
     fuse_k = int(os.environ.get("KB_FUSE_K", "10"))
 
-    # 配了 DATABASE_URL 就以 Postgres 为准：语料、向量、浏览查询都走数据库，
-    # 进程内只留 BM25 和精排模型。没有数据库时回退内存索引，便于单测和离线开发。
+    # 配了 DATABASE_URL 就以 Postgres 为准：知识库、账号与缓存都走数据库；
+    # 没有数据库时回退内存，便于单测和离线开发。
     store = Store.from_env()
     if store is not None:
         store.init_schema()
-    searcher = build_searcher(
-        chunks, mode=mode, k_fuse=fuse_k, k_final=5,
-        vector_search=store.vector_search if store is not None else None)
-    fingerprint = ""
-    if store is not None:
-        stats = store.sync(
-            questions, knowledge, chunks,
-            embedder=searcher.embedder,
-            model_name=searcher.embedder.model_name if searcher.embedder else "")
-        fingerprint = stats.get("fingerprint", "")
-        print("数据库语料%s：题 %d / 考点 %d" % (
-            "已重建" if stats["reloaded"] else "无需重建",
-            stats["questions"], stats["knowledge"]))
+    # 用户资料库是唯一的检索语料；这里只准备向量模型，不再预载考试题库。
+    embedder = BgeEmbedder() if mode != "bm25" else None
 
     provider_name = os.environ.get("KB_PROVIDER", "")
     if not provider_name:
@@ -460,11 +316,8 @@ def _load() -> None:
     else:
         provider = ExtractiveProvider()
 
-    # 阈值来自 answer.eval_gate 在「真题 235（2019/2020/2021/2023/2024 五卷）
-    # + 考点 42」混合语料上的标定（32 条正样本 + 16 条负样本）：0.1/0 时
-    # 负样本闸门拒答 87.5%、正样本误拒 6.2%；端到端（含生成与引用校验）
-    # 16 条负样本全部拒答。0.3/0 能把闸门拒答提到 93.8%，但误拒也升到
-    # 12.5%，所以仍用 0.1/0。分差阈值会误伤「多个考点都相关」的问题，默认关闭。
+    # 默认阈值沿用知识库语料上的标定：0.1/0 时负样本大多被拒、正样本误拒最低。
+    # 分差阈值会误伤「多段资料都相关」的问题，默认关闭。
     default_score = "0.1" if mode == "hybrid-ce" else "0"
     default_margin = "0"
     gate = RefusalGate(float(os.environ.get("KB_MIN_SCORE", default_score)),
@@ -482,25 +335,24 @@ def _load() -> None:
     # 只有真实模型才做追问改写；mock 模式退化为规则拼接，保证离线也能跑。
     agent = QueryAgent(provider if provider_name == "deepseek" else None)
 
-    # 用户自建知识库：与 408 预置语料共用同一套 BM25/向量/精排/拒答，
-    # 只是换一份片段来源和一段 prompt。没有数据库时状态落在 data/work 下。
+    # 知识库：默认库与自建库共用同一套 BM25/向量/精排/拒答，
+    # 没有数据库时状态落在 data/work 下。
     library_state = (None if store is not None
                      else str(ROOT / "data/work/kb/library.json"))
-    library = Library(store=store, embedder=searcher.embedder, mode=mode,
+    library = Library(store=store, embedder=embedder, mode=mode,
                       k_fuse=fuse_k, state_path=library_state)
 
-    # 默认资料范围：内置「公司知识库」；示例资料随代码走，换真实资料时直接改库。
+    # 默认资料范围：内置「默认知识库」；示例资料随代码走，换真实资料时直接改库。
     default_coll = ensure_default_library(library)
     default_id = (default_coll or {}).get("id", "")
     default_searcher = library.searcher(default_id) if default_id else None
-    default_pipeline = (
-        AnswerPipeline(default_searcher, provider, gate=gate, prompt_mode="doc")
-        if default_searcher is not None
-        else AnswerPipeline(searcher, provider, gate=gate))
+    default_pipeline = AnswerPipeline(
+        default_searcher if default_searcher is not None else _EmptySearcher(),
+        provider, gate=gate, prompt_mode="doc")
     print("默认知识库：%s" % ((default_coll or {}).get("name") or "未就绪"))
 
-    # 配了 WeKnora 就把「用户知识库」的进料、切片、召回交给它；
-    # 内置 408 语料仍走本项目的检索（引用校验与拒答两边完全一致）。
+    # 配了 WeKnora 就把知识库的进料、切片、召回交给它；
+    # 引用校验与拒答始终在本项目。
     weknora = WeKnora()
     if weknora.configured:
         print("知识库后端：WeKnora %s" % weknora.base_url)
@@ -520,12 +372,6 @@ def _load() -> None:
         "weknora": weknora if weknora.configured else None,
         "gate": gate,
         "doc_pipelines": {},
-        "chunks": chunks,
-        "questions": questions,
-        "questions_by_id": {q["id"]: q for q in questions},
-        "knowledge": knowledge,
-        "knowledge_by_id": {c["id"]: c for c in knowledge},
-        "knowledge_by_question": related_knowledge_by_question(knowledge),
         "mode": mode,
         "fuse_k": fuse_k,
         "provider": provider_name,
@@ -536,11 +382,12 @@ def _load() -> None:
         "gap_log": str(gap_path),
         "feedback_log": str(feedback_path),
         "agent": agent,
-        # 缓存命名空间隔离检索模式、provider、精排候选数和语料版本：
+        # 缓存命名空间隔离检索模式、provider、精排候选数和默认库版本：
         # 任一变化都换一套键，旧回答不会串到新配置上。
         "cache_ttl": ttl_from_env(),
         "cache_ns": "%s|%s|k%s|%s" % (
-            mode, provider_name, fuse_k, fingerprint[:16]),
+            mode, provider_name, fuse_k,
+            ((default_coll or {}).get("updated_at") or "")[:16]),
     })
     _init_agent_runtime()
 
@@ -719,23 +566,6 @@ def _agent_deps(pipeline, tools=None):
     )
 
 
-def _preset_collection() -> dict:
-    questions = _state.get("questions", [])
-    knowledge = _state.get("knowledge", [])
-    return {
-        "id": PRESET_COLLECTION,
-        "name": "408 题库（真题 + 考点）",
-        "description": "计算机统考真题与考点卡片，题库页与练习用，只读",
-        "builtin": True,
-        "documents": len(questions) + len(knowledge),
-        "chunks": len(questions) + len(knowledge),
-        "questions": len(questions),
-        "knowledge": len(knowledge),
-        "created_at": "",
-        "updated_at": "",
-    }
-
-
 def _collection_count() -> int:
     wk = _weknora()
     if wk is not None:
@@ -768,9 +598,7 @@ def _corpus_label(collection: str) -> str:
             docs = coll.get("documents") or []
             segs = sum(int(d.get("chunks") or 0) for d in docs)
             return "资料库「%s」：%d 篇 / %d 段" % (coll["name"], len(docs), segs)
-    know_n = len(_state.get("knowledge", []))
-    q_n = len(_state.get("questions", []))
-    return "真题 %d + 考点 %d" % (q_n, know_n) if know_n else "真题 %d" % q_n
+    return "默认知识库"
 
 
 def _empty_collection_payload(t0: float) -> dict:
@@ -874,7 +702,7 @@ def _answer_payload(res, t0: float, plan=None, collection: str = "") -> dict:
     return {
         "intent": plan.intent if plan else "kb",
         "mode": "kb",
-        # 前端据此把引用跳回知识库原文；空字符串表示内置 408 语料
+        # 前端据此把引用跳回知识库原文；空字符串表示默认知识库
         "collection": _collection_ref(collection),
         "refused": res.refused,
         "answer": res.answer,
@@ -1058,7 +886,7 @@ def _log_gap(query: str, res, collection: str = "") -> None:
     if not res.refused:
         return
     # 用户库的缺口单独标出来：reason 里带库 id，看板才能区分
-    # 「408 语料没覆盖」和「这个人的资料没覆盖」。
+    # 「默认库没覆盖」和「这个人自己的资料没覆盖」。
     reason = (res.reason if _is_preset(collection)
               else "%s|collection:%s" % (res.reason, collection))
     top = res.hits[0] if res.hits else None
@@ -1130,9 +958,6 @@ def health() -> dict:
     return {
         "status": "ok",
         "version": version_info()["version"],
-        # chunks 保持“题目数”的含义，新增 knowledge 单独计数，旧前端/脚本不受影响
-        "chunks": len(_state.get("questions", [])),
-        "knowledge": len(_state.get("knowledge", [])),
         "mode": _state.get("mode"),
         "fuse_k": _state.get("fuse_k"),
         "provider": _state.get("provider"),
@@ -1585,112 +1410,6 @@ def agent_stream(req: AgentRequest, request: Request,
     })
 
 
-def _knowledge_digest(card_id: str) -> Optional[dict]:
-    card = (_state.get("knowledge_by_id") or {}).get(card_id)
-    if not card:
-        return None
-    title = str(card.get("title") or "")
-    chapter = str(card.get("chapter") or "")
-    summary = str(card.get("summary") or "")
-    text = "考点卡片：%s%s\n%s" % (
-        title, ("（%s）" % chapter) if chapter else "", summary)
-    stems = []
-    q_by_id = _state.get("questions_by_id") or {}
-    for qid in (card.get("related_question_ids") or [])[:2]:
-        q = q_by_id.get(qid)
-        if q:
-            stems.append(str(q.get("stem") or "")[:120])
-    if stems:
-        text += "\n相关真题：" + "；".join(stems)
-    return {"text": text[:1200], "titles": [title] if title else []}
-
-
-def _collection_digest(cid: str) -> Optional[dict]:
-    lib = _state.get("library")
-    if lib is None:
-        return None
-    try:
-        coll = lib.get_collection(cid)
-    except LibraryError:
-        return None
-    if coll is None:
-        return None
-    docs = lib.list_documents(cid)[:3]
-    pieces, titles = [], []
-    for doc in docs:
-        body = lib.document_text(cid, doc.get("id", "")) or ""
-        if not body.strip():
-            continue
-        title = str(doc.get("title") or "未命名资料")
-        titles.append(title)
-        pieces.append("《%s》%s" % (title, body.strip()[:400]))
-    if not pieces:
-        return None
-    return {"text": "\n".join(pieces)[:1500], "titles": titles}
-
-
-def _mastery_digest(materials, request: Request) -> List[dict]:
-    """把前端勾的素材变成模型能读的摘要。
-
-    考点卡片和知识库由服务端自己读（它们是语料的事实来源）；题库和对话
-    只存在浏览器，所以只能收前端带来的那一段，并标明来源。
-    知识库和问答走同一道权限闸门：拿到库 id 不等于能读它。
-    """
-    out = []
-    budget = 9000
-    for item in (materials or [])[:8]:
-        key = str(item.key or "")
-        kind = str(item.kind or "")
-        label = str(item.label or "").strip() or "资料"
-        entry = None
-        if key.startswith("knowledge:"):
-            entry = _knowledge_digest(key[len("knowledge:"):])
-            kind = kind or "knowledge"
-        elif key.startswith("collection:"):
-            cid = key[len("collection:"):]
-            _guard_chat_collection(cid, request)
-            entry = _collection_digest(cid)
-            kind = kind or "collection"
-        detail = str(item.detail or "").strip()
-        if entry is None:
-            lines = [x.strip() for x in detail.splitlines() if x.strip()]
-            if not detail:
-                out.append({"label": label, "kind": kind, "text": "", "titles": []})
-                continue
-            entry = {"text": detail[:1200], "titles": lines[:8]}
-        entry["label"] = label
-        entry["kind"] = kind
-        if budget - len(entry["text"]) < 0:
-            entry["text"] = entry["text"][:max(budget, 0)]
-        budget -= len(entry["text"])
-        out.append(entry)
-        if budget <= 0:
-            break
-    return out
-
-
-@app.post("/mastery/turn")
-def mastery_turn(req: MasteryTurnRequest, request: Request,
-                 _: None = Depends(enforce_guard)) -> dict:
-    """精通之路的导师会话：一轮拿回一段话、一张问答卡，或一份大纲。"""
-    t0 = time.time()
-    payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    digest = _mastery_digest(req.materials, request)
-    metrics.bump("mastery_total")
-    try:
-        result = tutor_turn(_state.get("provider_impl"), payload, digest)
-    except ProviderError as e:
-        metrics.bump("mastery_failed")
-        raise HTTPException(status_code=502, detail="导师这次没给出可用的结果：%s" % e)
-    if result.get("outline"):
-        metrics.bump("mastery_outline")
-    if result.get("ask"):
-        metrics.bump("mastery_ask")
-    result["latency_ms"] = int((time.time() - t0) * 1000)
-    result["provider"] = _state.get("provider", "mock")
-    return result
-
-
 def _gap_stats_data(days: int, limit: int) -> dict:
     """缺口统计的公共取数：有库走库，没库读 JSONL。"""
     store = _state.get("store")
@@ -1757,7 +1476,7 @@ def stats_gaps(days: int = 30, limit: int = 20,
 @app.get("/stats/overview")
 def stats_overview(days: int = 30, limit: int = 20,
                    _: None = Depends(enforce_content)) -> dict:
-    """质量看板：进程内问答计数 + 缺口统计 + 语料规模。
+    """质量看板：进程内问答计数 + 缺口统计 + 知识库规模。
 
     process 里的计数只代表本进程启动以来，重启归零；跨重启的历史看 gaps。
     """
@@ -1765,8 +1484,14 @@ def stats_overview(days: int = 30, limit: int = 20,
     limit = max(1, min(int(limit), 100))
     counters = metrics.snapshot()
     asks = counters["ask_total"] + counters["chat_total"]
-    questions = _state.get("questions", [])
-    years = sorted({int(q.get("year")) for q in questions if q.get("year")})
+    lib = _state.get("library")
+    docs = 0
+    try:
+        if lib is not None:
+            docs = sum(int(c.get("documents") or 0)
+                       for c in lib.list_collections())
+    except Exception:
+        docs = 0
     return {
         "storage": _state.get("storage", "memory"),
         "window_days": days,
@@ -1777,9 +1502,8 @@ def stats_overview(days: int = 30, limit: int = 20,
         "cache_hits": counters["cache_hit"],
         "cache_hit_rate": round(counters["cache_hit"] / asks, 4) if asks else 0.0,
         "corpus": {
-            "questions": len(questions),
-            "knowledge": len(_state.get("knowledge", [])),
-            "years": years,
+            "collections": _collection_count(),
+            "documents": docs,
         },
         "gaps": _gap_stats_data(days, limit),
         "feedback": _feedback_stats_data(days, limit),
@@ -1803,241 +1527,6 @@ def stats_requests(days: int = 30, limit: int = 20,
         return {"storage": "postgres", "window_days": days, "total": 0,
                 "by_path": [], "by_day": [], "recent": [],
                 "error": "读取失败：%s" % e}
-
-
-@app.get("/eval/results")
-def eval_results(name: str = "", limit: int = 20,
-                 _: None = Depends(enforce_content)) -> dict:
-    """最近的评测结果；name 为空时返回所有类型。"""
-    store = _state.get("store")
-    if store is None:
-        return {"items": [], "storage": "memory"}
-    try:
-        items = store.list_eval_results(name, max(1, min(int(limit), 100)))
-    except Exception as e:
-        return {"items": [], "storage": "postgres",
-                "error": "读取失败：%s" % e}
-    return {"items": items, "storage": "postgres"}
-
-
-@app.post("/eval/results")
-def eval_results_add(req: EvalResultRequest,
-                     _: None = Depends(enforce_guard)) -> dict:
-    """把一次评测的摘要存进 eval_results，方便前后对比。"""
-    store = _state.get("store")
-    if store is None:
-        raise HTTPException(status_code=503,
-                            detail="没有 DATABASE_URL，评测结果无法落库")
-    try:
-        rid = store.save_eval_result(req.name, req.payload, req.mode,
-                                     req.total, req.passed)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="写入失败：%s" % e)
-    return {"ok": True, "id": rid}
-
-
-@app.get("/meta")
-def meta(_: None = Depends(enforce_content)) -> dict:
-    questions = _state.get("questions", [])
-    knowledge = _state.get("knowledge", [])
-    store = _state.get("store")
-    if store is not None:
-        counts = store.question_subject_counts()
-        subjects = format_subject_counts(counts)
-        years = store.years()
-    else:
-        subjects = subject_counts(questions)
-        years = sorted({int(q.get("year")) for q in questions if q.get("year")})
-    return {
-        "chunks": len(questions),
-        "subjects": subjects,
-        "knowledge": len(knowledge),
-        "knowledge_subjects": knowledge_subject_counts(knowledge),
-        "years": years,
-        "mode": _state.get("mode"),
-        "provider": _state.get("provider"),
-        "storage": _state.get("storage", "memory"),
-        "auth_required": GUARD.token_required,
-        "collections": _collection_count(),
-        "kb_backend": "weknora" if _weknora() is not None else "local",
-    }
-
-
-@app.get("/knowledge")
-def knowledge_list(q: str = "", subject: str = "", chapter: str = "",
-                   limit: int = 100, offset: int = 0,
-                   _: None = Depends(enforce_content)) -> dict:
-    limit = max(1, min(int(limit), 200))
-    offset = max(0, int(offset))
-    store = _state.get("store")
-    cards = store.all_knowledge() if store is not None else _state.get("knowledge", [])
-    total, rows = filter_knowledge(cards, q, subject, chapter, limit, offset)
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": [know_detail(c, _state.get("questions_by_id", {})) for c in rows],
-        "subjects": knowledge_subject_counts(cards),
-        "chapters": knowledge_chapters(cards, subject, _state.get("questions_by_id", {})),
-    }
-
-
-@app.get("/knowledge/tree")
-def knowledge_tree_view(subject: str = "", limit: int = 20,
-                        _: None = Depends(enforce_content)) -> dict:
-    """考点树 + 考频榜。
-
-    必须注册在 /knowledge/{card_id} 之前，否则 "tree" 会被当成卡片 id。
-    """
-    limit = max(0, min(int(limit), 100))
-    store = _state.get("store")
-    cards = store.all_knowledge() if store is not None else _state.get("knowledge", [])
-    sub = (subject or "").strip()
-    if sub:
-        cards = [c for c in cards if (c.get("subject") or "") == sub]
-    return knowledge_tree(cards, _state.get("questions_by_id", {}), limit=limit)
-
-
-@app.get("/knowledge/{card_id}")
-def knowledge_detail(card_id: str, _: None = Depends(enforce_content)) -> dict:
-    store = _state.get("store")
-    card = (store.get_knowledge(card_id) if store is not None
-            else _state.get("knowledge_by_id", {}).get(card_id))
-    if card is None:
-        raise HTTPException(status_code=404, detail="考点不存在")
-    return know_detail(card, _state.get("questions_by_id", {}))
-
-
-def _graph_libraries(request: Request) -> List[dict]:
-    """当前账号能读的知识库，连资料与片段一起交给图谱。
-
-    片段一次按库取回（``collection_chunks``），不是一篇一个查询；
-    没有登录、没权限的库在这里就被挡掉，不会进图。
-    """
-    user = _optional_user(request)
-    wk = _weknora()
-    if wk is not None:
-        # WeKnora 后端拿片段要逐篇再请求，图谱只画到资料这一层
-        if not is_admin(user):
-            return []
-        try:
-            colls = wk.list_collections()
-        except WeKnoraError:
-            return []
-        out = []
-        for coll in colls:
-            cid = str(coll.get("id") or "")
-            if not cid:
-                continue
-            try:
-                docs = wk.list_documents(cid) if hasattr(wk, "list_documents") else []
-            except WeKnoraError:
-                docs = []
-            out.append({
-                "id": cid, "name": coll.get("name") or "未命名知识库",
-                "visibility": VISIBILITY_SHARED, "backend": "weknora",
-                "documents_count": int(coll.get("documents") or len(docs)),
-                "chunks_count": int(coll.get("chunks") or 0),
-                "documents": [{
-                    "id": str(d.get("id") or ""),
-                    "title": d.get("title") or "",
-                    "chars": int(d.get("chars") or 0),
-                    "chunk_total": int(d.get("chunks") or 0),
-                    "chunks": [],
-                } for d in docs if d.get("id")],
-            })
-        return out
-
-    lib = _state.get("library")
-    if lib is None:
-        return []
-    out = []
-    for coll in lib.list_collections():
-        role = _member_role(coll, user)
-        if not can_read(user, coll, role):
-            continue
-        cid = coll.get("id") or ""
-        if not cid:
-            continue
-        try:
-            chunks_by_doc: Dict[str, list] = {}
-            for chunk in lib.collection_chunks(cid):
-                chunks_by_doc.setdefault(chunk["document_id"], []).append(chunk)
-        except Exception:  # 单个库取片段失败只让这个库退化成资料层
-            chunks_by_doc = {}
-        docs = []
-        for doc in lib.list_documents(cid):
-            if (doc.get("status") or "completed") != "completed":
-                continue
-            did = doc.get("id") or ""
-            chunks = chunks_by_doc.get(did, [])
-            docs.append({
-                "id": did,
-                "title": doc.get("title") or "",
-                "chars": int(doc.get("chars") or 0),
-                "chunk_total": int(doc.get("chunks") or len(chunks)),
-                "chunks": chunks,
-            })
-        out.append({
-            "id": cid, "name": coll.get("name") or "",
-            "visibility": coll.get("visibility") or VISIBILITY_SHARED,
-            "backend": "local", "documents": docs,
-        })
-    return out
-
-
-@app.get("/graph")
-def knowledge_graph(request: Request, subject: str = "",
-                    year: Optional[int] = None, orphans: int = 0,
-                    library: str = "",
-                    _: None = Depends(enforce_content)) -> dict:
-    """整份知识库的图谱：408 考点 ↔ 真题，各知识库 → 资料 → 片段。"""
-    store = _state.get("store")
-    questions = (store.load_questions() if store is not None
-                 else _state.get("questions", []))
-    cards = (store.all_knowledge() if store is not None
-             else _state.get("knowledge", []))
-    return build_graph(questions, cards, subject=subject, year=year,
-                       include_orphans=bool(orphans),
-                       libraries=_graph_libraries(request),
-                       library=library)
-
-
-@app.get("/chunks")
-def chunks(q: str = "", subject: str = "", year: Optional[int] = None,
-           limit: int = 20, offset: int = 0,
-           _: None = Depends(enforce_content)) -> dict:
-    limit = max(1, min(int(limit), 100))
-    offset = max(0, int(offset))
-    store = _state.get("store")
-    if store is not None:
-        total, rows = store.query_questions(q, subject, year, limit, offset)
-    else:
-        total, rows = filter_questions(_state.get("questions", []), q, subject,
-                                       year, limit, offset)
-    return {
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": [brief(r) for r in rows],
-    }
-
-
-@app.get("/chunks/{chunk_id}")
-def chunk_detail(chunk_id: str, _: None = Depends(enforce_content)) -> dict:
-    store = _state.get("store")
-    row = (store.get_question(chunk_id) if store is not None
-           else _state.get("questions_by_id", {}).get(chunk_id))
-    if row is None:
-        raise HTTPException(status_code=404, detail="题目不存在")
-    item = detail(row)
-    if store is not None:
-        item["related_knowledge"] = [know_brief(c)
-                                     for c in store.related_knowledge(chunk_id)]
-    else:
-        item["related_knowledge"] = _state.get(
-            "knowledge_by_question", {}).get(chunk_id, [])
-    return item
 
 
 # ---------- 知识库：用户自建资料库 ----------
@@ -2084,8 +1573,6 @@ def _require_user(request: Request) -> Dict:
 
 def _collection_view(cid: str) -> Dict:
     """统一的库对象：内置 / 本地库 / WeKnora 库都能拿到权限字段。"""
-    if cid == PRESET_COLLECTION:
-        return _preset_collection()
     wk = _weknora()
     if wk is not None:
         try:
@@ -2257,8 +1744,6 @@ def collection_create(req: CollectionRequest, request: Request,
 @app.get("/collections/{cid}")
 def collection_detail(cid: str, request: Request,
                       _: None = Depends(enforce_content)) -> dict:
-    if cid == PRESET_COLLECTION:
-        return _preset_collection()
     user, coll, role = _guard_collection(cid, request, write=False)
     wk = _weknora()
     if wk is not None:
@@ -2768,27 +2253,6 @@ def create_export(req: CreateExportRequest,
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "no-store",
         })
-
-
-@app.post("/bank/generate")
-def bank_generate(req: GenerateQuestionsRequest,
-                  _: None = Depends(enforce_guard)) -> dict:
-    """用自己的资料出题：题目与出处只在响应里返回，服务端不保存资料。"""
-    provider = _state.get("provider_impl")
-    if _state.get("provider") != "deepseek" or provider is None:
-        raise HTTPException(status_code=503,
-                            detail="当前是离线演示模式，配置 DEEPSEEK_API_KEY 后才能用资料出题")
-    try:
-        out = generate_questions(provider, req.text, count=req.count, title=req.title)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except ProviderError as e:
-        raise HTTPException(status_code=502, detail="出题失败：%s" % e)
-    if not out["questions"]:
-        note = out["notes"][0] if out["notes"] else "模型没有给出可用题目"
-        raise HTTPException(status_code=422,
-                            detail="没有生成可用题目（%s），换一段更完整的资料试试" % note)
-    return out
 
 
 @app.get("/")

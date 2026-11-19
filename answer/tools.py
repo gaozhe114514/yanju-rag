@@ -50,10 +50,6 @@ TOOLS: Dict[str, Dict[str, str]] = {
         "label": "计算换算",
         "desc": "四则运算、百分比、平方 / 开方和常见单位换算；本地求值，不执行代码。",
     },
-    "study": {
-        "label": "学习进度",
-        "desc": "把本机的复习到期、掌握数、连续天数交给模型，回答「我还差多少」时有据可依。",
-    },
     "search": {
         "label": "网页搜索",
         "desc": "查最新消息用；默认走 Bing RSS，不需要密钥，配了搜索 API 会更稳。",
@@ -115,9 +111,6 @@ _WHEN = {
         r"\d+\s*(?:km|cm|mm|kg|mg|gb|mb|kb|tb|公里|千米|米|厘米|毫米|"
         r"千克|公斤|斤|克|毫克|吨|小时|分钟|秒|天|摄氏度|华氏度|℃|℉)",
         re.IGNORECASE),
-    "study": re.compile(
-        r"复习|到期|掌握|进度|连续|学习计划|计划|考点|错题|考试|还差|"
-        r"几天|学习档案|学到哪|薄弱|路线"),
     "search": re.compile(
         r"搜一下|搜索|搜搜|网上|最新|新闻|实时|价格|比分|汇率|行情|"
         r"热搜|发生了什么|谁赢了", re.IGNORECASE),
@@ -782,51 +775,6 @@ def code_lookup(query: str, context: Optional[dict] = None) -> dict:
     return base
 
 
-# ---------- 学习进度 ----------
-
-def study_lookup(query: str, context: Optional[dict] = None) -> dict:
-    """读前端带过来的本机摘要；没有就明说读不到，不编进度。"""
-    base = {"name": "study", "label": "学习进度", "source": "本机记录",
-            "detail": "", "ok": False}
-    data = context or {}
-    if not data:
-        base["detail"] = ("没拿到本机的学习记录。进度只存在浏览器里，"
-                          "刷新页面后再问一次。")
-        return base
-    parts = []
-    left = data.get("target_days", data.get("exam_days"))
-    if isinstance(left, (int, float)) and left >= 0:
-        parts.append("距目标日 %d 天" % int(left))
-    streak = data.get("streak")
-    if isinstance(streak, (int, float)) and streak:
-        parts.append("连续学习 %d 天" % int(streak))
-    paths = data.get("paths")
-    points = data.get("points")
-    mastered = data.get("mastered")
-    if isinstance(paths, (int, float)) and paths:
-        line = "%d 条路线" % int(paths)
-        if isinstance(points, (int, float)):
-            line += "，%d 个知识点" % int(points)
-            if isinstance(mastered, (int, float)):
-                line += "，已掌握 %d 个" % int(mastered)
-        parts.append(line)
-    due = data.get("due")
-    if isinstance(due, (int, float)):
-        names = [str(x) for x in (data.get("due_names") or []) if x][:5]
-        parts.append("复习到期 %d 个%s" % (
-            int(due), ("：" + "、".join(names)) if names else ""))
-    week_asks, week_drills = data.get("week_asks"), data.get("week_drills")
-    if isinstance(week_asks, (int, float)) or isinstance(week_drills, (int, float)):
-        parts.append("近 7 天问 %d 次、练 %d 次" % (
-            int(week_asks or 0), int(week_drills or 0)))
-    if not parts:
-        base["detail"] = "本机还没有学习记录，先建一条路线或练几道题吧。"
-        return base
-    base["detail"] = "；".join(parts) + "。（只读浏览器里的本机记录）"
-    base["ok"] = True
-    return base
-
-
 # ---------- 网页搜索 ----------
 
 def _strip_tags(text: str) -> str:
@@ -1046,7 +994,6 @@ _HANDLERS = {
     "weather": weather_lookup,
     "time": time_lookup,
     "calc": calc_lookup,
-    "study": study_lookup,
     "search": web_search,
     "fetch": web_fetch,
     "code": code_lookup,

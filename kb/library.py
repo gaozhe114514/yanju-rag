@@ -25,8 +25,6 @@ from retrieval.search import HybridSearcher, build_searcher
 
 from .chunking import split_text
 
-# 408 预置语料不是 collections 里的一行，用固定 id 区分
-PRESET_COLLECTION = "cs408"
 MAX_NAME = 40
 MAX_DESC = 200
 MAX_TITLE = 80
@@ -231,8 +229,6 @@ class Library:
                 "documents": [], "chunks": 0}
 
     def delete_collection(self, cid: str) -> bool:
-        if cid == PRESET_COLLECTION:
-            raise LibraryError("内置资料库不能删除")
         if self.store is not None:
             ok = self.store.delete_collection(cid)
         else:
@@ -887,7 +883,7 @@ class Library:
         searcher = build_searcher(
             chunks, mode=self.mode, k_fuse=self.k_fuse, k_final=5,
             embedder=self.embedder, vector_search=vector_search,
-            reranker=reranker, exact_refs=False)
+            reranker=reranker)
         # 结构化表格跟着检索器走：统计类问题不用再从正文里反推行列
         searcher.doc_tables = self._doc_tables(cid)
         self._searchers[cid] = (version, searcher)

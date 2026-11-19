@@ -1,41 +1,10 @@
--- 言据 RAG 存储层：题目、考点、向量、拒答日志
+-- 言据 RAG 存储层：知识库、文档、片段、账号、拒答与反馈
 -- 由 db.store.Store.init_schema() 执行，{dim} 是 embedding 维度
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE TABLE IF NOT EXISTS chunks (
-    id                  text PRIMARY KEY,
-    kind                text NOT NULL CHECK (kind IN ('question', 'knowledge')),
-    year                int,
-    seq                 int,
-    subject             text NOT NULL DEFAULT '',
-    chapter             text NOT NULL DEFAULT '',
-    title               text NOT NULL DEFAULT '',
-    -- 浏览页搜索用的合并文本，已转小写；与 api/catalog._haystack 保持一致
-    search_text         text NOT NULL DEFAULT '',
-    -- 参与召回与引用的正文：题干+选项，或考点卡片正文
-    text                text NOT NULL,
-    answer              text NOT NULL DEFAULT '',
-    analysis            text NOT NULL DEFAULT '',
-    -- 原始 JSONL 行，浏览接口直接返回给前端
-    payload             jsonb NOT NULL,
-    related_question_ids text[] NOT NULL DEFAULT '{}',
-    embedding           vector({dim}),
-    updated_at          timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS chunks_kind_year_seq_idx
-    ON chunks (kind, year, seq);
-CREATE INDEX IF NOT EXISTS chunks_kind_subject_chapter_idx
-    ON chunks (kind, subject, chapter);
-CREATE INDEX IF NOT EXISTS chunks_related_idx
-    ON chunks USING gin (related_question_ids);
--- 语料只有几百条，HNSW 足够；数据量再大再考虑分区/IVFFlat 参数
-CREATE INDEX IF NOT EXISTS chunks_embedding_idx
-    ON chunks USING hnsw (embedding vector_cosine_ops);
-
 -- 用户自建知识库（v0.25）：一份资料库 = 若干文档 = 若干可引用片段。
--- 与 408 预置语料（chunks 表）物理隔离：内置语料只读，用户资料可增删。
+-- 默认知识库是内置只读库；公司库与个人库按成员权限读写。
 CREATE TABLE IF NOT EXISTS collections (
     id          text PRIMARY KEY,
     name        text NOT NULL,
@@ -122,11 +91,6 @@ CREATE TABLE IF NOT EXISTS document_assets (
 CREATE INDEX IF NOT EXISTS document_assets_doc_idx
     ON document_assets (document_id, created_at);
 
-CREATE TABLE IF NOT EXISTS meta (
-    key   text PRIMARY KEY,
-    value text NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS gap_logs (
     id         bigserial PRIMARY KEY,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -191,23 +155,6 @@ CREATE INDEX IF NOT EXISTS request_logs_created_idx
 CREATE INDEX IF NOT EXISTS request_logs_path_idx
     ON request_logs (path, created_at DESC);
 
--- 评测结果：每次跑 eval_answer / eval_gate / retrieval.eval 落一行，
--- payload 存完整摘要，方便前后对比，不用翻终端日志。
-CREATE TABLE IF NOT EXISTS eval_results (
-    id          bigserial PRIMARY KEY,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    name        text NOT NULL,
-    mode        text NOT NULL DEFAULT '',
-    total       int NOT NULL DEFAULT 0,
-    passed      int NOT NULL DEFAULT 0,
-    payload     jsonb NOT NULL DEFAULT '{}'::jsonb
-);
-
-CREATE INDEX IF NOT EXISTS eval_results_name_idx
-    ON eval_results (name, created_at DESC);
-
--- 账号（v0.51）：用户名 + PBKDF2 口令哈希；会话表只存 token 的 SHA-256，
--- 即使数据库泄露也拿不到能直接用的登录凭据。
 CREATE TABLE IF NOT EXISTS users (
     id            text PRIMARY KEY,
     username      text NOT NULL,

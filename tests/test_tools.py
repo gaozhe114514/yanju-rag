@@ -4,7 +4,7 @@ import unittest
 
 from answer import tools
 from answer.tools import (calc_lookup, code_lookup, extract_city, run_tools,
-                          study_lookup, time_lookup, tool_context, tool_will_run,
+                          time_lookup, tool_context, tool_will_run,
                           weather_label, weather_lookup, web_fetch, web_search)
 
 GEO = {"results": [{"name": "郑州", "admin1": "河南",
@@ -277,24 +277,6 @@ class CodeToolTest(unittest.TestCase):
         self.assertFalse(tool_will_run(["calc"], "bin(42) 是多少"))
         self.assertTrue(tool_will_run(["calc"], "12*8 等于多少"))
         self.assertFalse(tool_will_run(["code"], "今天几号"))
-
-
-class StudyToolTest(unittest.TestCase):
-    def test_no_context_is_honest(self):
-        res = study_lookup("我还有多少复习到期")
-        self.assertFalse(res["ok"])
-        self.assertIn("浏览器", res["detail"])
-
-    def test_summary_text(self):
-        res = study_lookup("学习进度", {
-            "exam_days": 51, "streak": 4, "paths": 2, "points": 10,
-            "mastered": 6, "due": 2, "due_names": ["快速排序", "LRU"],
-            "week_asks": 9, "week_drills": 12,
-        })
-        self.assertTrue(res["ok"])
-        for part in ("51 天", "连续学习 4 天", "已掌握 6 个", "复习到期 2 个",
-                     "快速排序", "问 9 次、练 12 次"):
-            self.assertIn(part, res["detail"])
 
 
 RSS = """<?xml version="1.0" encoding="utf-8"?><rss><channel>

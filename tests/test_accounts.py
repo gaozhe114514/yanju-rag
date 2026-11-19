@@ -289,31 +289,31 @@ class DataSyncTest(unittest.TestCase):
                              int(self.clock.now * 1000) + 86400 * 1000)
 
     def test_users_are_isolated(self):
-        self.put(self.a, "408-journal-v1", "alice-data", 5000)
+        self.put(self.a, "yanju-journal-v1", "alice-data", 5000)
         self.assertEqual(self.svc.get_data(self.b["user"]["id"]), {})
         self.svc.delete_data(self.a["user"]["id"], delete_all=True)
         left = self.svc.get_data(self.a["user"]["id"])
-        self.assertEqual(left["408-journal-v1"]["value"], "__408_deleted__")
+        self.assertEqual(left["yanju-journal-v1"]["value"], "__yanju_deleted__")
 
     def test_delete_selected_keys(self):
-        self.put(self.a, "408-journal-v1", "1", 5000)
-        self.put(self.a, "408-task-board-v1", "2", 5000)
+        self.put(self.a, "yanju-journal-v1", "1", 5000)
+        self.put(self.a, "yanju-task-board-v1", "2", 5000)
         removed = self.svc.delete_data(
-            self.a["user"]["id"], ["408-journal-v1"])
+            self.a["user"]["id"], ["yanju-journal-v1"])
         self.assertEqual(removed, 1)
         left = self.svc.get_data(self.a["user"]["id"])
-        self.assertEqual(left["408-journal-v1"]["value"], "__408_deleted__")
-        self.assertEqual(left["408-task-board-v1"]["value"], "2")
+        self.assertEqual(left["yanju-journal-v1"]["value"], "__yanju_deleted__")
+        self.assertEqual(left["yanju-task-board-v1"]["value"], "2")
 
     def test_deleted_key_can_be_written_again(self):
-        self.put(self.a, "408-journal-v1", "1", 5000)
+        self.put(self.a, "yanju-journal-v1", "1", 5000)
         self.clock.now += 10
-        self.svc.delete_data(self.a["user"]["id"], ["408-journal-v1"])
-        out = self.put(self.a, "408-journal-v1", "2",
+        self.svc.delete_data(self.a["user"]["id"], ["yanju-journal-v1"])
+        out = self.put(self.a, "yanju-journal-v1", "2",
                        int(self.clock.now * 1000) + 1000)
-        self.assertEqual(out["applied"], ["408-journal-v1"])
+        self.assertEqual(out["applied"], ["yanju-journal-v1"])
         self.assertEqual(
-            self.svc.get_data(self.a["user"]["id"])["408-journal-v1"]["value"], "2")
+            self.svc.get_data(self.a["user"]["id"])["yanju-journal-v1"]["value"], "2")
 
     def test_too_many_items(self):
         items = {"408-k%02d-v1" % i: {"value": "x", "updated_at": 1}

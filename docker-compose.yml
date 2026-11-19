@@ -22,17 +22,16 @@ services:
       context: .
       args:
         HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
-    image: cs408-rag:latest
+    image: yanju-rag:latest
     env_file: .env
     depends_on:
       db:
         condition: service_healthy
     environment:
-      KB_INPUT: data/work/2019_draft.jsonl,data/work/2020_draft.jsonl,data/work/2021_draft.jsonl,data/work/2023_draft.jsonl,data/work/2024_draft.jsonl
       KB_MODE: ${KB_MODE:-hybrid-ce}
       KB_FUSE_K: ${KB_FUSE_K:-10}
       KB_CACHE_TTL: ${KB_CACHE_TTL:-86400}
-      # 语料、向量、浏览查询都走 Postgres；进程内只留 BM25 和精排模型
+      # 知识库、向量与账号都走 Postgres；进程内只留 BM25 和精排模型
       DATABASE_URL: postgresql://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-rag}
       # 放在 Nginx 后面，用 X-Forwarded-For 区分客户端 IP
       KB_TRUST_PROXY: "1"

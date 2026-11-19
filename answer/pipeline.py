@@ -33,12 +33,12 @@ class AnswerResult:
 class AnswerPipeline:
     def __init__(self, searcher: HybridSearcher, provider,
                  gate: Optional[RefusalGate] = None, retry: bool = True,
-                 prompt_mode: str = "exam"):
+                 prompt_mode: str = "doc"):
         self.searcher = searcher
         self.provider = provider
         self.gate = gate or RefusalGate()
         self.retry = retry
-        # exam：408 真题 + 考点；doc：用户自建资料库
+        # 统一按资料库文档回答（保留字段给旧调用方传 doc）
         self.prompt_mode = prompt_mode
 
     def _prepare(self, query: str, hits):

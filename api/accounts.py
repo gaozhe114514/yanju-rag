@@ -6,8 +6,9 @@
 1. 用户名 + 口令注册，口令用 PBKDF2-HMAC-SHA256（每用户独立盐）存哈希，
    明文不落盘、不写日志；
 2. 登录发一枚随机 token，数据库里只存它的 SHA-256，会话 30 天过期；
-3. 登录后把浏览器里 `408-*` 的个人数据（对话、笔记本、题库、精通之路……）
-   按「最后写入时间」合并到账号，换设备也能接着用。
+3. 登录后把浏览器里 `yanju-*` 的个人数据（对话、笔记本、任务清单……）
+   按「最后写入时间」合并到账号，换设备也能接着用。旧设备的 `408-*`
+   键仍然接受，前端会一次性迁移成 `yanju-*`。
 
 没有 DATABASE_URL 时退到进程内存，方便本地开发和单测；进程重启后账号会丢，
 README 里写明了这一点，不假装持久化。
@@ -35,18 +36,18 @@ LOGIN_FAIL_MAX = 5
 LOGIN_FAIL_WINDOW = 600
 
 USERNAME_RE = re.compile(r"^[\w一-鿿.-]+$", re.UNICODE)
-SYNC_KEY_RE = re.compile(r"^408-[A-Za-z0-9._-]{1,60}$")
+SYNC_KEY_RE = re.compile(r"^(?:yanju|408)-[A-Za-z0-9._-]{1,60}$")
 
 # 口令和会话 token 绝不能同步到服务器；前端也有一份同样的黑名单。
 RESERVED_SYNC_KEYS = frozenset({
-    "408-access-token",
-    "408-account-token-v1",
-    "408-sync-meta-v1",
+    "yanju-access-token", "408-access-token",
+    "yanju-account-token-v1", "408-account-token-v1",
+    "yanju-sync-meta-v1", "408-sync-meta-v1",
 })
 
 # 删除也要跨设备生效：不物理删行，而是把值改成这个标记并更新时间。
 # 别的设备下次同步看到更新的墓碑，就把本地那份删掉。
-DELETED_MARK = "__408_deleted__"
+DELETED_MARK = "__yanju_deleted__"
 
 
 class AccountError(Exception):
