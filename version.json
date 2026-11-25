@@ -1,8 +1,14 @@
 {
-  "version": "0.79.0",
-  "released": "2026-11-19",
+  "version": "0.80.0",
+  "released": "2026-11-25",
   "name": "言据",
   "history": [
+    {
+      "version": "0.80.0",
+      "date": "2026-11-25",
+      "title": "移动端兼容与侧栏",
+      "notes": "手机端补齐 100vh 回退、textarea/安全区回退、显式 top/bottom/left 侧栏定位和文本缩放锁定；移动断点从 860 放宽到 1024，兼容百度 / 夸克把布局视口报成 980 的情况；移动抽屉恢复一级导航；增加 interactive-widget=resizes-content，键盘弹出时输入框不被顶出。"
+    },
     {
       "version": "0.79.0",
       "date": "2026-11-19",

@@ -2,10 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.79.0">
+  <meta name="app-version" content="0.80.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -59,6 +59,7 @@
     })();
   </script>
   <style>
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     :root {
       --bg: #fdfcf9; --card: #ffffff; --pop-bg: #ffffff; --ink: #1c1816; --muted: #6d645a;
       --line: #e6decc; --brand: #b0501e; --brand-dark: #8f3d16;
@@ -163,6 +164,7 @@
     html[data-theme="glass"] .main { background: transparent; }
     html[data-theme="glass"] .topbar,
     html[data-theme="glass"] .subnav {
+      background: var(--bg);
       background: color-mix(in srgb, var(--bg) 58%, transparent);
       backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
@@ -222,7 +224,7 @@
     button { cursor: pointer; }
     [hidden] { display: none !important; }
 
-    .app { display: grid; grid-template-columns: 268px 1fr; height: 100dvh; overflow: hidden; }
+    .app { display: grid; grid-template-columns: 268px 1fr; height: 100vh; height: 100dvh; overflow: hidden; }
 
     /* ---------- sidebar ---------- */
     .sidebar {
@@ -297,6 +299,7 @@
     .topbar {
       flex: none; display: flex; align-items: center; gap: 12px;
       height: 64px; padding: 0 24px; border-bottom: 1px solid var(--line);
+      background: var(--bg);
       background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px);
     }
     .top-title { min-width: 0; }
@@ -780,7 +783,7 @@
     }
     .gap-row button { justify-self: end; }
     .empty-block { color: var(--muted); font-size: 12.5px; padding: 14px 2px; }
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .quality-grid { grid-template-columns: minmax(0, 1fr); }
       .gap-row {
@@ -1464,17 +1467,18 @@
       * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .app { grid-template-columns: 1fr; }
       .sidebar {
-        position: fixed; inset: 0 auto 0 0; z-index: 40; width: 264px;
+        position: fixed; top: 0; bottom: 0; left: 0; right: auto;
+        z-index: 40; width: 264px;
         transform: translateX(-100%); transition: transform .2s ease;
       }
       .sidebar.open { transform: none; }
-      .scrim { position: fixed; inset: 0; z-index: 30; background: rgba(28, 24, 22, .42); }
+      .scrim { position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+        z-index: 30; background: rgba(28, 24, 22, .42); }
       .scrim.show { display: block; }
       .menu-btn { display: inline-flex !important; }
-      #nav { display: none; }
       .topbar {
         height: 52px; padding: 0 16px; align-items: center;
         border-bottom: 1px solid var(--line); background: var(--bg);
@@ -1517,14 +1521,17 @@
       .wrong-actions { width: 100%; }
       .modal { padding: 12px; }
       .modal-body { padding: 16px; }
-      .main { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+      .main { padding-bottom: 62px;
+        padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
       .today-ask { margin-top: 14px; }
       .today-ask input { min-height: 38px; }
       .tabbar {
         position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
         display: grid; grid-template-columns: repeat(4, 1fr);
+        padding: 5px 8px;
         padding: 5px 8px calc(5px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
+        background: var(--bg);
         background: color-mix(in srgb, var(--bg) 96%, transparent);
         backdrop-filter: blur(12px);
       }
@@ -2104,7 +2111,7 @@
     .input-settings-chip svg { width: 16px; height: 16px; flex: none; }
     .input-settings-chip.on { font-weight: 600; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .space-grid, .grid-2, .grid-3 { grid-template-columns: 1fr; }
       .kanban-board { grid-template-columns: 1fr; }
       .kanban-col { min-height: 120px; }
@@ -2251,7 +2258,7 @@
     .deck-practice-box:not(:empty) { margin-bottom: 14px; }
     .deck-practice-box .practice-card { max-width: 900px; }
     .import-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .deck-grid { grid-template-columns: 1fr; }
       .deck-toolbar .grow { display: none; }
     }
@@ -2399,7 +2406,7 @@
       justify-content: flex-end; flex-wrap: wrap;
     }
     .chunk-actions .chunk-note { margin-right: auto; }
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .lib-add { padding: 14px; }
       .lib-drop { padding: 14px 12px; }
       .upload-track { display: none; }
@@ -2533,7 +2540,7 @@
       padding: 32px 0 4vh; max-width: 640px; margin: 0 auto;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       #page-chat .messages { padding: 20px 16px 4px; }
       #page-chat .msg { margin-bottom: 26px; }
       #page-chat .composer-wrap { padding: 8px 16px 14px; }
@@ -2687,7 +2694,7 @@
     .mp-detail-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
     .mp-detail .quiz-inline { background: var(--card); }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .mp-card { padding: 12px 13px; gap: 10px; }
       .mp-card-side { display: none; }
       .mp-card-del { opacity: 1; }
@@ -3052,7 +3059,7 @@
     .ms-send:hover { background: var(--info-dark); }
     .ms-send:disabled { opacity: .55; cursor: wait; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .ms-studio { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
       /* 手机上会话是主操作面，大纲放到会话下面当参照 */
       .ms-chat { order: -1; }
@@ -3156,7 +3163,7 @@
     }
     #page-mastery.detail .ms-starters { padding: 10px 0 0; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       /* 手机回到普通文档流：路线信息在上、会话居中、大纲最后，页面自己滚动 */
       #page-mastery.detail.active { display: block; height: auto; overflow-y: auto; }
       #page-mastery.detail .page-inner {
@@ -3640,7 +3647,7 @@
       transition-duration: .01ms !important; animation-duration: .01ms !important;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .set-shell { grid-template-columns: minmax(0, 1fr); gap: 4px; }
       .set-rail {
         position: static; gap: 2px; padding-bottom: 0;
@@ -3746,7 +3753,7 @@
     .graph-foot .g-warn { color: var(--warn); }
     .graph-foot .g-warn:hover { text-decoration: underline dotted; cursor: help; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .graph-page { padding: 10px 14px 12px; gap: 8px; }
       .graph-bar { gap: 6px; }
       .graph-search { flex: 1 1 100%; }
@@ -3906,7 +3913,7 @@
     .version-title { margin-top: 3px; color: var(--ink); font-size: 13px; font-weight: 500; }
     .version-notes { margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 
-    @media (max-width: 860px) {
+    @media (max-width: 1024px) {
       .app.collapsed { grid-template-columns: 1fr; }
       .side-toggle { display: none; }
       .sidebar { position: fixed; }
