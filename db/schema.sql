@@ -36,6 +36,64 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS tables jsonb NOT NULL DEFAULT '[]
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder text NOT NULL DEFAULT '';
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
 
+-- v0.83：每个库自己的切片参数；老库沿用 512 / 50，行为不变。
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS chunk_target int NOT NULL DEFAULT 512;
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS chunk_overlap int NOT NULL DEFAULT 50;
+
+-- v0.83：真正的文件夹树。path 用「制度/人事」这样的路径表示层级，
+-- 空文件夹也能存在；资料上的 folder 与这里的 path 对应。
+CREATE TABLE IF NOT EXISTS collection_folders (
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    path          text NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (collection_id, path)
+);
+
+CREATE INDEX IF NOT EXISTS collection_folders_coll_idx
+    ON collection_folders (collection_id, path);
+
+-- v0.83：知识库操作日志。谁在什么时候导入 / 删除 / 移动了什么。
+-- 不记请求头、IP 和正文，只记动作与对象。
+CREATE TABLE IF NOT EXISTS kb_audit_logs (
+    id            bigserial PRIMARY KEY,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    collection_id text NOT NULL DEFAULT '',
+    actor_id      text NOT NULL DEFAULT '',
+    actor_name    text NOT NULL DEFAULT '',
+    action        text NOT NULL DEFAULT '',
+    target_type   text NOT NULL DEFAULT '',
+    target_id     text NOT NULL DEFAULT '',
+    detail        text NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS kb_audit_logs_coll_idx
+    ON kb_audit_logs (collection_id, created_at DESC);
+
+-- v0.83：原始文件与持久化解析任务。上传的字节留在 document_files，
+-- 服务重启后 ingest_jobs 里没跑完的任务会自动重新排队，不再丢在半路。
+CREATE TABLE IF NOT EXISTS document_files (
+    document_id text PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    filename    text NOT NULL DEFAULT '',
+    mime        text NOT NULL DEFAULT '',
+    nbytes      int NOT NULL DEFAULT 0,
+    data        bytea NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+    document_id   text PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    filename      text NOT NULL DEFAULT '',
+    status        text NOT NULL DEFAULT 'queued',
+    attempts      int NOT NULL DEFAULT 0,
+    error         text NOT NULL DEFAULT '',
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ingest_jobs_status_idx
+    ON ingest_jobs (status, created_at);
+
 CREATE INDEX IF NOT EXISTS documents_collection_idx
     ON documents (collection_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS documents_sha_idx

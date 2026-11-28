@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.82.1">
+  <meta name="app-version" content="0.83.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1521,6 +1521,64 @@
     }
     .kb-doc-tools .select { height: 34px; width: auto; min-width: 112px; }
     .kb-doc-count { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+    .kb-tree-head {
+      display: flex; align-items: center; gap: 7px; margin: 2px 0 8px;
+    }
+    .kb-tree-title {
+      flex: 1; color: var(--ink-3); font-size: 11.5px; font-weight: 600;
+      letter-spacing: .04em;
+    }
+    .kb-folder-tree {
+      max-height: 188px; overflow: auto; margin-bottom: 12px; padding: 6px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+    }
+    .kb-tree-row {
+      display: flex; align-items: center; gap: 5px; width: 100%;
+      padding: 5px 7px; border: 0; border-radius: 7px;
+      background: transparent; color: var(--ink-2); text-align: left;
+      font-size: 12.5px; cursor: pointer;
+    }
+    .kb-tree-row:hover { background: var(--muted-surface); }
+    .kb-tree-row.active { background: var(--wash); color: var(--ink); font-weight: 600; }
+    .kb-tree-caret {
+      flex: none; width: 16px; color: var(--muted); font-size: 10px; text-align: center;
+    }
+    .kb-tree-name {
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kb-tree-count { flex: none; color: var(--muted); font-size: 10.5px; }
+    .kb-tree-leaf { width: 16px; flex: none; }
+    .kb-tree-empty { padding: 8px; color: var(--muted); font-size: 11.5px; }
+    .kb-activity-head {
+      display: flex; align-items: center; gap: 8px; margin: 4px 0 12px;
+      color: var(--muted); font-size: 11.5px;
+    }
+    .kb-activity-head span { flex: 1; }
+    .kb-act-row {
+      display: flex; align-items: flex-start; gap: 10px; padding: 9px 11px;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--card);
+    }
+    .kb-act-icon {
+      flex: none; width: 26px; height: 26px; border-radius: 8px;
+      display: grid; place-items: center; background: var(--brand-soft);
+      color: var(--brand-dark); font-size: 11px; font-weight: 700;
+    }
+    .kb-act-main { flex: 1; min-width: 0; }
+    .kb-act-title { color: var(--ink); font-size: 12.5px; line-height: 1.5; }
+    .kb-act-meta { margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+    .kb-settings-form {
+      display: flex; flex-direction: column; gap: 10px;
+      margin: 14px 0 6px; padding: 14px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--card);
+    }
+    .kb-field { display: flex; flex-direction: column; gap: 5px; color: var(--ink-3); font-size: 11.5px; }
+    .kb-field input {
+      height: 34px; padding: 6px 10px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 13px;
+    }
+    .kb-field-row { display: flex; gap: 10px; }
+    .kb-field-row .kb-field { flex: 1; min-width: 0; }
+    .kb-quick-folders { display: flex; flex-wrap: wrap; gap: 5px; }
     .kb-batch {
       display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
       padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
@@ -1563,7 +1621,8 @@
         padding: 12px 14px;
       }
       .kb-list { flex-direction: row; overflow-x: auto; padding-bottom: 3px; }
-      .kb-item { min-width: 168px; flex: none; }
+      .kb-rail-group { display: none; }
+      .kb-item { flex: 0 0 168px; width: 168px; min-width: 168px; }
       .kb-tabs { margin-top: 10px; }
       .kb-doc-tools { flex-wrap: wrap; }
       .kb-doc-tools input { flex-basis: 100%; }
@@ -4299,9 +4358,17 @@
         <div class="kb-tabs" id="kb-tabs">
           <button type="button" data-kb-tab="docs" class="active">资料</button>
           <button type="button" data-kb-tab="search">检索测试</button>
+          <button type="button" data-kb-tab="activity">动态</button>
           <button type="button" data-kb-tab="settings">设置</button>
         </div>
         <div class="kb-pane" data-kb-pane="docs">
+        <div class="kb-tree-head">
+          <span class="kb-tree-title">文件夹</span>
+          <button type="button" class="row-btn" id="kb-folder-new">新建文件夹</button>
+          <button type="button" class="row-btn" id="kb-folder-rename" hidden>重命名</button>
+          <button type="button" class="row-btn danger" id="kb-folder-delete" hidden>删除</button>
+        </div>
+        <div class="kb-folder-tree" id="kb-folder-tree"></div>
         <div class="kb-doc-tools">
           <input id="lib-doc-q" type="search" placeholder="搜索资料标题或正文" aria-label="搜索资料">
           <select id="lib-doc-status" class="select" aria-label="按状态筛选">
@@ -4354,12 +4421,39 @@
           <div class="kb-test-hint">只做检索，不生成答案；分数、片段和出处都在这里，点片段可看原文。</div>
           <div class="stack" id="kb-search-results"></div>
         </div>
+        <div class="kb-pane" data-kb-pane="activity" hidden>
+          <div class="kb-activity-head">
+            <span class="kb-activity-meta" id="kb-activity-meta">最近 50 条操作</span>
+            <button type="button" class="row-btn" id="kb-activity-refresh">刷新</button>
+          </div>
+          <div class="stack" id="kb-activity-list"></div>
+        </div>
         <div class="kb-pane" data-kb-pane="settings" hidden>
           <div class="set-facts" id="kb-settings-facts"></div>
+          <div class="kb-settings-form" id="kb-settings-form" hidden>
+            <label class="kb-field">库名
+              <input id="kb-set-name" maxlength="40">
+            </label>
+            <label class="kb-field">说明
+              <input id="kb-set-desc" maxlength="200">
+            </label>
+            <div class="kb-field-row">
+              <label class="kb-field">切片大小（字）
+                <input id="kb-set-target" type="number" min="120" max="2000" step="10">
+              </label>
+              <label class="kb-field">片段重叠（字）
+                <input id="kb-set-overlap" type="number" min="0" max="1000" step="10">
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="primary" id="kb-settings-save">保存设置</button>
+            </div>
+            <div class="practice-note">切片大小与重叠只影响之后的新资料和重建索引；已有片段不会自动变。重叠不能超过切片大小的一半。</div>
+          </div>
           <div class="form-actions">
             <button type="button" class="ghost" id="kb-reindex">重建索引</button>
           </div>
-          <div class="practice-note">重建会用当前切片规则（512 字 / 50 重叠）重新切分全部资料；不会重新读取原文件。更细的切片参数与连接器在下一阶段接入。</div>
+          <div class="practice-note">重建会用当前切片参数重新切分全部资料；不会重新读取原文件。</div>
         </div>
       </div>
     </section>
@@ -4629,6 +4723,9 @@
     docQuery: '',
     docStatus: '',
     docSelected: {},
+    kbFolder: '',
+    kbFolderOpen: {},
+    kbCurrent: null,
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
@@ -6569,6 +6666,11 @@
         });
       });
       rail.appendChild(box);
+      // 手机上库列表是横向滚动；进入详情时把当前库带到可见范围。
+      const activeItem = box.querySelector('.kb-item.active');
+      if (activeItem && box.scrollWidth > box.clientWidth + 4) {
+        box.scrollLeft = Math.max(0, activeItem.offsetLeft - box.offsetLeft - 10);
+      }
       const wide = el('button', 'kb-new-wide', '＋ 新建知识库');
       wide.type = 'button';
       wide.addEventListener('click', openCollectionEditor);
@@ -6577,12 +6679,320 @@
   }
 
   function setKbTab(tab) {
-    if (['docs', 'search', 'settings'].indexOf(tab) < 0) tab = 'docs';
+    if (['docs', 'search', 'activity', 'settings'].indexOf(tab) < 0) tab = 'docs';
     state.kbTab = tab;
     $$('#kb-tabs [data-kb-tab]').forEach(b =>
       b.classList.toggle('active', b.dataset.kbTab === tab));
     $$('.kb-pane').forEach(p =>
       p.hidden = p.dataset.kbPane !== tab);
+    if (tab === 'activity' && state.kbCurrent) loadKbActivity(state.kbCurrent);
+  }
+
+  /* ---------- 文件夹树 ---------- */
+  function kbFolderPaths(c) {
+    const paths = {};
+    const add = p => {
+      const clean = String(p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+      if (!clean) return;
+      const parts = clean.split('/').filter(Boolean);
+      for (let i = 1; i <= parts.length; i += 1) {
+        paths[parts.slice(0, i).join('/')] = true;
+      }
+    };
+    (c.folders || []).forEach(add);
+    (c.documents || []).forEach(d => add(d.folder));
+    return Object.keys(paths).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }
+
+  function renderKbFolderTree(c) {
+    const box = $('#kb-folder-tree');
+    if (!box) return;
+    box.replaceChildren();
+    const docs = c.documents || [];
+    const paths = kbFolderPaths(c);
+    const children = {};
+    paths.forEach(p => {
+      const i = p.lastIndexOf('/');
+      const parent = i < 0 ? '' : p.slice(0, i);
+      (children[parent] = children[parent] || []).push(p);
+    });
+    Object.keys(children).forEach(k =>
+      children[k].sort((a, b) => a.localeCompare(b, 'zh-CN')));
+    const count = p => docs.filter(d => {
+      const f = String(d.folder || '');
+      return f === p || f.indexOf(p + '/') === 0;
+    }).length;
+    const row = (label, path, depth, n, hasKids, open) => {
+      const item = el('div', 'kb-tree-row' + (state.kbFolder === path ? ' active' : ''));
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      for (let i = 0; i < depth; i += 1) {
+        item.appendChild(el('span', 'kb-tree-leaf'));
+      }
+      const caret = el('span', 'kb-tree-caret', hasKids ? (open ? '▾' : '▸') : '');
+      if (hasKids) {
+        caret.addEventListener('click', e => {
+          e.stopPropagation();
+          state.kbFolderOpen[path] = !open;
+          renderKbFolderTree(c);
+        });
+      }
+      item.appendChild(caret);
+      item.appendChild(el('span', 'kb-tree-name', label));
+      item.appendChild(el('span', 'kb-tree-count', String(n)));
+      item.addEventListener('click', () => {
+        state.kbFolder = path;
+        renderKbFolderTree(c);
+        renderCollectionDocs(c);
+      });
+      item.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          item.click();
+        }
+      });
+      box.appendChild(item);
+    };
+    row('全部资料', '', 0, docs.length, false, true);
+    const walk = (parent, depth) => {
+      (children[parent] || []).forEach(path => {
+        const name = parent ? path.slice(parent.length + 1) : path;
+        const kids = children[path] || [];
+        const open = state.kbFolderOpen[path] !== false;
+        row(name, path, depth, count(path), kids.length > 0, open);
+        if (kids.length && open) walk(path, depth + 1);
+      });
+    };
+    walk('', 1);
+    if (!paths.length) {
+      box.appendChild(el('div', 'kb-tree-empty',
+        '还没有文件夹。上传时填「制度/人事」这样的路径就会自动建树。'));
+    }
+    const canWrite = !!c.can_write;
+    const newBtn = $('#kb-folder-new');
+    const renBtn = $('#kb-folder-rename');
+    const delBtn = $('#kb-folder-delete');
+    if (newBtn) newBtn.hidden = !canWrite;
+    if (renBtn) renBtn.hidden = !canWrite || !state.kbFolder;
+    if (delBtn) delBtn.hidden = !canWrite || !state.kbFolder;
+  }
+
+  function openFolderCreate(parent) {
+    const c = state.kbCurrent;
+    if (!c) return;
+    const name = el('input');
+    name.placeholder = parent ? '子文件夹名，例如 招聘' : '文件夹名，例如 制度';
+    name.maxLength = 60;
+    const input = el('input');
+    input.value = parent ? parent + '/' : '';
+    input.placeholder = '完整路径，例如 制度/人事';
+    input.maxLength = 120;
+    name.addEventListener('input', () => {
+      const piece = name.value.trim();
+      input.value = parent ? (piece ? parent + '/' + piece : parent + '/') : piece;
+    });
+    const wrap = el('div', 'form-grid');
+    wrap.appendChild(field('名称', name, '会自动放在当前选中的文件夹下面。'));
+    wrap.appendChild(field('路径', input, '用 / 分层；上级文件夹会自动补齐。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '创建');
+    save.addEventListener('click', () => {
+      const path = input.value.trim();
+      if (!path) { input.focus(); return; }
+      save.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/folders', {
+        method: 'POST', body: {path}
+      }).then(() => {
+        closeModal();
+        state.kbFolder = path.replace(/^\/+|\/+$/g, '');
+        state.kbFolderOpen[parent] = true;
+        toast('已创建文件夹：' + state.kbFolder);
+        renderCollectionPage(c.id);
+      }).catch(e => {
+        save.disabled = false;
+        toast('创建失败：' + e.message, 'err');
+      });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('新建文件夹', wrap);
+    name.focus();
+  }
+
+  function openFolderRename(path) {
+    const c = state.kbCurrent;
+    if (!c || !path) return;
+    const input = el('input');
+    input.value = path;
+    input.maxLength = 120;
+    const wrap = el('div', 'form-grid');
+    wrap.appendChild(field('新路径', input,
+      '改名会连同子文件夹和里面的资料一起移动；用 / 可以换上级。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      const next = input.value.trim().replace(/^\/+|\/+$/g, '');
+      if (!next || next === path) { closeModal(); return; }
+      save.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/folders/rename', {
+        method: 'POST', body: {old: path, new: next}
+      }).then(() => {
+        closeModal();
+        state.kbFolder = next;
+        toast('文件夹已重命名为：' + next);
+        renderCollectionPage(c.id);
+      }).catch(e => {
+        save.disabled = false;
+        toast('重命名失败：' + e.message, 'err');
+      });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('重命名文件夹', wrap);
+    input.focus();
+    input.select();
+  }
+
+  function deleteKbFolder(path) {
+    const c = state.kbCurrent;
+    if (!c || !path) return;
+    if (!window.confirm('删除文件夹「' + path + '」？里面的资料会移回上一级，不会删资料。')) return;
+    api('/collections/' + encodeURIComponent(c.id) + '/folders?path=' +
+      encodeURIComponent(path), {method: 'DELETE'}).then(() => {
+      const i = path.lastIndexOf('/');
+      state.kbFolder = i < 0 ? '' : path.slice(0, i);
+      toast('已删除文件夹，资料已移回上一级');
+      renderCollectionPage(c.id);
+    }).catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
+  function openDocMove(c, d) {
+    const wrap = el('div', 'form-grid');
+    const input = el('input');
+    input.value = d.folder || '';
+    input.placeholder = '留空表示未分组；用 / 分层';
+    input.maxLength = 120;
+    input.setAttribute('list', 'kb-move-folders');
+    const dl = el('datalist');
+    dl.id = 'kb-move-folders';
+    kbFolderPaths(c).forEach(p => {
+      const opt = el('option');
+      opt.value = p;
+      dl.appendChild(opt);
+    });
+    wrap.appendChild(field('移动到文件夹', input, '目标文件夹不存在时会自动创建。'));
+    wrap.appendChild(dl);
+    const quick = el('div', 'kb-quick-folders');
+    const all = [''].concat(kbFolderPaths(c));
+    all.slice(0, 14).forEach(p => {
+      const b = el('button', 'row-btn', p || '未分组');
+      b.type = 'button';
+      b.addEventListener('click', () => { input.value = p; });
+      quick.appendChild(b);
+    });
+    if (all.length > 1) wrap.appendChild(quick);
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '移动');
+    save.addEventListener('click', () => {
+      save.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+        encodeURIComponent(d.id) + '/folder', {
+        method: 'PUT', body: {folder: input.value.trim()}
+      }).then(() => {
+        closeModal();
+        toast('已移动：' + (d.title || '资料'));
+        renderCollectionPage(c.id);
+      }).catch(e => {
+        save.disabled = false;
+        toast('移动失败：' + e.message, 'err');
+      });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('移动资料', wrap);
+    input.focus();
+  }
+
+  const KB_ACTION_LABELS = {
+    'collection.create': ['新建', '库'],
+    'collection.update': ['设置', '设'],
+    'collection.delete': ['删库', '删'],
+    'collection.reindex': ['重建', '索'],
+    'folder.create': ['建夹', '夹'],
+    'folder.rename': ['改名', '夹'],
+    'folder.delete': ['删夹', '夹'],
+    'document.create': ['添加', '加'],
+    'document.upload': ['上传', '传'],
+    'document.url_import': ['导入', '入'],
+    'document.edit': ['编辑', '编'],
+    'document.move': ['移动', '移'],
+    'document.delete': ['删除', '删'],
+    'document.retry': ['重试', '试'],
+    'document.restore': ['恢复', '恢'],
+    'chunk.edit': ['改段', '段'],
+    'chunk.delete': ['删段', '段']
+  };
+
+  function kbActionMeta(action, targetType, targetId) {
+    const pair = KB_ACTION_LABELS[action] || ['操作', '·'];
+    const kind = targetType === 'folder' ? '文件夹'
+      : (targetType === 'chunk' ? '片段'
+        : (targetType === 'collection' ? '知识库' : '资料'));
+    return {label: pair[0], icon: pair[1], kind};
+  }
+
+  function loadKbActivity(c) {
+    const box = $('#kb-activity-list');
+    if (!box || !c) return;
+    box.replaceChildren(el('div', 'chunk-note', '正在读取操作记录…'));
+    api('/collections/' + encodeURIComponent(c.id) + '/audit?limit=50')
+      .then(out => {
+        const items = (out && out.items) || [];
+        if ($('#kb-activity-meta')) {
+          $('#kb-activity-meta').textContent = items.length
+            ? '最近 ' + items.length + ' 条操作' : '还没有操作记录';
+        }
+        box.replaceChildren();
+        if (!items.length) {
+          box.appendChild(el('div', 'empty-panel',
+            '这个库还没有操作记录。上传、移动、删除、重建索引都会记在这里。'));
+          return;
+        }
+        items.forEach(row => {
+          const meta = kbActionMeta(row.action, row.target_type, row.target_id);
+          const card = el('div', 'kb-act-row');
+          card.appendChild(el('div', 'kb-act-icon', meta.icon));
+          const main = el('div', 'kb-act-main');
+          const who = row.actor_name || '内置系统';
+          const where = row.detail || row.target_id || '';
+          main.appendChild(el('div', 'kb-act-title',
+            who + ' · ' + meta.label + meta.kind + (where ? '：' + where : '')));
+          let when = '';
+          if (row.created_at) {
+            const t = new Date(row.created_at);
+            when = isNaN(t.getTime())
+              ? String(row.created_at).replace('T', ' ').replace(/\..*$/, '')
+              : t.toLocaleString('zh-CN', {hour12: false});
+          }
+          main.appendChild(el('div', 'kb-act-meta',
+            when + (row.action ? ' · ' + row.action : '')));
+          card.appendChild(main);
+          box.appendChild(card);
+        });
+      })
+      .catch(e => {
+        box.replaceChildren(el('div', 'empty-panel',
+          '读不到操作记录：' + e.message));
+      });
   }
 
   function openUrlImport(cid) {
@@ -7040,6 +7450,8 @@
       state.docSelected = {};
       state.docQuery = '';
       state.docStatus = '';
+      state.kbFolder = '';
+      state.kbFolderOpen = {};
     }
     state.collectionId = id;
     const docQueryInput = $('#lib-doc-q');
@@ -7074,7 +7486,10 @@
       if (title) title.textContent = c.name;
       if (desc) desc.textContent = c.description || '还没有说明。';
       setKbTab(state.kbTab);
+      state.kbCurrent = c;
       renderKbSettings(c);
+      renderKbFolderTree(c);
+      if (state.kbTab === 'activity') loadKbActivity(c);
       if (askBtn) askBtn.hidden = false;
       const canWrite = !!c.can_write;
       const canManage = !!c.can_manage;
@@ -7128,7 +7543,20 @@
     setFact(box, '状态', failed ? failed + ' 篇解析失败' : '全部正常');
     setFact(box, '我的权限', c.can_manage ? '可管理'
       : (c.can_write ? '可编辑' : '只读'));
-    setFact(box, '切片', '512 字 / 50 重叠（当前固定）');
+    setFact(box, '切片', (c.chunk_target || 512) + ' 字 / ' +
+      (c.chunk_overlap == null ? 50 : c.chunk_overlap) + ' 重叠');
+    const form = $('#kb-settings-form');
+    if (form) {
+      form.hidden = !c.can_manage;
+      const name = $('#kb-set-name');
+      const desc = $('#kb-set-desc');
+      const target = $('#kb-set-target');
+      const overlap = $('#kb-set-overlap');
+      if (name) name.value = c.name || '';
+      if (desc) desc.value = c.description || '';
+      if (target) target.value = c.chunk_target || 512;
+      if (overlap) overlap.value = c.chunk_overlap == null ? 50 : c.chunk_overlap;
+    }
   }
 
   function updateBatchBar() {
@@ -7149,6 +7577,10 @@
     const status = state.docStatus || '';
     const list = all.filter(d => {
       if (status && String(d.status || '') !== status) return false;
+      if (state.kbFolder) {
+        const f = String(d.folder || '');
+        if (f !== state.kbFolder && f.indexOf(state.kbFolder + '/') !== 0) return false;
+      }
       if (!q) return true;
       const hay = [d.title, d.folder, d.source, (d.tags || []).join(' ')]
         .join(' ').toLowerCase();
@@ -7224,14 +7656,18 @@
         edit.addEventListener('click', () => openDocumentEditor(c, d));
         acts.appendChild(edit);
       }
+      if (canWrite && !c.weknora) {
+        const move = el('button', 'row-btn', '移动');
+        move.addEventListener('click', () => openDocMove(c, d));
+        acts.appendChild(move);
+      }
       const chunks = el('button', 'row-btn', '片段');
       chunks.addEventListener('click', () => openChunkManager(c, d));
       acts.appendChild(chunks);
       if (canWrite) {
-        if (statusValue === 'failed' || statusValue === 'pending' ||
-            statusValue === 'processing') {
-          const again = el('button', 'row-btn', '重切分');
-          again.addEventListener('click', () => reparseLibraryDoc(c, d));
+        if (statusValue === 'failed') {
+          const again = el('button', 'row-btn', '重试');
+          again.addEventListener('click', () => retryLibraryDoc(c, d));
           acts.appendChild(again);
         }
         const del = el('button', 'row-btn danger', '删除');
@@ -8293,6 +8729,17 @@
         renderCollectionPage(c.id);
       })
       .catch(e => toast('重新切分失败：' + e.message, 'err'));
+  }
+
+  function retryLibraryDoc(c, d) {
+    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id) + '/retry', {method: 'POST'})
+      .then(() => {
+        toast('已重新排队解析：' + (d.title || '资料'));
+        state.collectionsLoaded = false;
+        renderCollectionPage(c.id);
+      })
+      .catch(e => toast('重试失败：' + e.message, 'err'));
   }
 
   function openChunkManager(c, d) {
@@ -11083,6 +11530,47 @@
     });
     const urlAdd = $('#lib-url-add');
     if (urlAdd) urlAdd.addEventListener('click', () => openUrlImport(state.collectionId));
+    const folderNew = $('#kb-folder-new');
+    if (folderNew) folderNew.addEventListener('click', () => openFolderCreate(state.kbFolder));
+    const folderRename = $('#kb-folder-rename');
+    if (folderRename) folderRename.addEventListener('click',
+      () => openFolderRename(state.kbFolder));
+    const folderDelete = $('#kb-folder-delete');
+    if (folderDelete) folderDelete.addEventListener('click',
+      () => deleteKbFolder(state.kbFolder));
+    const activityRefresh = $('#kb-activity-refresh');
+    if (activityRefresh) activityRefresh.addEventListener('click',
+      () => loadKbActivity(state.kbCurrent));
+    const settingsSave = $('#kb-settings-save');
+    if (settingsSave) settingsSave.addEventListener('click', () => {
+      const c = state.kbCurrent;
+      if (!c) return;
+      const name = ($('#kb-set-name') || {}).value || '';
+      const description = ($('#kb-set-desc') || {}).value || '';
+      const target = parseInt(($('#kb-set-target') || {}).value, 10);
+      const overlap = parseInt(($('#kb-set-overlap') || {}).value, 10);
+      if (!name.trim()) { toast('库名不能为空', 'err'); return; }
+      if (!(target >= 120 && target <= 2000)) {
+        toast('切片大小需在 120–2000 字之间', 'err'); return;
+      }
+      if (!(overlap >= 0 && overlap <= Math.floor(target / 2))) {
+        toast('片段重叠需在 0 到切片大小的一半之间', 'err'); return;
+      }
+      settingsSave.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id), {
+        method: 'PATCH',
+        body: {name: name.trim(), description: description.trim(),
+          chunk_target: target, chunk_overlap: overlap}
+      }).then(() => {
+        settingsSave.disabled = false;
+        toast('设置已保存；重建索引后已有资料按新参数切分');
+        state.collectionsLoaded = false;
+        renderCollectionPage(c.id);
+      }).catch(e => {
+        settingsSave.disabled = false;
+        toast('保存失败：' + e.message, 'err');
+      });
+    });
     const docStatus = $('#lib-doc-status');
     if (docStatus) docStatus.addEventListener('change', () => {
       state.docStatus = docStatus.value;

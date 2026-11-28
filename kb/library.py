@@ -108,8 +108,12 @@ class Library:
         except ValueError:
             return
         for key in ("collections", "documents", "chunks", "members",
-                    "document_versions", "document_assets"):
+                    "document_versions", "document_assets", "folders",
+                    "audit"):
             if isinstance(data.get(key), list):
+                self._mem[key] = data[key]
+        for key in ("files", "ingest_jobs"):
+            if isinstance(data.get(key), dict):
                 self._mem[key] = data[key]
 
     def _save_state(self) -> None:
@@ -150,6 +154,8 @@ class Library:
                 "created_by": r.get("created_by") or "",
                 # 老库没有这两列时按「公司库、无主」处理，只有管理员能改。
                 "visibility": r.get("visibility") or "shared",
+                "chunk_target": int(r.get("chunk_target") or 512),
+                "chunk_overlap": int(r.get("chunk_overlap") or 50),
                 "created_at": str(r.get("created_at") or ""),
                 "updated_at": str(r.get("updated_at") or ""),
                 "documents": int(r.get("doc_count") or 0),
@@ -172,10 +178,284 @@ class Library:
             "owner_id": row.get("owner_id") or "",
             "created_by": row.get("created_by") or "",
             "visibility": row.get("visibility") or "shared",
+            "chunk_target": int(row.get("chunk_target") or 512),
+            "chunk_overlap": int(row.get("chunk_overlap") or 50),
             "created_at": str(row.get("created_at") or ""),
             "updated_at": str(row.get("updated_at") or ""),
             "documents": docs,
         }
+
+    def update_collection(self, cid: str, name: Optional[str] = None,
+                          description: Optional[str] = None,
+                          chunk_target: Optional[int] = None,
+                          chunk_overlap: Optional[int] = None) -> Dict:
+        """改名 / 改说明 / 改切片参数；只改传进来的字段。"""
+        row = self._mem_collection(cid) if self.store is None \
+            else self.store.get_collection(cid)
+        if row is None:
+            raise LibraryError("资料库不存在")
+        if name is not None:
+            name = _clean(name, MAX_NAME)
+            if not name:
+                raise LibraryError("资料库名称不能为空")
+            if self._name_taken(name, row.get("owner_id") or "",
+                                row.get("visibility") or "shared") \
+                    and name != row.get("name"):
+                raise LibraryError("已经有同名资料库：%s" % name)
+        if description is not None:
+            description = _clean(description, MAX_DESC)
+        if chunk_target is not None:
+            chunk_target = int(chunk_target)
+            if not 120 <= chunk_target <= 2000:
+                raise LibraryError("切片大小需在 120–2000 字之间")
+        if chunk_overlap is not None:
+            chunk_overlap = int(chunk_overlap)
+            if not 0 <= chunk_overlap <= 1000:
+                raise LibraryError("片段重叠需在 0–1000 字之间")
+        if chunk_target is not None and chunk_overlap is not None \
+                and chunk_overlap > chunk_target // 2:
+            raise LibraryError("片段重叠不能超过切片大小的一半")
+        if self.store is not None:
+            self.store.update_collection(cid, name, description,
+                                         chunk_target, chunk_overlap)
+            return self.get_collection(cid) or {}
+        for c in self._mem["collections"]:
+            if c["id"] == cid:
+                if name is not None:
+                    c["name"] = name
+                if description is not None:
+                    c["description"] = description
+                if chunk_target is not None:
+                    c["chunk_target"] = chunk_target
+                if chunk_overlap is not None:
+                    c["chunk_overlap"] = chunk_overlap
+                c["updated_at"] = _now()
+                self._save_state()
+                break
+        return self.get_collection(cid) or {}
+
+    def _chunk_params(self, cid: str):
+        row = self._mem_collection(cid) if self.store is None \
+            else self.store.get_collection(cid)
+        target = int((row or {}).get("chunk_target") or 512)
+        overlap = int((row or {}).get("chunk_overlap") or 50)
+        return max(120, min(target, 2000)), max(0, min(overlap, target // 2))
+
+    # ---------- 文件夹树 ----------
+
+    def list_folders(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            return self.store.list_folders(cid)
+        rows = [{"path": f.get("path") or "", "created_at": ""}
+                for f in self._mem.get("folders", []) if f.get("collection_id") == cid]
+        return rows
+
+    def folders(self, cid: str) -> List[str]:
+        """返回排好序的路径列表；同时把资料上的 folder 也算进去。"""
+        paths = {str(f.get("path") or "") for f in self.list_folders(cid)}
+        for d in self.list_documents(cid):
+            folder = str(d.get("folder") or "").strip("/")
+            if folder:
+                paths.add(folder)
+                parts = folder.split("/")
+                for i in range(1, len(parts)):
+                    paths.add("/".join(parts[:i]))
+        return sorted(p for p in paths if p)
+
+    def add_folder(self, cid: str, path: str) -> Dict:
+        path = "/".join(p.strip() for p in (path or "").replace("\\", "/").split("/")
+                        if p.strip())
+        if not path:
+            raise LibraryError("文件夹名不能为空")
+        if len(path) > 120:
+            raise LibraryError("文件夹路径最多 120 个字符")
+        if self.store is not None:
+            self.store.add_folder(cid, path)
+        else:
+            parts = path.split("/")
+            for i in range(1, len(parts) + 1):
+                p = "/".join(parts[:i])
+                if not any(f["collection_id"] == cid and f["path"] == p
+                           for f in self._mem.setdefault("folders", [])):
+                    self._mem["folders"].append(
+                        {"collection_id": cid, "path": p})
+            self._save_state()
+        return {"path": path, "folders": self.folders(cid)}
+
+    def rename_folder(self, cid: str, old: str, new: str) -> Dict:
+        old = (old or "").strip("/")
+        new = (new or "").strip("/")
+        if not old or not new:
+            raise LibraryError("原文件夹和新文件夹都不能为空")
+        if new == old or new.startswith(old + "/"):
+            raise LibraryError("不能把文件夹移动到它自己里面")
+        for p in self.folders(cid):
+            if (p == new or p.startswith(new + "/")) and \
+                    not (p == old or p.startswith(old + "/")):
+                raise LibraryError("目标文件夹已经存在：%s" % new)
+        if self.store is not None:
+            self.store.rename_folder(cid, old, new)
+        else:
+            for d in self._mem["documents"]:
+                if d["collection_id"] != cid:
+                    continue
+                folder = str(d.get("folder") or "")
+                if folder == old or folder.startswith(old + "/"):
+                    d["folder"] = new + folder[len(old):]
+            folders = self._mem.setdefault("folders", [])
+            for f in list(folders):
+                if f["collection_id"] != cid:
+                    continue
+                p = f["path"]
+                if p == old or p.startswith(old + "/"):
+                    f["path"] = new + p[len(old):]
+            parts = new.split("/")
+            for i in range(1, len(parts) + 1):
+                p = "/".join(parts[:i])
+                if not any(f["collection_id"] == cid and f["path"] == p
+                           for f in folders):
+                    folders.append({"collection_id": cid, "path": p})
+            self._save_state()
+        self._searchers.pop(cid, None)
+        return {"folders": self.folders(cid)}
+
+    def delete_folder(self, cid: str, path: str) -> Dict:
+        path = (path or "").strip("/")
+        if not path:
+            raise LibraryError("文件夹不能为空")
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        if self.store is not None:
+            self.store.delete_folder(cid, path)
+        else:
+            for d in self._mem["documents"]:
+                if d["collection_id"] != cid:
+                    continue
+                folder = str(d.get("folder") or "")
+                if folder == path or folder.startswith(path + "/"):
+                    d["folder"] = parent
+            self._mem["folders"] = [
+                f for f in self._mem.setdefault("folders", [])
+                if not (f["collection_id"] == cid and
+                        (f["path"] == path or f["path"].startswith(path + "/")))]
+            self._save_state()
+        self._searchers.pop(cid, None)
+        return {"folders": self.folders(cid)}
+
+    def move_document(self, cid: str, doc_id: str, folder: str) -> Dict:
+        folder = "/".join(p.strip() for p in (folder or "").replace("\\", "/").split("/")
+                          if p.strip())
+        if self.store is not None:
+            self.store.set_document_folder(cid, doc_id, folder)
+        else:
+            hit = None
+            for d in self._mem["documents"]:
+                if d["id"] == doc_id and d["collection_id"] == cid:
+                    d["folder"] = folder
+                    d["updated_at"] = _now()
+                    hit = d
+                    break
+            if hit is None:
+                raise LibraryError("资料不存在")
+            self._save_state()
+        if folder:
+            self.add_folder(cid, folder)
+        return {"id": doc_id, "folder": folder}
+
+    # ---------- 操作日志 ----------
+
+    def audit(self, cid: str, actor: Optional[Dict] = None, action: str = "",
+              target_type: str = "", target_id: str = "", detail: str = "") -> None:
+        """写一条知识库操作日志；日志失败不影响主流程。"""
+        actor = actor or {}
+        try:
+            if self.store is not None:
+                self.store.add_audit(cid, actor.get("id") or "",
+                                     actor.get("username") or "",
+                                     action, target_type, target_id, detail)
+            else:
+                self._mem.setdefault("audit", []).append({
+                    "id": len(self._mem["audit"]) + 1,
+                    "collection_id": cid,
+                    "created_at": _now(),
+                    "actor_id": actor.get("id") or "",
+                    "actor_name": actor.get("username") or "",
+                    "action": action, "target_type": target_type,
+                    "target_id": target_id, "detail": detail[:500]})
+                self._save_state()
+        except Exception:
+            pass
+
+    def list_audit(self, cid: str, limit: int = 50) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_audit(cid, limit)
+        else:
+            rows = [r for r in reversed(self._mem.setdefault("audit", []))
+                    if r.get("collection_id") == cid]
+        out = []
+        for r in rows[:max(1, min(int(limit), 200))]:
+            out.append({**r, "created_at": str(r.get("created_at") or "")})
+        return out
+
+    # ---------- 原始文件与持久化进料任务 ----------
+
+    def save_document_file(self, cid: str, doc_id: str, filename: str,
+                           mime: str, data: bytes) -> None:
+        if self.store is not None:
+            self.store.save_document_file(doc_id, cid, filename, mime, data)
+        else:
+            self._mem.setdefault("files", {})[doc_id] = {
+                "document_id": doc_id, "filename": filename, "mime": mime,
+                "nbytes": len(data), "data": base64.b64encode(data).decode("ascii")}
+            self._save_state()
+
+    def get_document_file(self, doc_id: str) -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.get_document_file(doc_id)
+        hit = self._mem.setdefault("files", {}).get(doc_id)
+        if not hit:
+            return None
+        out = dict(hit)
+        out["data"] = base64.b64decode(out.get("data") or "")
+        return out
+
+    def mark_document_processing(self, cid: str, doc_id: str) -> None:
+        if self.store is not None:
+            self.store.set_document_status(cid, doc_id, "processing", error="")
+        else:
+            for d in self._mem["documents"]:
+                if d["id"] == doc_id and d["collection_id"] == cid:
+                    d.update({"status": "processing", "error": "",
+                              "updated_at": _now()})
+                    break
+            self._save_state()
+
+    def start_ingest_job(self, cid: str, doc_id: str, filename: str = "") -> None:
+        if self.store is not None:
+            self.store.upsert_ingest_job(doc_id, cid, filename, "queued")
+        else:
+            jobs = self._mem.setdefault("ingest_jobs", {})
+            jobs[doc_id] = {"document_id": doc_id, "collection_id": cid,
+                            "filename": filename, "status": "queued",
+                            "attempts": 0, "error": ""}
+            self._save_state()
+
+    def set_ingest_job(self, doc_id: str, status: str, error: str = "",
+                       bump_attempt: bool = False) -> None:
+        if self.store is not None:
+            self.store.set_ingest_job(doc_id, status, error, bump_attempt)
+        else:
+            job = self._mem.setdefault("ingest_jobs", {}).get(doc_id)
+            if job is not None:
+                job.update({"status": status, "error": error[:500]})
+                if bump_attempt:
+                    job["attempts"] = int(job.get("attempts") or 0) + 1
+                self._save_state()
+
+    def pending_ingest_jobs(self) -> List[Dict]:
+        if self.store is not None:
+            return self.store.list_pending_ingest_jobs()
+        return [dict(j) for j in self._mem.setdefault("ingest_jobs", {}).values()
+                if j.get("status") in ("queued", "running")]
 
     def _name_taken(self, name: str, owner_id: str, visibility: str) -> bool:
         """同名判断按空间范围：个人库只跟自己比，公司库跟公司库比。
@@ -220,11 +500,13 @@ class Library:
                 "id": cid, "name": name, "description": description,
                 "owner_id": owner_id or "", "visibility": visibility,
                 "created_by": created_by or owner_id or "",
+                "chunk_target": 512, "chunk_overlap": 50,
                 "created_at": now, "updated_at": now})
             self._save_state()
         return {"id": cid, "name": name, "description": description,
                 "owner_id": owner_id or "", "visibility": visibility,
                 "created_by": created_by or owner_id or "",
+                "chunk_target": 512, "chunk_overlap": 50,
                 "created_at": now, "updated_at": now,
                 "documents": [], "chunks": 0}
 
@@ -364,7 +646,8 @@ class Library:
             if d.get("sha256") == sha:
                 raise LibraryError("这篇资料已经在库里了：%s" % d["title"])
 
-        pieces = split_text(text)
+        target, overlap = self._chunk_params(cid)
+        pieces = split_text(text, target=target, overlap=overlap)
         if not pieces:
             raise LibraryError("没有切出可用片段，检查一下资料内容")
         doc_id = _new_id("doc")
@@ -422,6 +705,8 @@ class Library:
                         and a["collection_id"] == cid)]
             ok = len(self._mem["documents"]) != before
             if ok:
+                self._mem.setdefault("files", {}).pop(doc_id, None)
+                self._mem.setdefault("ingest_jobs", {}).pop(doc_id, None)
                 self._save_state()
         self._searchers.pop(cid, None)
         return ok
@@ -460,7 +745,8 @@ class Library:
         for d in self.list_documents(cid):
             if d["id"] != doc_id and d.get("sha256") == sha:
                 raise LibraryError("这篇资料已经在库里了：%s" % d["title"])
-        pieces = split_text(text)
+        target, overlap = self._chunk_params(cid)
+        pieces = split_text(text, target=target, overlap=overlap)
         if not pieces:
             raise LibraryError("没有切出可用片段，检查一下资料内容")
         chunks = [{"id": "%s-%03d" % (doc_id, p["seq"]), "seq": p["seq"],
@@ -675,7 +961,8 @@ class Library:
                 self._fail_document(cid, doc_id,
                                     "这篇资料已经在库里了：%s" % d["title"])
                 return None
-        pieces = split_text(text)
+        target, overlap = self._chunk_params(cid)
+        pieces = split_text(text, target=target, overlap=overlap)
         if not pieces:
             self._fail_document(cid, doc_id, "没有切出可用片段，检查一下资料内容")
             return None

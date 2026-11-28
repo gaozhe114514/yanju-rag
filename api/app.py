@@ -22,6 +22,7 @@
 """
 import hashlib
 import json
+import mimetypes
 import os
 import threading
 import time
@@ -129,6 +130,27 @@ class CollectionRequest(BaseModel):
     # 个人库是更安全的默认；建公司库只有管理员可以。
     visibility: str = Field(VISIBILITY_PRIVATE,
                             pattern="^(private|shared)$")
+
+
+class CollectionUpdateRequest(BaseModel):
+    # 只改传进来的字段；切片参数有范围校验，避免把库切成空片段
+    name: Optional[str] = Field(None, min_length=1, max_length=40)
+    description: Optional[str] = Field(None, max_length=200)
+    chunk_target: Optional[int] = Field(None, ge=120, le=2000)
+    chunk_overlap: Optional[int] = Field(None, ge=0, le=1000)
+
+
+class FolderRequest(BaseModel):
+    path: str = Field(..., min_length=1, max_length=120)
+
+
+class FolderRenameRequest(BaseModel):
+    old: str = Field(..., min_length=1, max_length=120)
+    new: str = Field(..., min_length=1, max_length=120)
+
+
+class DocumentMoveRequest(BaseModel):
+    folder: str = Field("", max_length=120)
 
 
 class CollectionMemberRequest(BaseModel):
@@ -402,6 +424,12 @@ def _load() -> None:
             mode, provider_name, fuse_k,
             ((default_coll or {}).get("updated_at") or "")[:16]),
     })
+    # 解析任务最多两路并发，避免几个人同时传大文件把 CPU 打满。
+    old_pool = _state.get("ingest_pool")
+    if old_pool is not None:
+        old_pool.shutdown(wait=False)
+    _state["ingest_pool"] = ThreadPoolExecutor(max_workers=2)
+    _resume_ingest_jobs()
     _init_agent_runtime()
 
 
@@ -1663,6 +1691,18 @@ def _guard_collection(cid: str, request: Request, write: bool = False,
     return user, coll, role
 
 
+def _audit(cid: str, user: Optional[Dict], action: str,
+           target_type: str = "", target_id: str = "",
+           detail: str = "") -> None:
+    """知识库操作日志：写失败不影响主流程，也不记正文与请求头。"""
+    if _weknora() is not None:
+        return
+    try:
+        _library().audit(cid, user, action, target_type, target_id, detail)
+    except Exception:
+        pass
+
+
 def _guard_chat_collection(collection: str, request: Request) -> None:
     """问答也要过同一道闸门：拿到 id 不等于能读这个库。"""
     if _is_preset(collection):
@@ -1777,6 +1817,8 @@ def collection_create(req: CollectionRequest, request: Request,
             visibility=req.visibility, created_by=user["id"])
     except LibraryError as e:
         raise _lib_error(e)
+    _audit(coll["id"], user, "collection.create", "collection",
+           coll["id"], req.name)
     return describe(user, coll, "")
 
 
@@ -1794,17 +1836,114 @@ def collection_detail(cid: str, request: Request,
         out["documents"] = docs
         out["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
         return out
+    lib = _library()
     docs = coll.get("documents") or []
     out = describe(user, coll, role)
     out["documents"] = docs
     out["chunks"] = sum(int(d.get("chunks") or 0) for d in docs)
+    out["folders"] = lib.folders(cid)
     return out
+
+
+@app.patch("/collections/{cid}")
+def collection_update(cid: str, req: CollectionUpdateRequest, request: Request,
+                      _: None = Depends(enforce_content)) -> dict:
+    """改库名、说明与每库切片参数。改名与参数都算管理动作。"""
+    user, coll, role = _guard_collection(cid, request, manage=True)
+    if coll.get("weknora"):
+        raise HTTPException(status_code=400,
+                            detail="这个知识库由 WeKnora 托管，参数请在那边改")
+    try:
+        _library().update_collection(
+            cid, name=req.name, description=req.description,
+            chunk_target=req.chunk_target, chunk_overlap=req.chunk_overlap)
+    except LibraryError as e:
+        raise _lib_error(e)
+    detail = []
+    if req.chunk_target is not None or req.chunk_overlap is not None:
+        detail.append("切片 %s/%s" % (req.chunk_target or "-",
+                                     req.chunk_overlap if req.chunk_overlap is not None else "-"))
+    _audit(cid, user, "collection.update", "collection", cid,
+           "；".join(detail))
+    refreshed = _library().get_collection(cid) or {}
+    out = describe(user, refreshed, role)
+    out["folders"] = _library().folders(cid)
+    return out
+
+
+@app.get("/collections/{cid}/folders")
+def collection_folders(cid: str, request: Request,
+                       _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    items = _library().folders(cid)
+    return {"items": items, "total": len(items)}
+
+
+@app.post("/collections/{cid}/folders")
+def collection_folder_add(cid: str, req: FolderRequest, request: Request,
+                          _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    try:
+        out = _library().add_folder(cid, req.path)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _audit(cid, user, "folder.create", "folder", req.path)
+    return out
+
+
+@app.post("/collections/{cid}/folders/rename")
+def collection_folder_rename(cid: str, req: FolderRenameRequest,
+                             request: Request,
+                             _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    try:
+        out = _library().rename_folder(cid, req.old, req.new)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _audit(cid, user, "folder.rename", "folder", req.old,
+           "%s → %s" % (req.old, req.new))
+    return out
+
+
+@app.delete("/collections/{cid}/folders")
+def collection_folder_delete(cid: str, path: str, request: Request,
+                             _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    try:
+        out = _library().delete_folder(cid, path)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _audit(cid, user, "folder.delete", "folder", path,
+           "资料移回上一级")
+    return out
+
+
+@app.put("/collections/{cid}/documents/{doc_id}/folder")
+def document_move(cid: str, doc_id: str, req: DocumentMoveRequest,
+                  request: Request,
+                  _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    try:
+        out = _library().move_document(cid, doc_id, req.folder)
+    except LibraryError as e:
+        raise _lib_error(e)
+    _audit(cid, user, "document.move", "document", doc_id,
+           "移动到 %s" % (req.folder or "未分组"))
+    return out
+
+
+@app.get("/collections/{cid}/audit")
+def collection_audit(cid: str, request: Request, limit: int = 50,
+                     _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    items = _library().list_audit(cid, limit=limit)
+    return {"items": items, "total": len(items)}
 
 
 @app.delete("/collections/{cid}")
 def collection_delete(cid: str, request: Request,
                       _: None = Depends(enforce_content)) -> dict:
-    _guard_collection(cid, request, manage=True)
+    user, _coll, _role = _guard_collection(cid, request, manage=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1816,6 +1955,7 @@ def collection_delete(cid: str, request: Request,
         _state["doc_pipelines"].pop(cid, None)
         return {"ok": True, "id": cid}
     lib = _library()
+    name = (_collection_view(cid) or {}).get("name") or ""
     try:
         ok = lib.delete_collection(cid)
     except LibraryError as e:
@@ -1823,6 +1963,7 @@ def collection_delete(cid: str, request: Request,
     if not ok:
         raise HTTPException(status_code=404, detail="资料库不存在")
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "collection.delete", "collection", cid, name)
     return {"ok": True, "id": cid}
 
 
@@ -1908,7 +2049,7 @@ def document_add(cid: str, req: DocumentRequest, request: Request,
 
     出题接口不落盘；这里是反向的——用户明确要把资料存成可检索的库。
     """
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -1924,6 +2065,8 @@ def document_add(cid: str, req: DocumentRequest, request: Request,
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.create", "document", doc.get("id") or "",
+           req.title or (doc.get("title") or ""))
     return doc
 
 
@@ -1965,6 +2108,8 @@ def document_edit(cid: str, doc_id: str, req: DocumentEditRequest,
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.edit", "document", doc_id,
+           req.title or out.get("title") or "")
     out["author"] = author
     return out
 
@@ -2012,6 +2157,8 @@ def document_version_restore(cid: str, doc_id: str, version_id: int,
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.restore", "document", doc_id,
+           "恢复到版本 %s" % version_id)
     out["author"] = author
     return out
 
@@ -2107,7 +2254,7 @@ def document_asset_delete(cid: str, doc_id: str, asset_id: str,
 @app.delete("/collections/{cid}/documents/{doc_id}")
 def document_delete(cid: str, doc_id: str, request: Request,
                     _: None = Depends(enforce_content)) -> dict:
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -2122,10 +2269,13 @@ def document_delete(cid: str, doc_id: str, request: Request,
     if not ok:
         raise HTTPException(status_code=404, detail="资料不存在")
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.delete", "document", doc_id)
     return {"ok": True, "id": doc_id}
 
 
 MAX_UPLOAD = 20 * 1024 * 1024
+# 原始文件留在库里是为了重启后能续跑解析；单库总量设个上限，避免把磁盘吃满。
+MAX_LIB_BYTES = 500 * 1024 * 1024
 
 
 def _upload_name(raw: str) -> str:
@@ -2135,30 +2285,69 @@ def _upload_name(raw: str) -> str:
 
 
 def _start_parse_job(cid: str, doc_id: str, name: str, data: bytes) -> None:
-    """后台解析一份上传的文件：解析 → 切分 → 入库，失败就把原因写回文档。"""
+    """后台解析一份上传的文件：解析 → 切分 → 入库，失败就把原因写回文档。
+
+    解析任务写进 ingest_jobs，原始字节写进 document_files；进程重启后
+    `_resume_ingest_jobs` 会把没跑完的任务重新排上，不会永远停在「解析中」。
+    """
 
     def work() -> None:
         lib = _state.get("library")
         if lib is None:
             return
+        lib.set_ingest_job(doc_id, "running", bump_attempt=True)
         try:
             text, _, tables = extract_document(name, data)
         except ParseError as e:
             lib.fail_document(cid, doc_id, str(e))
+            lib.set_ingest_job(doc_id, "failed", str(e))
             return
         except Exception as e:  # 解析器自己炸了，别把后台线程带崩
             lib.fail_document(cid, doc_id, "解析失败：%s" % e)
+            lib.set_ingest_job(doc_id, "failed", "解析失败：%s" % e)
             return
         try:
-            lib.finish_document(cid, doc_id, text, tables=tables)
+            done = lib.finish_document(cid, doc_id, text, tables=tables)
         except Exception as e:
             lib.fail_document(cid, doc_id, "入库失败：%s" % e)
+            lib.set_ingest_job(doc_id, "failed", "入库失败：%s" % e)
+            return
+        if done is None:
+            row = lib.get_document(cid, doc_id) or {}
+            lib.set_ingest_job(doc_id, "failed", row.get("error") or "入库失败")
+        else:
+            lib.set_ingest_job(doc_id, "done")
 
     # 单测里同步跑，省掉等线程的 sleep
     if _state.get("sync_parse"):
         work()
-    else:
+        return
+    pool = _state.get("ingest_pool")
+    if pool is None:
         threading.Thread(target=work, daemon=True).start()
+    else:
+        pool.submit(work)
+
+
+def _resume_ingest_jobs() -> None:
+    """启动时把 queued / running 的任务重新排上；找不到原文件的明确标失败。"""
+    lib = _state.get("library")
+    if lib is None:
+        return
+    resumed = 0
+    for job in lib.pending_ingest_jobs():
+        cid = job.get("collection_id") or ""
+        doc_id = job.get("document_id") or ""
+        saved = lib.get_document_file(doc_id)
+        if not saved:
+            lib.fail_document(cid, doc_id, "服务重启后找不到原始文件，请重新上传")
+            lib.set_ingest_job(doc_id, "failed", "原始文件不存在")
+            continue
+        _start_parse_job(cid, doc_id, job.get("filename") or saved.get("filename") or "",
+                         saved.get("data") or b"")
+        resumed += 1
+    if resumed:
+        print("恢复解析任务：%d 个" % resumed)
 
 
 @app.post("/collections/{cid}/url")
@@ -2203,6 +2392,8 @@ def collection_add_url(cid: str, req: UrlDocumentRequest, request: Request,
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.url_import", "document", out.get("id") or "",
+           url)
     return out
 
 
@@ -2215,7 +2406,7 @@ async def document_upload(cid: str, request: Request,
     不依赖 python-multipart，也不把文件内容读进模型上下文。
     配了 WeKnora 时仍然交给它解析（可选后端）。
     """
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     body = await request.body()
     if not body:
         raise HTTPException(status_code=400, detail="空文件")
@@ -2234,12 +2425,22 @@ async def document_upload(cid: str, request: Request,
 
     ext = extension_of(name)
     lib = _library()
+    used = sum(int(d.get("bytes") or 0) for d in lib.list_documents(cid))
+    if used + len(body) > MAX_LIB_BYTES:
+        raise HTTPException(status_code=413,
+                            detail="这个库的原始文件总量已接近 500MB，"
+                                   "先删掉一些资料再上传")
     try:
         doc = lib.create_pending_document(
             cid, Path(name).stem or name, source=ext, nbytes=len(body))
+        lib.save_document_file(cid, doc["id"], name,
+                               mimetypes.guess_type(name)[0]
+                               or "application/octet-stream", body)
+        lib.start_ingest_job(cid, doc["id"], name)
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.upload", "document", doc["id"], name)
     _start_parse_job(cid, doc["id"], name, body)
     return doc
 
@@ -2265,7 +2466,7 @@ def document_chunks(cid: str, doc_id: str, request: Request,
 def chunk_update(cid: str, doc_id: str, chunk_id: str,
                  req: ChunkUpdateRequest, request: Request,
                  _: None = Depends(enforce_guard)) -> dict:
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -2280,13 +2481,15 @@ def chunk_update(cid: str, doc_id: str, chunk_id: str,
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "chunk.edit", "chunk", chunk_id,
+           "资料 %s" % doc_id)
     return chunk
 
 
 @app.delete("/collections/{cid}/documents/{doc_id}/chunks/{chunk_id}")
 def chunk_delete(cid: str, doc_id: str, chunk_id: str, request: Request,
                  _: None = Depends(enforce_content)) -> dict:
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     wk = _weknora()
     if wk is not None:
         try:
@@ -2298,6 +2501,8 @@ def chunk_delete(cid: str, doc_id: str, chunk_id: str, request: Request,
     if not ok:
         raise HTTPException(status_code=404, detail="片段不存在")
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "chunk.delete", "chunk", chunk_id,
+           "资料 %s" % doc_id)
     return {"ok": True, "id": chunk_id}
 
 
@@ -2305,7 +2510,7 @@ def chunk_delete(cid: str, doc_id: str, chunk_id: str, request: Request,
 def collection_reindex(cid: str, request: Request,
                        _: None = Depends(enforce_guard)) -> dict:
     """按当前切片规则重建整个库的片段；不重读原文件。"""
-    _guard_collection(cid, request, write=True)
+    user, _coll, _role = _guard_collection(cid, request, write=True)
     lib = _library()
     coll = lib.get_collection(cid)
     if coll is None:
@@ -2320,6 +2525,8 @@ def collection_reindex(cid: str, request: Request,
         except LibraryError:
             failed += 1
     _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "collection.reindex", "collection", cid,
+           "成功 %d 篇，失败 %d 篇" % (ok, failed))
     return {"ok": ok, "failed": failed}
 
 
@@ -2346,6 +2553,29 @@ def document_reparse(cid: str, doc_id: str, request: Request,
             "status": "completed" if doc else "failed",
             "chunks": (doc or {}).get("chunks", 0),
             "error": row.get("error") or ""}
+
+
+@app.post("/collections/{cid}/documents/{doc_id}/retry")
+def document_retry(cid: str, doc_id: str, request: Request,
+                   _: None = Depends(enforce_guard)) -> dict:
+    """用保存下来的原始文件重新解析；服务重启或解析失败后用这个。"""
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    lib = _library()
+    doc = lib.get_document(cid, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="资料不存在")
+    saved = lib.get_document_file(doc_id)
+    if not saved:
+        raise HTTPException(status_code=400,
+                            detail="这篇资料没有保存原始文件，删除后重新上传")
+    lib.mark_document_processing(cid, doc_id)
+    lib.start_ingest_job(cid, doc_id, saved.get("filename") or "")
+    _state["doc_pipelines"].pop(cid, None)
+    _audit(cid, user, "document.retry", "document", doc_id,
+           saved.get("filename") or "")
+    _start_parse_job(cid, doc_id, saved.get("filename") or "",
+                     saved.get("data") or b"")
+    return {"id": doc_id, "status": "processing"}
 
 
 @app.post("/create/outline")

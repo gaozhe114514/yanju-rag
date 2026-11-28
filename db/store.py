@@ -93,6 +93,7 @@ class Store:
             rows = conn.execute(
                 "SELECT c.id, c.name, c.description, c.owner_id,"
                 " c.created_by, c.visibility, c.created_at, c.updated_at,"
+                " c.chunk_target, c.chunk_overlap,"
                 " (SELECT count(*)::int FROM documents d"
                 "   WHERE d.collection_id = c.id) AS doc_count,"
                 " (SELECT count(*)::int FROM doc_chunks k"
@@ -104,9 +105,173 @@ class Store:
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, name, description, owner_id, created_by, visibility,"
-                " created_at, updated_at FROM collections WHERE id = %s",
+                " chunk_target, chunk_overlap, created_at, updated_at"
+                " FROM collections WHERE id = %s",
                 (cid,)).fetchone()
         return dict(row) if row else None
+
+    def update_collection(self, cid: str, name: Optional[str] = None,
+                          description: Optional[str] = None,
+                          chunk_target: Optional[int] = None,
+                          chunk_overlap: Optional[int] = None) -> bool:
+        sets = ["updated_at = now()"]
+        args = []
+        if name is not None:
+            sets.append("name = %s")
+            args.append(name)
+        if description is not None:
+            sets.append("description = %s")
+            args.append(description)
+        if chunk_target is not None:
+            sets.append("chunk_target = %s")
+            args.append(int(chunk_target))
+        if chunk_overlap is not None:
+            sets.append("chunk_overlap = %s")
+            args.append(int(chunk_overlap))
+        args.append(cid)
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE collections SET " + ", ".join(sets) +
+                " WHERE id = %s", tuple(args))
+            conn.commit()
+            return cur.rowcount > 0
+
+    # ---------- 文件夹树 / 操作日志 / 进料任务（v0.83） ----------
+
+    def list_folders(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT path, created_at FROM collection_folders"
+                " WHERE collection_id = %s ORDER BY path", (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_folder(self, cid: str, path: str) -> None:
+        """建文件夹，同时补齐上级路径，树里不会出现断层的空节点。"""
+        parts = [p for p in path.split("/") if p]
+        for i in range(1, len(parts) + 1):
+            p = "/".join(parts[:i])
+            with self.connect() as conn:
+                conn.execute(
+                    "INSERT INTO collection_folders (collection_id, path)"
+                    " VALUES (%s, %s) ON CONFLICT DO NOTHING", (cid, p))
+                conn.commit()
+
+    def rename_folder(self, cid: str, old: str, new: str) -> int:
+        """改名或移动整棵子树；返回受影响的文件夹行数。"""
+        old = old.strip("/")
+        new = new.strip("/")
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT path FROM collection_folders"
+                " WHERE collection_id = %s AND (path = %s OR path LIKE %s)",
+                (cid, old, old + "/%")).fetchall()
+            paths = [r["path"] for r in rows]
+            for p in paths:
+                moved = new + p[len(old):]
+                conn.execute(
+                    "UPDATE collection_folders SET path = %s"
+                    " WHERE collection_id = %s AND path = %s", (moved, cid, p))
+                conn.execute(
+                    "UPDATE documents SET folder = %s, updated_at = now()"
+                    " WHERE collection_id = %s AND (folder = %s OR folder LIKE %s)",
+                    (moved, cid, p, p + "/%"))
+            # 新路径的上级也补上
+            parts = [x for x in new.split("/") if x]
+            for i in range(1, len(parts) + 1):
+                conn.execute(
+                    "INSERT INTO collection_folders (collection_id, path)"
+                    " VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (cid, "/".join(parts[:i])))
+            conn.commit()
+            return len(paths)
+
+    def delete_folder(self, cid: str, path: str) -> int:
+        """删文件夹：整棵子树里的资料移回上一级，文件夹行删除。"""
+        path = path.strip("/")
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE documents SET folder = %s, updated_at = now()"
+                " WHERE collection_id = %s AND (folder = %s OR folder LIKE %s)",
+                (parent, cid, path, path + "/%"))
+            cur = conn.execute(
+                "DELETE FROM collection_folders"
+                " WHERE collection_id = %s AND (path = %s OR path LIKE %s)",
+                (cid, path, path + "/%"))
+            conn.commit()
+            return int(cur.rowcount or 0)
+
+    def add_audit(self, cid: str, actor_id: str = "", actor_name: str = "",
+                  action: str = "", target_type: str = "", target_id: str = "",
+                  detail: str = "") -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO kb_audit_logs (collection_id, actor_id, actor_name,"
+                " action, target_type, target_id, detail)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (cid, actor_id or "", actor_name or "", action or "",
+                 target_type or "", target_id or "", (detail or "")[:500]))
+            conn.commit()
+
+    def list_audit(self, cid: str, limit: int = 50) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, created_at, actor_id, actor_name, action,"
+                " target_type, target_id, detail FROM kb_audit_logs"
+                " WHERE collection_id = %s ORDER BY created_at DESC, id DESC"
+                " LIMIT %s", (cid, max(1, min(int(limit), 200)))).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_document_file(self, doc_id: str, cid: str, filename: str,
+                           mime: str, data: bytes) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO document_files"
+                " (document_id, filename, mime, nbytes, data)"
+                " VALUES (%s, %s, %s, %s, %s)"
+                " ON CONFLICT (document_id) DO UPDATE SET"
+                " filename = EXCLUDED.filename, mime = EXCLUDED.mime,"
+                " nbytes = EXCLUDED.nbytes, data = EXCLUDED.data",
+                (doc_id, filename or "", mime or "", len(data), data))
+            conn.commit()
+
+    def get_document_file(self, doc_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_id, filename, mime, nbytes, data"
+                " FROM document_files WHERE document_id = %s",
+                (doc_id,)).fetchone()
+        return dict(row) if row else None
+
+    def upsert_ingest_job(self, doc_id: str, cid: str, filename: str = "",
+                          status: str = "queued") -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO ingest_jobs (document_id, collection_id, filename,"
+                " status) VALUES (%s, %s, %s, %s)"
+                " ON CONFLICT (document_id) DO UPDATE SET"
+                " filename = EXCLUDED.filename, status = EXCLUDED.status,"
+                " error = '', updated_at = now()",
+                (doc_id, cid, filename or "", status))
+            conn.commit()
+
+    def set_ingest_job(self, doc_id: str, status: str, error: str = "",
+                       bump_attempt: bool = False) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE ingest_jobs SET status = %s, error = %s,"
+                " attempts = attempts + %s, updated_at = now()"
+                " WHERE document_id = %s",
+                (status, (error or "")[:500], 1 if bump_attempt else 0, doc_id))
+            conn.commit()
+
+    def list_pending_ingest_jobs(self) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT document_id, collection_id, filename, status, attempts"
+                " FROM ingest_jobs WHERE status IN ('queued', 'running')"
+                " ORDER BY created_at").fetchall()
+        return [dict(r) for r in rows]
 
     # ---------- 知识库成员 ----------
 
@@ -200,6 +365,15 @@ class Store:
                 " FROM documents d WHERE d.collection_id = %s"
                 " ORDER BY d.created_at", (cid,)).fetchall()
         return [dict(r) for r in rows]
+
+    def set_document_folder(self, cid: str, doc_id: str, folder: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE documents SET folder = %s, updated_at = now()"
+                " WHERE collection_id = %s AND id = %s",
+                (folder or "", cid, doc_id))
+            conn.commit()
+            return cur.rowcount > 0
 
     def get_document(self, cid: str, doc_id: str) -> Optional[Dict]:
         with self.connect() as conn:
