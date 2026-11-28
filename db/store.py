@@ -163,7 +163,8 @@ class Store:
                      vectors: Optional[Dict[str, str]] = None,
                      status: str = "completed", error: str = "",
                      source: str = "", nbytes: int = 0,
-                     tables: Optional[Sequence[Dict]] = None) -> None:
+                     tables: Optional[Sequence[Dict]] = None,
+                     folder: str = "", tags: Optional[Sequence[str]] = None) -> None:
         """写入一篇文档及其片段；vectors 是 {chunk_id: pgvector 文本}。
 
         tables 是进料时抽出的结构化表格；粘贴正文进来的文档没有，存 '[]'。
@@ -172,10 +173,11 @@ class Store:
         with self.connect() as conn:
             conn.execute(
                 "INSERT INTO documents (id, collection_id, title, text, sha256,"
-                " status, error, bytes, source, tables)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)",
+                " status, error, bytes, source, tables, folder, tags)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)",
                 (doc_id, cid, title, text, sha, status, error, nbytes, source,
-                 json.dumps(list(tables or []), ensure_ascii=False)))
+                 json.dumps(list(tables or []), ensure_ascii=False),
+                 folder or "", list(tags or [])))
             for c in chunks:
                 conn.execute(
                     "INSERT INTO doc_chunks (id, collection_id, document_id, seq,"
@@ -191,7 +193,7 @@ class Store:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT d.id, d.title, d.sha256, d.created_at, d.updated_at,"
-                " d.status, d.error, d.bytes, d.source,"
+                " d.status, d.error, d.bytes, d.source, d.folder, d.tags,"
                 " length(d.text) AS chars,"
                 " (SELECT count(*)::int FROM doc_chunks k"
                 "   WHERE k.document_id = d.id) AS chunk_count"
@@ -203,7 +205,7 @@ class Store:
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, collection_id, title, text, sha256, created_at,"
-                " updated_at, status, error, bytes, source, tables"
+                " updated_at, status, error, bytes, source, tables, folder, tags"
                 " FROM documents WHERE collection_id = %s AND id = %s",
                 (cid, doc_id)).fetchone()
         return dict(row) if row else None

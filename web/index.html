@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.81.0">
+  <meta name="app-version" content="0.82.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -2377,6 +2377,8 @@
     }
 
     /* ---------- v0.25 知识库：用户自建资料库 ---------- */
+    .lib-meta-row { display: flex; gap: 8px; }
+    .lib-meta-row input { flex: 1; min-width: 0; }
     .lib-add {
       display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px;
       padding: 16px; border: 1px solid var(--line); border-radius: 16px;
@@ -4306,6 +4308,10 @@
         </div>
         <div class="lib-add" id="lib-add">
           <input id="lib-doc-title" maxlength="80" placeholder="资料标题（可选，默认取正文第一行）">
+          <div class="lib-meta-row">
+            <input id="lib-doc-folder" maxlength="120" placeholder="文件夹（可选）">
+            <input id="lib-doc-tags" maxlength="300" placeholder="标签，用逗号分隔（可选）">
+          </div>
           <textarea id="lib-doc-text" class="import-box" maxlength="50000"
                     placeholder="把资料正文粘贴进来，至少 20 字。切分后每一段都能逐字引用回原文。"></textarea>
           <div class="lib-add-row">
@@ -4338,7 +4344,10 @@
         </div>
         <div class="kb-pane" data-kb-pane="settings" hidden>
           <div class="set-facts" id="kb-settings-facts"></div>
-          <div class="practice-note">切片大小、重叠、索引重建、URL 导入、标签与文件夹会在下一阶段接入。</div>
+          <div class="form-actions">
+            <button type="button" class="ghost" id="kb-reindex">重建索引</button>
+          </div>
+          <div class="practice-note">重建会用当前切片规则（512 字 / 50 重叠）重新切分全部资料；不会重新读取原文件。更细的切片参数与连接器在下一阶段接入。</div>
         </div>
       </div>
     </section>
@@ -6558,8 +6567,16 @@
     const title = el('input');
     title.placeholder = '资料标题（可选）';
     title.maxLength = 80;
+    const folder = el('input');
+    folder.placeholder = '文件夹（可选）';
+    folder.maxLength = 120;
+    const tags = el('input');
+    tags.placeholder = '标签，用逗号分隔（可选）';
+    tags.maxLength = 300;
     wrap.appendChild(field('网页链接', url, '只抓公网 http/https 页面正文；登录后导入到当前库。'));
     wrap.appendChild(field('标题', title, '留空就用网址域名。'));
+    wrap.appendChild(field('文件夹', folder, '用于资料分组。'));
+    wrap.appendChild(field('标签', tags, '逗号分隔，最多 20 个。'));
     const acts = el('div', 'form-actions');
     const cancel = el('button', 'ghost', '取消');
     cancel.addEventListener('click', closeModal);
@@ -6569,7 +6586,10 @@
       if (!value) { url.focus(); return; }
       save.disabled = true;
       api('/collections/' + encodeURIComponent(cid) + '/url', {
-        method: 'POST', body: {url: value, title: title.value.trim()}
+        method: 'POST', body: {url: value, title: title.value.trim(),
+          folder: folder.value.trim(),
+          tags: tags.value.split(/[,，]/).map(x => x.trim())
+            .filter(Boolean).slice(0, 20)}
       }).then(doc => {
         closeModal();
         toast('已导入：' + (doc.title || '网页'));
@@ -7043,6 +7063,8 @@
       }
       const delBtn = $('#lib-del');
       if (delBtn) delBtn.hidden = !canManage;
+      const reindexBtn = $('#kb-reindex');
+      if (reindexBtn) reindexBtn.hidden = !canWrite;
       const membersBtn = $('#lib-members');
       if (membersBtn) {
         membersBtn.hidden = !(canManage && c.visibility === 'shared' && !c.weknora);
@@ -7102,8 +7124,11 @@
     const list = all.filter(d => {
       if (status && String(d.status || '') !== status) return false;
       if (!q) return true;
-      return String(d.title || '').toLowerCase().indexOf(q) >= 0;
-    });
+      const hay = [d.title, d.folder, d.source, (d.tags || []).join(' ')]
+        .join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    }).sort((a, b) => String(a.folder || '').localeCompare(
+      String(b.folder || ''), 'zh-CN'));
     const failed = all.filter(d => d.status === 'failed').length;
     if ($('#lib-doc-meta')) {
       $('#lib-doc-meta').textContent = list.length === all.length
@@ -7123,7 +7148,13 @@
           : '这个库还没有资料。写权限在公司库管理员或被指定的成员手里。')));
       return;
     }
+    let currentFolder = null;
     list.forEach(d => {
+      const folder = String(d.folder || '');
+      if (folder && folder !== currentFolder) {
+        box.appendChild(el('div', 'lib-section-title', '文件夹：' + folder));
+      }
+      currentFolder = folder;
       const row = el('div', 'list-row kb-doc-row');
       const main = el('div', 'list-main');
       const titleLine = el('div', 'list-title');
@@ -7149,6 +7180,8 @@
       }
       main.appendChild(titleLine);
       const bits = [];
+      if (d.folder) bits.push('文件夹 ' + d.folder);
+      if ((d.tags || []).length) bits.push((d.tags || []).map(t => '#' + t).join(' '));
       if (d.chars) bits.push(d.chars + ' 字');
       bits.push((d.chunks || 0) + ' 段');
       if (d.bytes) bits.push(Math.max(1, Math.round(d.bytes / 1024)) + ' KB');
@@ -7989,11 +8022,18 @@
     setHint('正在切分并建立索引…', false);
     api('/collections/' + encodeURIComponent(state.collectionId) + '/documents', {
       method: 'POST',
-      body: {title: titleEl ? titleEl.value.trim() : '', text}
+      body: {title: titleEl ? titleEl.value.trim() : '', text,
+        folder: ($('#lib-doc-folder') || {}).value || '',
+        tags: String(($('#lib-doc-tags') || {}).value || '').split(/[,，]/)
+          .map(x => x.trim()).filter(Boolean).slice(0, 20)}
     }).then(doc => {
       if (btn) btn.disabled = false;
       if (titleEl) titleEl.value = '';
       if (textEl) textEl.value = '';
+      const folderEl = $('#lib-doc-folder');
+      if (folderEl) folderEl.value = '';
+      const tagsEl = $('#lib-doc-tags');
+      if (tagsEl) tagsEl.value = '';
       setHint('已加入「' + doc.title + '」，切出 ' + doc.chunks + ' 段。', false);
       toast('资料已加入知识库');
       state.collectionsLoaded = false;
@@ -10996,6 +11036,24 @@
       kbDocTimer = setTimeout(() => {
         if (state.page === 'collection') renderCollectionPage(state.collectionId);
       }, 260);
+    });
+    const reindexBtn = $('#kb-reindex');
+    if (reindexBtn) reindexBtn.addEventListener('click', () => {
+      const c = collectionById(state.collectionId);
+      if (!c) return;
+      if (!window.confirm('用当前切片规则重建「' + c.name + '」的全部片段？')) return;
+      reindexBtn.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/reindex', {method: 'POST'})
+        .then(out => {
+          reindexBtn.disabled = false;
+          toast('重建完成：' + out.ok + ' 篇成功' +
+            (out.failed ? '，' + out.failed + ' 篇失败' : ''));
+          renderCollectionPage(c.id);
+        })
+        .catch(e => {
+          reindexBtn.disabled = false;
+          toast('重建失败：' + e.message, 'err');
+        });
     });
     const urlAdd = $('#lib-url-add');
     if (urlAdd) urlAdd.addEventListener('click', () => openUrlImport(state.collectionId));

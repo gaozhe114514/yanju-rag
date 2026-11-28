@@ -140,11 +140,15 @@ class DocumentRequest(BaseModel):
     # 用户在页面里粘贴的资料；切分后只有片段进检索库，原文整篇留档以便回跳
     text: str = Field(..., min_length=20, max_length=50000)
     title: str = Field("", max_length=80)
+    folder: str = Field("", max_length=120)
+    tags: List[str] = Field(default_factory=list, max_length=20)
 
 
 class UrlDocumentRequest(BaseModel):
     url: str = Field(..., min_length=8, max_length=2000)
     title: str = Field("", max_length=80)
+    folder: str = Field("", max_length=120)
+    tags: List[str] = Field(default_factory=list, max_length=20)
 
 
 class DocumentEditRequest(BaseModel):
@@ -1915,7 +1919,8 @@ def document_add(cid: str, req: DocumentRequest, request: Request,
         return doc
     lib = _library()
     try:
-        doc = lib.add_document(cid, req.text, req.title)
+        doc = lib.add_document(cid, req.text, req.title,
+                               folder=req.folder, tags=req.tags)
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
@@ -2193,7 +2198,8 @@ def collection_add_url(cid: str, req: UrlDocumentRequest, request: Request,
         title = host[:80]
     try:
         out = _library().add_document(
-            cid, text, title=title, source=url, nbytes=len(data))
+            cid, text, title=title, source=url, nbytes=len(data),
+            folder=req.folder, tags=req.tags)
     except LibraryError as e:
         raise _lib_error(e)
     _state["doc_pipelines"].pop(cid, None)
@@ -2293,6 +2299,28 @@ def chunk_delete(cid: str, doc_id: str, chunk_id: str, request: Request,
         raise HTTPException(status_code=404, detail="片段不存在")
     _state["doc_pipelines"].pop(cid, None)
     return {"ok": True, "id": chunk_id}
+
+
+@app.post("/collections/{cid}/reindex")
+def collection_reindex(cid: str, request: Request,
+                       _: None = Depends(enforce_guard)) -> dict:
+    """按当前切片规则重建整个库的片段；不重读原文件。"""
+    _guard_collection(cid, request, write=True)
+    lib = _library()
+    coll = lib.get_collection(cid)
+    if coll is None:
+        raise HTTPException(status_code=404, detail="资料库不存在")
+    ok = failed = 0
+    for doc in lib.list_documents(cid):
+        if doc.get("status") != "completed":
+            continue
+        try:
+            lib.reparse_document(cid, doc["id"])
+            ok += 1
+        except LibraryError:
+            failed += 1
+    _state["doc_pipelines"].pop(cid, None)
+    return {"ok": ok, "failed": failed}
 
 
 @app.post("/collections/{cid}/documents/{doc_id}/reparse")

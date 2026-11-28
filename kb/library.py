@@ -324,6 +324,8 @@ class Library:
                              "error": d.get("error") or "",
                              "bytes": int(d.get("bytes") or 0),
                              "source": d.get("source") or "",
+                             "folder": d.get("folder") or "",
+                             "tags": list(d.get("tags") or []),
                              "chars": len(d["text"]), "chunk_count": n})
         return [{
             "id": r["id"],
@@ -334,13 +336,16 @@ class Library:
             "error": r.get("error") or "",
             "bytes": int(r.get("bytes") or 0),
             "source": r.get("source") or "",
+            "folder": r.get("folder") or "",
+            "tags": list(r.get("tags") or []),
             "chars": int(r.get("chars") or 0),
             "chunks": int(r.get("chunk_count") or 0),
             "sha256": r.get("sha256") or "",
         } for r in rows]
 
     def add_document(self, cid: str, text: str, title: str = "",
-                     source: str = "", nbytes: int = 0) -> Dict:
+                     source: str = "", nbytes: int = 0,
+                     folder: str = "", tags: Optional[List[str]] = None) -> Dict:
         if self.get_collection(cid) is None:
             raise LibraryError("资料库不存在")
         text = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -374,14 +379,16 @@ class Library:
                 vectors = {c["id"]: vector_literal(v)
                            for c, v in zip(chunks, arr)}
             self.store.add_document(doc_id, cid, title, text, sha, chunks, vectors,
-                                    source=source, nbytes=nbytes)
+                                    source=source, nbytes=nbytes,
+                                    folder=folder, tags=tags)
         else:
             now = _now()
             self._mem["documents"].append({
                 "id": doc_id, "collection_id": cid, "title": title,
                 "text": text, "sha256": sha, "created_at": now,
                 "updated_at": now, "status": "completed", "error": "",
-                "source": source, "bytes": int(nbytes or 0), "tables": []})
+                "source": source, "bytes": int(nbytes or 0), "tables": [],
+                "folder": folder or "", "tags": list(tags or [])})
             for c in chunks:
                 self._mem["chunks"].append({**c, "collection_id": cid,
                                             "document_id": doc_id})

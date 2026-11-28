@@ -32,6 +32,9 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL D
 -- v0.63：进料时抽出的结构化表格（xlsx/docx/pdf/html），统计直接数这里的行。
 -- 老文档没有这一列的值，按 '[]' 处理，统计仍从正文逐行数，行为不变。
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS tables jsonb NOT NULL DEFAULT '[]'::jsonb;
+-- v0.81：资料所属文件夹与标签；老资料为空，按「未分组 / 无标签」显示
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder text NOT NULL DEFAULT '';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}';
 
 CREATE INDEX IF NOT EXISTS documents_collection_idx
     ON documents (collection_id, created_at DESC);
