@@ -71,6 +71,10 @@ docker compose up -d --build  # 首次 10~30 分钟，含 2.4GB 模型
 curl -s http://127.0.0.1:8000/health
 ```
 
+### 本地预览（Windows 一键）
+
+双击仓库根目录的 `dev.cmd`，浏览器打开 `http://127.0.0.1:8011/`。改前端保存后 `Ctrl+F5`；改后端会自动重启。
+
 ### 本地 mock（不需要 API key）
 
 ```bash
