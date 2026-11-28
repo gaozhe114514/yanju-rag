@@ -13,6 +13,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +49,13 @@ def _clean(text: str, limit: int) -> str:
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def wiki_slug(title: str) -> str:
+    """页面 slug：保留中英文数字，空白和标点压成连字符。"""
+    raw = " ".join((title or "").lower().split())
+    raw = re.sub(r"[^0-9a-z一-鿿]+", "-", raw).strip("-")
+    return (raw or "page")[:60]
 
 
 def _asset_name(name: str) -> str:
@@ -91,7 +99,8 @@ class Library:
         self._searchers: Dict[str, tuple] = {}
         self._mem = {"collections": [], "documents": [], "chunks": [],
                      "members": [], "document_versions": [],
-                     "document_assets": []}
+                     "document_assets": [], "wiki_pages": [],
+                     "wiki_versions": [], "wiki_links": []}
         self._state_path = Path(state_path) if (state_path and store is None) else None
         if self._state_path is not None:
             self._load_state()
@@ -109,7 +118,7 @@ class Library:
             return
         for key in ("collections", "documents", "chunks", "members",
                     "document_versions", "document_assets", "folders",
-                    "audit"):
+                    "audit", "wiki_pages", "wiki_versions", "wiki_links"):
             if isinstance(data.get(key), list):
                 self._mem[key] = data[key]
         for key in ("files", "ingest_jobs"):
@@ -395,6 +404,226 @@ class Library:
         for r in rows[:max(1, min(int(limit), 200))]:
             out.append({**r, "created_at": str(r.get("created_at") or "")})
         return out
+
+    # ---------- 自动 Wiki ----------
+
+    def wiki_pages(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_wiki_pages(cid)
+        else:
+            rows = [dict(p) for p in self._mem.setdefault("wiki_pages", [])
+                    if p.get("collection_id") == cid]
+            rows.sort(key=lambda p: str(p.get("title") or ""))
+        return [{**r, "created_at": str(r.get("created_at") or ""),
+                 "updated_at": str(r.get("updated_at") or "")} for r in rows]
+
+    def wiki_page(self, cid: str, page_id: str) -> Optional[Dict]:
+        if self.store is not None:
+            row = self.store.get_wiki_page(cid, page_id)
+        else:
+            row = next((dict(p) for p in self._mem.setdefault("wiki_pages", [])
+                        if p.get("collection_id") == cid
+                        and p.get("id") == page_id), None)
+        if row is None:
+            return None
+        row["created_at"] = str(row.get("created_at") or "")
+        row["updated_at"] = str(row.get("updated_at") or "")
+        return row
+
+    def wiki_page_by_slug(self, cid: str, slug: str) -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.wiki_page_by_slug(cid, slug)
+        return next((dict(p) for p in self._mem.setdefault("wiki_pages", [])
+                     if p.get("collection_id") == cid
+                     and p.get("slug") == slug), None)
+
+    def replace_wiki_pages(self, cid: str, pages: List[Dict],
+                           links: List[Dict]) -> List[Dict]:
+        """替换未编辑页面；手动编辑过的同 slug 页面保留。"""
+        if self.store is not None:
+            self.store.replace_wiki_pages(cid, pages, links)
+            return self.wiki_pages(cid)
+        old = [p for p in self._mem.setdefault("wiki_pages", [])
+               if p.get("collection_id") == cid]
+        edited_slugs = {p.get("slug") for p in old if p.get("edited")}
+        incoming = [p for p in pages if p.get("slug") not in edited_slugs]
+        incoming_slugs = {p.get("slug") for p in incoming}
+        kept = [p for p in old if p.get("edited")]
+        self._mem["wiki_pages"] = [p for p in self._mem["wiki_pages"]
+                                   if p.get("collection_id") != cid] + kept
+        for p in incoming:
+            exist = next((x for x in self._mem["wiki_pages"]
+                          if x.get("collection_id") == cid
+                          and x.get("slug") == p.get("slug")), None)
+            row = {
+                "id": (exist or {}).get("id") or p["id"],
+                "collection_id": cid, "slug": p["slug"], "title": p["title"],
+                "summary": p.get("summary") or "", "body": p.get("body") or "",
+                "aliases": list(p.get("aliases") or []),
+                "source_doc_ids": list(p.get("source_doc_ids") or []),
+                "source_chunk_ids": list(p.get("source_chunk_ids") or []),
+                "generated": True, "edited": False,
+                "revision": int((exist or {}).get("revision") or 0),
+                "created_at": (exist or {}).get("created_at") or _now(),
+                "updated_at": _now(),
+            }
+            if exist is not None:
+                exist.update(row)
+            else:
+                self._mem["wiki_pages"].append(row)
+        # 没被这次生成覆盖的旧生成页删掉（已在上面过滤）
+        self._mem["wiki_pages"] = [
+            p for p in self._mem["wiki_pages"]
+            if p.get("collection_id") != cid
+            or p.get("edited") or p.get("slug") in incoming_slugs]
+        self._mem["wiki_links"] = [
+            e for e in self._mem.setdefault("wiki_links", [])
+            if e.get("collection_id") != cid]
+        for e in links:
+            if e.get("from") and e.get("to") and e["from"] != e["to"]:
+                self._mem["wiki_links"].append({
+                    "collection_id": cid, "from_page": e["from"],
+                    "to_page": e["to"], "kind": e.get("kind") or "related",
+                    "weight": int(e.get("weight") or 1)})
+        self._save_state()
+        return self.wiki_pages(cid)
+
+    def wiki_links(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            return self.store.list_wiki_links(cid)
+        return [dict(e) for e in self._mem.setdefault("wiki_links", [])
+                if e.get("collection_id") == cid]
+
+    def replace_wiki_links(self, cid: str, links: List[Dict]) -> None:
+        if self.store is not None:
+            self.store.replace_wiki_links(cid, links)
+            return
+        self._mem["wiki_links"] = [
+            e for e in self._mem.setdefault("wiki_links", [])
+            if e.get("collection_id") != cid]
+        for e in links:
+            if e.get("from") and e.get("to") and e["from"] != e["to"]:
+                self._mem["wiki_links"].append({
+                    "collection_id": cid, "from_page": e["from"],
+                    "to_page": e["to"], "kind": e.get("kind") or "related",
+                    "weight": int(e.get("weight") or 1)})
+        self._save_state()
+
+    def update_wiki_page(self, cid: str, page_id: str, title: str,
+                         summary: str, body: str,
+                         editor: str = "") -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.update_wiki_page(cid, page_id, title, summary,
+                                               body, editor)
+        row = next((p for p in self._mem.setdefault("wiki_pages", [])
+                    if p.get("collection_id") == cid
+                    and p.get("id") == page_id), None)
+        if row is None:
+            return None
+        self._mem.setdefault("wiki_versions", []).append({
+            "id": len(self._mem["wiki_versions"]) + 1,
+            "page_id": page_id, "collection_id": cid,
+            "title": row.get("title") or "", "summary": row.get("summary") or "",
+            "body": row.get("body") or "", "editor": editor or "",
+            "created_at": _now()})
+        row.update({"title": title, "summary": summary, "body": body,
+                    "edited": True, "revision": int(row.get("revision") or 0) + 1,
+                    "updated_at": _now()})
+        self._save_state()
+        return self.wiki_page(cid, page_id)
+
+    def wiki_versions(self, cid: str, page_id: str,
+                      limit: int = 20) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_wiki_versions(cid, page_id, limit)
+        else:
+            rows = [r for r in reversed(self._mem.setdefault("wiki_versions", []))
+                    if r.get("page_id") == page_id
+                    and r.get("collection_id") == cid][:limit]
+        return [{**r, "created_at": str(r.get("created_at") or "")}
+                for r in rows]
+
+    def restore_wiki_version(self, cid: str, page_id: str, version_id: int,
+                             editor: str = "") -> Optional[Dict]:
+        if self.store is not None:
+            return self.store.restore_wiki_version(cid, page_id, version_id,
+                                                   editor)
+        row = next((p for p in self._mem.setdefault("wiki_pages", [])
+                    if p.get("collection_id") == cid
+                    and p.get("id") == page_id), None)
+        old = next((v for v in self._mem.setdefault("wiki_versions", [])
+                    if int(v.get("id") or 0) == int(version_id)
+                    and v.get("page_id") == page_id), None)
+        if row is None or old is None:
+            return None
+        self._mem["wiki_versions"].append({
+            "id": len(self._mem["wiki_versions"]) + 1,
+            "page_id": page_id, "collection_id": cid,
+            "title": row.get("title") or "", "summary": row.get("summary") or "",
+            "body": row.get("body") or "", "editor": editor or "",
+            "created_at": _now()})
+        row.update({"title": old.get("title") or "",
+                    "summary": old.get("summary") or "",
+                    "body": old.get("body") or "", "edited": True,
+                    "revision": int(row.get("revision") or 0) + 1,
+                    "updated_at": _now()})
+        self._save_state()
+        return self.wiki_page(cid, page_id)
+
+    def delete_wiki_page(self, cid: str, page_id: str) -> bool:
+        if self.store is not None:
+            return self.store.delete_wiki_page(cid, page_id)
+        before = len(self._mem.setdefault("wiki_pages", []))
+        self._mem["wiki_pages"] = [
+            p for p in self._mem["wiki_pages"]
+            if not (p.get("collection_id") == cid and p.get("id") == page_id)]
+        ok = len(self._mem["wiki_pages"]) != before
+        if ok:
+            self._save_state()
+        return ok
+
+    def rebuild_wiki_links(self, cid: str) -> List[Dict]:
+        """按页面正文里的 [[标题]] 和共享来源文档，重建 Wiki 关系边。"""
+        pages = self.wiki_pages(cid)
+        by_title = {str(p.get("title") or "").strip().lower(): p for p in pages}
+        by_id = {p.get("id"): p for p in pages}
+        edges = []
+        seen = set()
+
+        def add(a, b, kind, weight=1):
+            if not a or not b or a == b:
+                return
+            key = (a, b, kind)
+            if key in seen:
+                return
+            seen.add(key)
+            edges.append({"from": a, "to": b, "kind": kind, "weight": weight})
+
+        for p in pages:
+            body = p.get("body") or ""
+            for name in re.findall(r"\[\[([^\]\n|]+)(?:\|[^\]\n]+)?\]\]", body):
+                target = by_title.get(name.strip().lower())
+                if target is not None:
+                    add(p["id"], target["id"], "link")
+        # 共享来源文档：两页至少共用一篇资料就连一条弱关系
+        for i, a in enumerate(pages):
+            sa = set(a.get("source_doc_ids") or [])
+            if not sa:
+                continue
+            for b in pages[i + 1:]:
+                shared = sa & set(b.get("source_doc_ids") or [])
+                if shared:
+                    add(a["id"], b["id"], "shared", len(shared))
+                    add(b["id"], a["id"], "shared", len(shared))
+        # 每个页面最多留 6 条出边，图不至于糊成一团
+        out = {}
+        for e in edges:
+            bucket = out.setdefault(e["from"], [])
+            if len(bucket) < 6:
+                bucket.append(e)
+        final = [e for bucket in out.values() for e in bucket]
+        self.replace_wiki_links(cid, final)
+        return final
 
     # ---------- 原始文件与持久化进料任务 ----------
 

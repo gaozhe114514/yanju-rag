@@ -201,6 +201,161 @@ class Store:
             conn.commit()
             return int(cur.rowcount or 0)
 
+    # ---------- 自动 Wiki（v0.84） ----------
+
+    def list_wiki_pages(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, slug, title, summary, body, aliases, source_doc_ids,"
+                " source_chunk_ids, generated, edited, revision,"
+                " created_at, updated_at FROM wiki_pages"
+                " WHERE collection_id = %s ORDER BY title", (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_wiki_page(self, cid: str, page_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, collection_id, slug, title, summary, body, aliases,"
+                " source_doc_ids, source_chunk_ids, generated, edited, revision,"
+                " created_at, updated_at FROM wiki_pages"
+                " WHERE collection_id = %s AND id = %s",
+                (cid, page_id)).fetchone()
+        return dict(row) if row else None
+
+    def wiki_page_by_slug(self, cid: str, slug: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, title FROM wiki_pages"
+                " WHERE collection_id = %s AND slug = %s", (cid, slug)).fetchone()
+        return dict(row) if row else None
+
+    def replace_wiki_pages(self, cid: str, pages: Sequence[Dict],
+                           links: Sequence[Dict]) -> None:
+        """用新生成的一批页面替换掉未编辑过的旧页面；手动编辑的保留。"""
+        slugs = [p["slug"] for p in pages if p.get("slug")]
+        with self.connect() as conn:
+            if slugs:
+                conn.execute(
+                    "DELETE FROM wiki_pages WHERE collection_id = %s"
+                    " AND edited = false AND NOT (slug = ANY(%s))",
+                    (cid, slugs))
+            else:
+                conn.execute(
+                    "DELETE FROM wiki_pages WHERE collection_id = %s"
+                    " AND edited = false", (cid,))
+            for p in pages:
+                conn.execute(
+                    "INSERT INTO wiki_pages (id, collection_id, slug, title,"
+                    " summary, body, aliases, source_doc_ids, source_chunk_ids,"
+                    " generated, edited, revision)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true, false, 0)"
+                    " ON CONFLICT (collection_id, slug) DO UPDATE SET"
+                    " title = EXCLUDED.title, summary = EXCLUDED.summary,"
+                    " body = EXCLUDED.body, aliases = EXCLUDED.aliases,"
+                    " source_doc_ids = EXCLUDED.source_doc_ids,"
+                    " source_chunk_ids = EXCLUDED.source_chunk_ids,"
+                    " generated = true, updated_at = now()"
+                    " WHERE wiki_pages.edited = false",
+                    (p["id"], cid, p["slug"], p["title"], p.get("summary") or "",
+                     p.get("body") or "", list(p.get("aliases") or []),
+                     list(p.get("source_doc_ids") or []),
+                     list(p.get("source_chunk_ids") or [])))
+            self._replace_wiki_links(conn, cid, links)
+            conn.commit()
+
+    def _replace_wiki_links(self, conn, cid: str,
+                            links: Sequence[Dict]) -> None:
+        conn.execute("DELETE FROM wiki_links WHERE collection_id = %s", (cid,))
+        for e in links:
+            a, b = e.get("from") or "", e.get("to") or ""
+            if not a or not b or a == b:
+                continue
+            conn.execute(
+                "INSERT INTO wiki_links (collection_id, from_page, to_page,"
+                " kind, weight) VALUES (%s, %s, %s, %s, %s)"
+                " ON CONFLICT DO NOTHING",
+                (cid, a, b, e.get("kind") or "related", int(e.get("weight") or 1)))
+
+    def replace_wiki_links(self, cid: str, links: Sequence[Dict]) -> None:
+        with self.connect() as conn:
+            self._replace_wiki_links(conn, cid, links)
+            conn.commit()
+
+    def list_wiki_links(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT from_page, to_page, kind, weight FROM wiki_links"
+                " WHERE collection_id = %s", (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_wiki_page(self, cid: str, page_id: str, title: str,
+                         summary: str, body: str, editor: str = "") -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, title, summary, body FROM wiki_pages"
+                " WHERE collection_id = %s AND id = %s",
+                (cid, page_id)).fetchone()
+            if row is None:
+                return None
+            conn.execute(
+                "INSERT INTO wiki_page_versions (page_id, collection_id, title,"
+                " summary, body, editor) VALUES (%s, %s, %s, %s, %s, %s)",
+                (page_id, cid, row["title"], row["summary"], row["body"],
+                 editor or ""))
+            conn.execute(
+                "UPDATE wiki_pages SET title = %s, summary = %s, body = %s,"
+                " edited = true, revision = revision + 1, updated_at = now()"
+                " WHERE collection_id = %s AND id = %s",
+                (title, summary, body, cid, page_id))
+            conn.commit()
+        return self.get_wiki_page(cid, page_id)
+
+    def list_wiki_versions(self, cid: str, page_id: str,
+                           limit: int = 20) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, title, summary, body, editor, created_at"
+                " FROM wiki_page_versions WHERE page_id = %s"
+                " AND collection_id = %s ORDER BY id DESC LIMIT %s",
+                (page_id, cid, max(1, min(int(limit), 100)))).fetchall()
+        return [dict(r) for r in rows]
+
+    def restore_wiki_version(self, cid: str, page_id: str, version_id: int,
+                             editor: str = "") -> Optional[Dict]:
+        with self.connect() as conn:
+            old = conn.execute(
+                "SELECT title, summary, body FROM wiki_page_versions"
+                " WHERE id = %s AND page_id = %s AND collection_id = %s",
+                (int(version_id), page_id, cid)).fetchone()
+            if old is None:
+                return None
+            cur = conn.execute(
+                "SELECT title, summary, body FROM wiki_pages"
+                " WHERE collection_id = %s AND id = %s",
+                (cid, page_id)).fetchone()
+            if cur is None:
+                return None
+            conn.execute(
+                "INSERT INTO wiki_page_versions (page_id, collection_id, title,"
+                " summary, body, editor) VALUES (%s, %s, %s, %s, %s, %s)",
+                (page_id, cid, cur["title"], cur["summary"], cur["body"],
+                 editor or ""))
+            conn.execute(
+                "UPDATE wiki_pages SET title = %s, summary = %s, body = %s,"
+                " edited = true, revision = revision + 1, updated_at = now()"
+                " WHERE collection_id = %s AND id = %s",
+                (old["title"], old["summary"], old["body"], cid, page_id))
+            conn.commit()
+        return self.get_wiki_page(cid, page_id)
+
+    def delete_wiki_page(self, cid: str, page_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM wiki_pages WHERE collection_id = %s AND id = %s",
+                (cid, page_id))
+            conn.commit()
+            return cur.rowcount > 0
+
     def add_audit(self, cid: str, actor_id: str = "", actor_name: str = "",
                   action: str = "", target_type: str = "", target_id: str = "",
                   detail: str = "") -> None:

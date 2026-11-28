@@ -94,6 +94,52 @@ CREATE TABLE IF NOT EXISTS ingest_jobs (
 CREATE INDEX IF NOT EXISTS ingest_jobs_status_idx
     ON ingest_jobs (status, created_at);
 
+-- v0.84：自动 Wiki。从资料里抽出概念 / 人物 / 流程，生成带来源的页面；
+-- 手动编辑过的页面在重新生成时保留，编辑历史进 wiki_page_versions。
+CREATE TABLE IF NOT EXISTS wiki_pages (
+    id               text PRIMARY KEY,
+    collection_id    text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    slug             text NOT NULL,
+    title            text NOT NULL,
+    summary          text NOT NULL DEFAULT '',
+    body             text NOT NULL DEFAULT '',
+    aliases          text[] NOT NULL DEFAULT '{}',
+    source_doc_ids   text[] NOT NULL DEFAULT '{}',
+    source_chunk_ids text[] NOT NULL DEFAULT '{}',
+    generated        boolean NOT NULL DEFAULT true,
+    edited           boolean NOT NULL DEFAULT false,
+    revision         int NOT NULL DEFAULT 0,
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (collection_id, slug)
+);
+
+CREATE INDEX IF NOT EXISTS wiki_pages_coll_idx
+    ON wiki_pages (collection_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS wiki_page_versions (
+    id            bigserial PRIMARY KEY,
+    page_id       text NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+    collection_id text NOT NULL DEFAULT '',
+    title         text NOT NULL DEFAULT '',
+    summary       text NOT NULL DEFAULT '',
+    body          text NOT NULL DEFAULT '',
+    editor        text NOT NULL DEFAULT '',
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS wiki_page_versions_idx
+    ON wiki_page_versions (page_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS wiki_links (
+    collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    from_page     text NOT NULL,
+    to_page       text NOT NULL,
+    kind          text NOT NULL DEFAULT 'related',
+    weight        int NOT NULL DEFAULT 1,
+    PRIMARY KEY (collection_id, from_page, to_page, kind)
+);
+
 CREATE INDEX IF NOT EXISTS documents_collection_idx
     ON documents (collection_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS documents_sha_idx

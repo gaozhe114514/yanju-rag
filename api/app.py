@@ -52,6 +52,7 @@ from answer.stream import sse
 from kb import Library, LibraryError
 from kb.defaults import ensure_default_library
 from kb.parsers import ParseError, extension_of, extract_document
+from kb.wiki import fallback_pages, generate_wiki
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.vector import BgeEmbedder
 
@@ -151,6 +152,12 @@ class FolderRenameRequest(BaseModel):
 
 class DocumentMoveRequest(BaseModel):
     folder: str = Field("", max_length=120)
+
+
+class WikiEditRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=40)
+    summary: str = Field("", max_length=200)
+    body: str = Field(..., min_length=1, max_length=20000)
 
 
 class CollectionMemberRequest(BaseModel):
@@ -326,6 +333,26 @@ class _EmptySearcher:
         return []
 
 
+def _seed_default_wiki(lib, cid: str) -> None:
+    """默认库第一次启动时按文档建一套只读 Wiki，匿名访客也能看到效果。"""
+    if not cid:
+        return
+    try:
+        if lib.wiki_pages(cid):
+            return
+        docs = [lib.get_document(cid, d["id"])
+                for d in lib.list_documents(cid)
+                if d.get("status") == "completed"]
+        docs = [d for d in docs if d]
+        pages = fallback_pages(cid, docs, lib.collection_chunks(cid))
+        if pages:
+            lib.replace_wiki_pages(cid, pages, [])
+            lib.rebuild_wiki_links(cid)
+            print("默认知识库 Wiki：%d 页" % len(pages))
+    except Exception as e:
+        print("默认知识库 Wiki 未生成：%s" % e)
+
+
 def _load() -> None:
     mode = os.environ.get("KB_MODE", "hybrid")
     # CPU 上精排 10 个候选约 7 秒/次；30 个要约 27 秒，R@1 只差 0 点。
@@ -380,6 +407,7 @@ def _load() -> None:
     # 默认资料范围：内置「默认知识库」；示例资料随代码走，换真实资料时直接改库。
     default_coll = ensure_default_library(library)
     default_id = (default_coll or {}).get("id", "")
+    _seed_default_wiki(library, default_id)
     default_searcher = library.searcher(default_id) if default_id else None
     default_pipeline = AnswerPipeline(
         default_searcher if default_searcher is not None else _EmptySearcher(),
@@ -1938,6 +1966,167 @@ def collection_audit(cid: str, request: Request, limit: int = 50,
     _guard_collection(cid, request, write=False)
     items = _library().list_audit(cid, limit=limit)
     return {"items": items, "total": len(items)}
+
+
+def _wiki_sources(cid: str, page: Dict) -> List[Dict]:
+    """把页面引用的片段 id 还原成可读来源；找不到的片段不显示。"""
+    lib = _library()
+    chunks = {c["id"]: c for c in lib.collection_chunks(cid)}
+    titles = {d["id"]: d.get("title") or "未命名资料"
+              for d in lib.list_documents(cid)}
+    out = []
+    for chunk_id in page.get("source_chunk_ids") or []:
+        c = chunks.get(chunk_id)
+        if c is None:
+            continue
+        out.append({
+            "chunk_id": chunk_id,
+            "document_id": c.get("document_id") or "",
+            "document_title": titles.get(c.get("document_id") or "", "资料"),
+            "text": c.get("text") or "",
+            "start": int(c.get("start") or 0),
+            "end": int(c.get("end") or 0),
+        })
+    return out
+
+
+def _wiki_payload(cid: str, page: Dict) -> Dict:
+    out = dict(page)
+    out["sources"] = _wiki_sources(cid, page)
+    out["source_count"] = len(out["sources"])
+    return out
+
+
+@app.get("/collections/{cid}/wiki")
+def wiki_list(cid: str, request: Request,
+              _: None = Depends(enforce_content)) -> dict:
+    user, coll, role = _guard_collection(cid, request, write=False)
+    pages = _library().wiki_pages(cid)
+    items = []
+    for p in pages:
+        items.append({
+            "id": p["id"], "slug": p.get("slug") or "",
+            "title": p.get("title") or "", "summary": p.get("summary") or "",
+            "edited": bool(p.get("edited")), "revision": int(p.get("revision") or 0),
+            "source_count": len(p.get("source_chunk_ids") or []),
+            "updated_at": p.get("updated_at") or "",
+        })
+    return {"items": items, "total": len(items),
+            "can_write": can_write(user, coll, role),
+            "generated": bool(items)}
+
+
+@app.post("/collections/{cid}/wiki/generate")
+def wiki_generate(cid: str, request: Request,
+                  _: None = Depends(enforce_guard)) -> dict:
+    """从已完成的资料生成 Wiki；模型不可用时按文档建页，保证离线能演示。"""
+    user, coll, _role = _guard_collection(cid, request, write=True)
+    lib = _library()
+    docs = []
+    for row in lib.list_documents(cid):
+        if row.get("status") != "completed":
+            continue
+        full = lib.get_document(cid, row["id"])
+        if full:
+            docs.append(full)
+    chunks = lib.collection_chunks(cid)
+    if not docs or not chunks:
+        raise HTTPException(status_code=400,
+                            detail="这个库还没有可整理的资料，先上传并等解析完成")
+    pages, source = generate_wiki(_state.get("provider_impl"), cid, docs, chunks)
+    if not pages:
+        raise HTTPException(status_code=422,
+                            detail="没有整理出可用的页面；检查资料是否有足够正文")
+    saved = lib.replace_wiki_pages(cid, pages, [])
+    links = lib.rebuild_wiki_links(cid)
+    _audit(cid, user, "wiki.generate", "collection", cid,
+           "生成 %d 页，%d 条关系（%s）" % (len(saved), len(links), source))
+    return {"pages": len(saved), "links": len(links), "source": source}
+
+
+@app.get("/collections/{cid}/wiki/graph")
+def wiki_graph(cid: str, request: Request,
+               _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    lib = _library()
+    pages = lib.wiki_pages(cid)
+    nodes = [{"id": p["id"], "title": p.get("title") or "",
+              "summary": p.get("summary") or "", "edited": bool(p.get("edited"))}
+             for p in pages]
+    links = lib.wiki_links(cid)
+    valid = {n["id"] for n in nodes}
+    edges = [{"from": e.get("from_page") or "", "to": e.get("to_page") or "",
+              "kind": e.get("kind") or "related",
+              "weight": int(e.get("weight") or 1)}
+             for e in links
+             if (e.get("from_page") in valid) and (e.get("to_page") in valid)]
+    return {"nodes": nodes, "edges": edges, "total": len(nodes)}
+
+
+@app.get("/collections/{cid}/wiki/{page_id}")
+def wiki_detail(cid: str, page_id: str, request: Request,
+                _: None = Depends(enforce_content)) -> dict:
+    user, coll, role = _guard_collection(cid, request, write=False)
+    page = _library().wiki_page(cid, page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Wiki 页面不存在")
+    out = _wiki_payload(cid, page)
+    out["can_write"] = can_write(user, coll, role)
+    return out
+
+
+@app.patch("/collections/{cid}/wiki/{page_id}")
+def wiki_update(cid: str, page_id: str, req: WikiEditRequest, request: Request,
+                _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    editor = str((user or {}).get("username") or "")
+    page = _library().update_wiki_page(
+        cid, page_id, req.title.strip(), req.summary.strip(), req.body,
+        editor=editor)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Wiki 页面不存在")
+    _library().rebuild_wiki_links(cid)
+    _audit(cid, user, "wiki.edit", "wiki", page_id, page.get("title") or "")
+    out = _wiki_payload(cid, page)
+    out["can_write"] = True
+    return out
+
+
+@app.delete("/collections/{cid}/wiki/{page_id}")
+def wiki_delete(cid: str, page_id: str, request: Request,
+                _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    ok = _library().delete_wiki_page(cid, page_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Wiki 页面不存在")
+    _library().rebuild_wiki_links(cid)
+    _audit(cid, user, "wiki.delete", "wiki", page_id)
+    return {"ok": True, "id": page_id}
+
+
+@app.get("/collections/{cid}/wiki/{page_id}/versions")
+def wiki_versions(cid: str, page_id: str, request: Request, limit: int = 20,
+                  _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    items = _library().wiki_versions(cid, page_id, limit=limit)
+    return {"items": items, "total": len(items)}
+
+
+@app.post("/collections/{cid}/wiki/{page_id}/versions/{version_id}/restore")
+def wiki_restore(cid: str, page_id: str, version_id: int, request: Request,
+                 _: None = Depends(enforce_content)) -> dict:
+    user, _coll, _role = _guard_collection(cid, request, write=True)
+    editor = str((user or {}).get("username") or "")
+    page = _library().restore_wiki_version(cid, page_id, version_id,
+                                           editor=editor)
+    if page is None:
+        raise HTTPException(status_code=404, detail="历史版本不存在")
+    _library().rebuild_wiki_links(cid)
+    _audit(cid, user, "wiki.restore", "wiki", page_id,
+           "恢复到版本 %s" % version_id)
+    out = _wiki_payload(cid, page)
+    out["can_write"] = True
+    return out
 
 
 @app.delete("/collections/{cid}")

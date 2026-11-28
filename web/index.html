@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.83.0">
+  <meta name="app-version" content="0.84.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1566,6 +1566,78 @@
     .kb-act-main { flex: 1; min-width: 0; }
     .kb-act-title { color: var(--ink); font-size: 12.5px; line-height: 1.5; }
     .kb-act-meta { margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+    .kb-wiki-bar {
+      display: flex; align-items: center; gap: 8px; margin: 4px 0 12px;
+    }
+    .kb-wiki-meta { flex: 1; min-width: 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-wiki {
+      display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 14px;
+      min-height: 360px;
+    }
+    .kb-wiki-list {
+      display: flex; flex-direction: column; gap: 3px; padding-right: 4px;
+      border-right: 1px solid var(--line); overflow-y: auto; max-height: 620px;
+    }
+    .kb-wiki-item {
+      display: block; width: 100%; padding: 8px 9px; border: 0; border-radius: 9px;
+      background: transparent; color: var(--ink-2); text-align: left; cursor: pointer;
+    }
+    .kb-wiki-item:hover { background: var(--muted-surface); }
+    .kb-wiki-item.active { background: var(--wash); color: var(--ink); }
+    .kb-wiki-item-title {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 12.5px; font-weight: 600; line-height: 1.4;
+    }
+    .kb-wiki-item-title span:first-child {
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kb-wiki-item-summary {
+      margin-top: 3px; color: var(--muted); font-size: 10.5px; line-height: 1.5;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .kb-wiki-main {
+      min-width: 0; padding: 16px 18px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--card); overflow-y: auto; max-height: 620px;
+    }
+    .kb-wiki-head { display: flex; align-items: flex-start; gap: 10px; }
+    .kb-wiki-head-main { flex: 1; min-width: 0; }
+    .kb-wiki-title { margin: 0; color: var(--ink); font: 600 19px/1.35 var(--display); }
+    .kb-wiki-sub { margin: 4px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-wiki-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+    .kb-wiki-body {
+      margin-top: 14px; color: var(--ink-2); font-size: 13.5px; line-height: 1.85;
+      word-break: break-word;
+    }
+    .kb-wiki-body h1, .kb-wiki-body h2, .kb-wiki-body h3 {
+      color: var(--ink); font-family: var(--sans); line-height: 1.45;
+    }
+    .kb-wiki-body h1 { font-size: 17px; }
+    .kb-wiki-body h2 { font-size: 15px; margin: 18px 0 7px; }
+    .kb-wiki-body h3 { font-size: 13.5px; margin: 14px 0 6px; }
+    .kb-wiki-body p { margin: 0 0 10px; }
+    .kb-wiki-body ul, .kb-wiki-body ol { margin: 0 0 10px; padding-left: 20px; }
+    .kb-wiki-body .md-wiki { color: var(--brand); border-bottom: 1px dashed var(--brand); text-decoration: none; }
+    .kb-wiki-sources { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .kb-wiki-sources-title { color: var(--ink-3); font-size: 11.5px; font-weight: 600; margin-bottom: 7px; }
+    .kb-wiki-source {
+      padding: 8px 10px; margin-bottom: 6px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--surface-2); cursor: pointer;
+    }
+    .kb-wiki-source:hover { border-color: var(--line-strong); }
+    .kb-wiki-source-head { color: var(--ink); font-size: 11.5px; font-weight: 600; }
+    .kb-wiki-source-text {
+      margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.6;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .kb-wiki-graph { width: 100%; min-height: 420px; }
+    .kb-wiki-graph svg { width: 100%; height: auto; display: block; }
+    .kg-edge { stroke: var(--line-strong); stroke-width: 1.2; }
+    .kg-edge.link { stroke: var(--brand); stroke-dasharray: 4 3; }
+    .kg-node circle { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 1.4; cursor: pointer; }
+    .kg-node.edited circle { fill: var(--wash); }
+    .kg-node text { fill: var(--ink-2); font-size: 12px; font-family: var(--sans); pointer-events: none; }
+    .kg-node.active circle { fill: var(--brand); }
     .kb-settings-form {
       display: flex; flex-direction: column; gap: 10px;
       margin: 14px 0 6px; padding: 14px; border: 1px solid var(--line);
@@ -1623,9 +1695,19 @@
       .kb-list { flex-direction: row; overflow-x: auto; padding-bottom: 3px; }
       .kb-rail-group { display: none; }
       .kb-item { flex: 0 0 168px; width: 168px; min-width: 168px; }
-      .kb-tabs { margin-top: 10px; }
+      .kb-tabs { margin-top: 10px; overflow-x: auto; }
       .kb-doc-tools { flex-wrap: wrap; }
       .kb-doc-tools input { flex-basis: 100%; }
+      .kb-wiki { grid-template-columns: 1fr; }
+      .kb-wiki-list {
+        max-height: 188px; flex-direction: row; overflow-x: auto;
+        border-right: 0; border-bottom: 1px solid var(--line);
+        padding: 0 0 6px;
+      }
+      .kb-wiki-item { flex: 0 0 176px; width: 176px; }
+      .kb-wiki-main { max-height: none; padding: 14px; }
+      .kb-wiki-bar { flex-wrap: wrap; }
+      .kb-wiki-meta { flex-basis: 100%; }
     }
 
     /* ---------- 弹层 ---------- */
@@ -4358,6 +4440,7 @@
         <div class="kb-tabs" id="kb-tabs">
           <button type="button" data-kb-tab="docs" class="active">资料</button>
           <button type="button" data-kb-tab="search">检索测试</button>
+          <button type="button" data-kb-tab="wiki">Wiki</button>
           <button type="button" data-kb-tab="activity">动态</button>
           <button type="button" data-kb-tab="settings">设置</button>
         </div>
@@ -4420,6 +4503,17 @@
           </div>
           <div class="kb-test-hint">只做检索，不生成答案；分数、片段和出处都在这里，点片段可看原文。</div>
           <div class="stack" id="kb-search-results"></div>
+        </div>
+        <div class="kb-pane" data-kb-pane="wiki" hidden>
+          <div class="kb-wiki-bar">
+            <div class="kb-wiki-meta" id="kb-wiki-meta">从资料里整理概念、流程和制度，生成带来源的页面。</div>
+            <button type="button" class="row-btn" id="kb-wiki-graph">关系图</button>
+            <button type="button" class="primary" id="kb-wiki-generate">生成 Wiki</button>
+          </div>
+          <div class="kb-wiki" id="kb-wiki">
+            <aside class="kb-wiki-list" id="kb-wiki-list"></aside>
+            <div class="kb-wiki-main" id="kb-wiki-main"></div>
+          </div>
         </div>
         <div class="kb-pane" data-kb-pane="activity" hidden>
           <div class="kb-activity-head">
@@ -4726,6 +4820,10 @@
     kbFolder: '',
     kbFolderOpen: {},
     kbCurrent: null,
+    wikiPages: [],
+    wikiPageId: '',
+    wikiPage: null,
+    wikiView: 'page',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
@@ -6679,13 +6777,14 @@
   }
 
   function setKbTab(tab) {
-    if (['docs', 'search', 'activity', 'settings'].indexOf(tab) < 0) tab = 'docs';
+    if (['docs', 'search', 'wiki', 'activity', 'settings'].indexOf(tab) < 0) tab = 'docs';
     state.kbTab = tab;
     $$('#kb-tabs [data-kb-tab]').forEach(b =>
       b.classList.toggle('active', b.dataset.kbTab === tab));
     $$('.kb-pane').forEach(p =>
       p.hidden = p.dataset.kbPane !== tab);
     if (tab === 'activity' && state.kbCurrent) loadKbActivity(state.kbCurrent);
+    if (tab === 'wiki' && state.kbCurrent) loadKbWiki(state.kbCurrent);
   }
 
   /* ---------- 文件夹树 ---------- */
@@ -6948,6 +7047,380 @@
       : (targetType === 'chunk' ? '片段'
         : (targetType === 'collection' ? '知识库' : '资料'));
     return {label: pair[0], icon: pair[1], kind};
+  }
+
+  /* ---------- 自动 Wiki ---------- */
+  function wikiEmpty(c, message) {
+    const main = $('#kb-wiki-main');
+    if (!main) return;
+    const box = el('div', 'empty-panel', message);
+    main.replaceChildren(box);
+    if (c && c.can_write) {
+      const btn = el('button', 'primary', '生成 Wiki');
+      btn.type = 'button';
+      btn.style.marginTop = '10px';
+      btn.addEventListener('click', () => generateKbWiki(c));
+      main.appendChild(btn);
+    }
+  }
+
+  function loadKbWiki(c) {
+    const list = $('#kb-wiki-list');
+    const main = $('#kb-wiki-main');
+    if (!list || !main || !c) return;
+    list.replaceChildren(el('div', 'chunk-note', '正在读取 Wiki…'));
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki')
+      .then(out => {
+        state.wikiPages = (out && out.items) || [];
+        const meta = $('#kb-wiki-meta');
+        if (meta) {
+          meta.textContent = state.wikiPages.length
+            ? '共 ' + state.wikiPages.length + ' 页，来源都来自本库资料；页面可直接编辑。'
+            : '从资料里整理概念、流程和制度，生成带来源的页面。';
+        }
+        const gen = $('#kb-wiki-generate');
+        if (gen) gen.hidden = !c.can_write;
+        renderWikiList(c);
+        if (!state.wikiPages.length) {
+          state.wikiPage = null;
+          state.wikiPageId = '';
+          state.wikiView = 'page';
+          wikiEmpty(c, c.can_write
+            ? '这个库还没有 Wiki。点「生成 Wiki」，会从已完成的资料里整理页面。'
+            : '这个库还没有 Wiki。内置库只读，登录后在自己的库里生成。');
+          return;
+        }
+        if (state.wikiView === 'graph') {
+          renderWikiGraph(c);
+          return;
+        }
+        const keep = state.wikiPages.some(p => p.id === state.wikiPageId)
+          ? state.wikiPageId : state.wikiPages[0].id;
+        selectWikiPage(c, keep);
+      })
+      .catch(e => {
+        list.replaceChildren();
+        wikiEmpty(c, '读取 Wiki 失败：' + e.message);
+      });
+  }
+
+  function renderWikiList(c) {
+    const list = $('#kb-wiki-list');
+    if (!list) return;
+    list.replaceChildren();
+    if (!state.wikiPages.length) {
+      list.appendChild(el('div', 'kb-rail-empty', '还没有页面。'));
+      return;
+    }
+    state.wikiPages.forEach(p => {
+      const item = el('button', 'kb-wiki-item' +
+        (state.wikiPageId === p.id && state.wikiView === 'page' ? ' active' : ''));
+      item.type = 'button';
+      const title = el('div', 'kb-wiki-item-title');
+      title.appendChild(el('span', '', p.title || '未命名页面'));
+      if (p.edited) title.appendChild(el('span', 'kb-item-kind private', '手改'));
+      item.appendChild(title);
+      item.appendChild(el('div', 'kb-wiki-item-summary',
+        p.summary || (p.source_count || 0) + ' 段来源'));
+      item.addEventListener('click', () => {
+        state.wikiView = 'page';
+        selectWikiPage(c, p.id);
+      });
+      list.appendChild(item);
+    });
+  }
+
+  function selectWikiPage(c, pageId) {
+    state.wikiPageId = pageId;
+    state.wikiView = 'page';
+    const toggle = $('#kb-wiki-graph');
+    if (toggle) toggle.textContent = '关系图';
+    renderWikiList(c);
+    const main = $('#kb-wiki-main');
+    if (main) main.replaceChildren(el('div', 'chunk-note', '正在读取页面…'));
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
+      encodeURIComponent(pageId)).then(page => {
+      if (state.wikiPageId !== pageId) return;
+      state.wikiPage = page;
+      renderWikiPage(c, page);
+    }).catch(e => {
+      if (main) main.replaceChildren(el('div', 'empty-panel',
+        '读取页面失败：' + e.message));
+    });
+  }
+
+  function renderWikiPage(c, page) {
+    const main = $('#kb-wiki-main');
+    if (!main) return;
+    main.replaceChildren();
+    const head = el('div', 'kb-wiki-head');
+    const headMain = el('div', 'kb-wiki-head-main');
+    headMain.appendChild(el('h2', 'kb-wiki-title', page.title || '未命名页面'));
+    headMain.appendChild(el('p', 'kb-wiki-sub',
+      (page.edited ? '手动编辑 · 第 ' + (page.revision || 1) + ' 版'
+        : '自动整理') + ' · ' + (page.source_count || 0) + ' 段来源' +
+      (page.aliases && page.aliases.length ? ' · 别名 ' + page.aliases.join(' / ') : '')));
+    head.appendChild(headMain);
+    const actions = el('div', 'kb-wiki-actions');
+    if (page.can_write) {
+      const edit = el('button', 'row-btn', '编辑');
+      edit.addEventListener('click', () => openWikiEditor(c, page));
+      actions.appendChild(edit);
+      const history = el('button', 'row-btn', '历史');
+      history.addEventListener('click', () => openWikiHistory(c, page));
+      actions.appendChild(history);
+      const del = el('button', 'row-btn danger', '删除');
+      del.addEventListener('click', () => deleteKbWikiPage(c, page));
+      actions.appendChild(del);
+    }
+    head.appendChild(actions);
+    main.appendChild(head);
+
+    const body = el('div', 'kb-wiki-body doc-md');
+    body.innerHTML = renderMarkdown(page.body || '', new Map());
+    body.addEventListener('click', e => {
+      const link = e.target.closest('.md-wiki');
+      if (!link) return;
+      e.preventDefault();
+      const title = (link.dataset.wiki || '').trim().toLowerCase();
+      const target = state.wikiPages.find(p =>
+        String(p.title || '').trim().toLowerCase() === title);
+      if (target) selectWikiPage(c, target.id);
+      else toast('还没有这个页面：' + (link.dataset.wiki || ''), 'err');
+    });
+    main.appendChild(body);
+
+    if ((page.sources || []).length) {
+      const box = el('div', 'kb-wiki-sources');
+      box.appendChild(el('div', 'kb-wiki-sources-title',
+        '来源 · ' + page.sources.length + ' 段（点开看原文）'));
+      page.sources.forEach(src => {
+        const card = el('div', 'kb-wiki-source');
+        card.appendChild(el('div', 'kb-wiki-source-head',
+          src.document_title || '资料'));
+        card.appendChild(el('div', 'kb-wiki-source-text', src.text || ''));
+        card.addEventListener('click', () => {
+          openDocPreview(c, {id: src.document_id, title: src.document_title});
+        });
+        box.appendChild(card);
+      });
+      main.appendChild(box);
+    }
+  }
+
+  function openWikiEditor(c, page) {
+    const wrap = el('div', 'form-grid');
+    const title = el('input');
+    title.value = page.title || '';
+    title.maxLength = 40;
+    const summary = el('input');
+    summary.value = page.summary || '';
+    summary.maxLength = 200;
+    const body = el('textarea', 'import-box');
+    body.value = page.body || '';
+    body.style.minHeight = '240px';
+    wrap.appendChild(field('页面标题', title));
+    wrap.appendChild(field('一句话摘要', summary));
+    wrap.appendChild(field('正文（Markdown，提到别的页面用 [[页面标题]]）', body));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '保存');
+    save.addEventListener('click', () => {
+      if (!title.value.trim() || !body.value.trim()) {
+        toast('标题和正文不能为空', 'err');
+        return;
+      }
+      save.disabled = true;
+      api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
+        encodeURIComponent(page.id), {
+        method: 'PATCH',
+        body: {title: title.value.trim(), summary: summary.value.trim(),
+          body: body.value}
+      }).then(out => {
+        closeModal();
+        toast('Wiki 页面已保存，旧版本已留档');
+        state.wikiPage = out;
+        loadKbWiki(c);
+      }).catch(e => {
+        save.disabled = false;
+        toast('保存失败：' + e.message, 'err');
+      });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('编辑 Wiki · ' + (page.title || ''), wrap, {wide: true});
+    title.focus();
+  }
+
+  function openWikiHistory(c, page) {
+    const wrap = el('div', 'stack');
+    const box = el('div', 'stack');
+    wrap.appendChild(el('div', 'chunk-note',
+      '每次保存都会把上一版留在这里；恢复也会生成一个新版本。'));
+    wrap.appendChild(box);
+    openModal('历史版本 · ' + (page.title || ''), wrap, {wide: true});
+    box.appendChild(el('div', 'chunk-note', '正在读取…'));
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
+      encodeURIComponent(page.id) + '/versions').then(out => {
+      box.replaceChildren();
+      const items = (out && out.items) || [];
+      if (!items.length) {
+        box.appendChild(el('div', 'empty-panel', '还没有历史版本；先编辑保存一次。'));
+        return;
+      }
+      items.forEach(v => {
+        const row = el('div', 'kb-act-row');
+        const main = el('div', 'kb-act-main');
+        main.appendChild(el('div', 'kb-act-title', v.title || '无标题'));
+        main.appendChild(el('div', 'kb-act-meta',
+          (v.editor || '未知') + ' · ' + String(v.created_at || '')
+            .replace('T', ' ').replace(/\..*$/, '')));
+        row.appendChild(main);
+        const restore = el('button', 'row-btn', '恢复');
+        restore.addEventListener('click', () => {
+          restore.disabled = true;
+          api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
+            encodeURIComponent(page.id) + '/versions/' +
+            encodeURIComponent(v.id) + '/restore', {method: 'POST'})
+            .then(() => {
+              closeModal();
+              toast('已恢复到这一版');
+              loadKbWiki(c);
+            }).catch(e => {
+              restore.disabled = false;
+              toast('恢复失败：' + e.message, 'err');
+            });
+        });
+        row.appendChild(restore);
+        box.appendChild(row);
+      });
+    }).catch(e => {
+      box.replaceChildren(el('div', 'empty-panel', '读取失败：' + e.message));
+    });
+  }
+
+  function deleteKbWikiPage(c, page) {
+    if (!window.confirm('删除 Wiki 页面「' + (page.title || '') + '」？来源资料不会被删除。')) return;
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
+      encodeURIComponent(page.id), {method: 'DELETE'}).then(() => {
+      toast('已删除 Wiki 页面');
+      state.wikiPageId = '';
+      loadKbWiki(c);
+    }).catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
+  function generateKbWiki(c) {
+    if (!c || !c.can_write) return;
+    const exists = state.wikiPages.length > 0;
+    if (exists && !window.confirm(
+      '重新生成会覆盖自动生成的页面；手动编辑过的页面会保留。继续？')) return;
+    const btn = $('#kb-wiki-generate');
+    if (btn) { btn.disabled = true; btn.textContent = '正在整理…'; }
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/generate', {
+      method: 'POST'
+    }).then(out => {
+      if (btn) { btn.disabled = false; btn.textContent = '生成 Wiki'; }
+      toast('已生成 ' + out.pages + ' 页、' + out.links + ' 条关系' +
+        (String(out.source || '').indexOf('fallback') >= 0 ? '（按文档建页）' : ''));
+      state.wikiPageId = '';
+      loadKbWiki(c);
+    }).catch(e => {
+      if (btn) { btn.disabled = false; btn.textContent = '生成 Wiki'; }
+      toast('生成失败：' + e.message, 'err');
+    });
+  }
+
+  function renderWikiGraph(c) {
+    state.wikiView = 'graph';
+    renderWikiList(c);
+    const main = $('#kb-wiki-main');
+    if (!main) return;
+    main.replaceChildren(el('div', 'chunk-note', '正在画关系图…'));
+    const toggle = $('#kb-wiki-graph');
+    if (toggle) toggle.textContent = '页面视图';
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/graph').then(data => {
+      const nodes = (data.nodes || []).map(n => Object.assign({}, n));
+      const edges = data.edges || [];
+      if (!nodes.length) {
+        main.replaceChildren(el('div', 'empty-panel', '还没有 Wiki 页面。'));
+        return;
+      }
+      const W = 760, H = 440, R = Math.min(190, 85 + nodes.length * 14);
+      nodes.forEach((n, i) => {
+        const a = (Math.PI * 2 * i) / Math.max(1, nodes.length);
+        n.x = W / 2 + Math.cos(a) * R + (Math.random() - 0.5) * 20;
+        n.y = H / 2 + Math.sin(a) * R + (Math.random() - 0.5) * 20;
+      });
+      const byId = {};
+      nodes.forEach(n => { byId[n.id] = n; });
+      const springs = edges.filter(e => byId[e.from] && byId[e.to]);
+      for (let it = 0; it < 160; it += 1) {
+        for (let i = 0; i < nodes.length; i += 1) {
+          for (let j = i + 1; j < nodes.length; j += 1) {
+            const a = nodes[i], b = nodes[j];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            let d2 = dx * dx + dy * dy;
+            if (d2 < 1) { dx = 1; dy = 1; d2 = 2; }
+            const f = 12000 / d2;
+            const d = Math.sqrt(d2);
+            a.x -= dx / d * f; a.y -= dy / d * f;
+            b.x += dx / d * f; b.y += dy / d * f;
+          }
+        }
+        springs.forEach(e => {
+          const a = byId[e.from], b = byId[e.to];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+          const f = (d - 170) * 0.012;
+          a.x += dx / d * f; a.y += dy / d * f;
+          b.x -= dx / d * f; b.y -= dy / d * f;
+        });
+        nodes.forEach(n => {
+          n.x += (W / 2 - n.x) * 0.003;
+          n.y += (H / 2 - n.y) * 0.003;
+          n.x = Math.max(46, Math.min(W - 46, n.x));
+          n.y = Math.max(30, Math.min(H - 34, n.y));
+        });
+      }
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', 'Wiki 关系图');
+      springs.forEach(e => {
+        const a = byId[e.from], b = byId[e.to];
+        const line = document.createElementNS(NS, 'line');
+        line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+        line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+        line.setAttribute('class', 'kg-edge' + (e.kind === 'link' ? ' link' : ''));
+        svg.appendChild(line);
+      });
+      nodes.forEach(n => {
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'kg-node' + (n.edited ? ' edited' : ''));
+        g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+        const circle = document.createElementNS(NS, 'circle');
+        circle.setAttribute('r', '11');
+        g.appendChild(circle);
+        const text = document.createElementNS(NS, 'text');
+        text.setAttribute('x', '0');
+        text.setAttribute('y', '24');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = (n.title || '').slice(0, 16);
+        g.appendChild(text);
+        g.addEventListener('click', () => selectWikiPage(c, n.id));
+        svg.appendChild(g);
+      });
+      const box = el('div', 'kb-wiki-graph');
+      box.appendChild(svg);
+      const legend = el('div', 'kb-test-hint',
+        '实线 = 共用来源资料；虚线 = 正文里写了 [[页面]]；点节点打开页面。');
+      main.replaceChildren(box, legend);
+    }).catch(e => {
+      main.replaceChildren(el('div', 'empty-panel', '读取关系图失败：' + e.message));
+    });
   }
 
   function loadKbActivity(c) {
@@ -7452,6 +7925,10 @@
       state.docStatus = '';
       state.kbFolder = '';
       state.kbFolderOpen = {};
+      state.wikiPages = [];
+      state.wikiPageId = '';
+      state.wikiPage = null;
+      state.wikiView = 'page';
     }
     state.collectionId = id;
     const docQueryInput = $('#lib-doc-q');
@@ -7490,6 +7967,7 @@
       renderKbSettings(c);
       renderKbFolderTree(c);
       if (state.kbTab === 'activity') loadKbActivity(c);
+      if (state.kbTab === 'wiki') loadKbWiki(c);
       if (askBtn) askBtn.hidden = false;
       const canWrite = !!c.can_write;
       const canManage = !!c.can_manage;
@@ -11541,6 +12019,20 @@
     const activityRefresh = $('#kb-activity-refresh');
     if (activityRefresh) activityRefresh.addEventListener('click',
       () => loadKbActivity(state.kbCurrent));
+    const wikiGenerate = $('#kb-wiki-generate');
+    if (wikiGenerate) wikiGenerate.addEventListener('click',
+      () => generateKbWiki(state.kbCurrent));
+    const wikiGraph = $('#kb-wiki-graph');
+    if (wikiGraph) wikiGraph.addEventListener('click', () => {
+      const c = state.kbCurrent;
+      if (!c) return;
+      if (state.wikiView === 'graph') {
+        if (state.wikiPageId) selectWikiPage(c, state.wikiPageId);
+        else if (state.wikiPages.length) selectWikiPage(c, state.wikiPages[0].id);
+      } else {
+        renderWikiGraph(c);
+      }
+    });
     const settingsSave = $('#kb-settings-save');
     if (settingsSave) settingsSave.addEventListener('click', () => {
       const c = state.kbCurrent;
