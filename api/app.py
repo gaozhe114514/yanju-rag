@@ -335,23 +335,29 @@ class _EmptySearcher:
         return []
 
 
-def _seed_default_wiki(lib, cid: str) -> None:
+def _seed_default_wiki(lib, cid: str, provider=None) -> None:
     """默认库第一次启动时按文档建一套只读 Wiki，匿名访客也能看到效果。"""
     if not cid:
         return
     try:
-        if lib.wiki_pages(cid):
-            lib.rebuild_wiki_links(cid)
-            return
         docs = [lib.get_document(cid, d["id"])
                 for d in lib.list_documents(cid)
                 if d.get("status") == "completed"]
         docs = [d for d in docs if d]
-        pages = fallback_pages(cid, docs, lib.collection_chunks(cid))
-        if pages:
-            lib.replace_wiki_pages(cid, pages, [])
-            lib.rebuild_wiki_links(cid)
-            print("默认知识库 Wiki：%d 页" % len(pages))
+        if not lib.wiki_pages(cid):
+            pages = fallback_pages(cid, docs, lib.collection_chunks(cid))
+            if pages:
+                lib.replace_wiki_pages(cid, pages, [])
+                print("默认知识库 Wiki：%d 页" % len(pages))
+        lib.rebuild_wiki_links(cid)
+        # 默认库也补一次实体，匿名访客打开图谱就能看到人物 / 部门 / 概念
+        if not lib.wiki_entities(cid) and provider is not None:
+            entities = generate_entities(
+                provider, cid, docs, lib.collection_chunks(cid),
+                exclude_titles=[p.get("title") or "" for p in lib.wiki_pages(cid)])
+            if entities:
+                lib.replace_wiki_entities(cid, entities)
+                print("默认知识库实体：%d 个" % len(entities))
     except Exception as e:
         print("默认知识库 Wiki 未生成：%s" % e)
 
@@ -410,7 +416,7 @@ def _load() -> None:
     # 默认资料范围：内置「默认知识库」；示例资料随代码走，换真实资料时直接改库。
     default_coll = ensure_default_library(library)
     default_id = (default_coll or {}).get("id", "")
-    _seed_default_wiki(library, default_id)
+    _seed_default_wiki(library, default_id, provider)
     default_searcher = library.searcher(default_id) if default_id else None
     default_pipeline = AnswerPipeline(
         default_searcher if default_searcher is not None else _EmptySearcher(),
