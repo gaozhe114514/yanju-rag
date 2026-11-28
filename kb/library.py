@@ -586,7 +586,8 @@ class Library:
         """按页面正文里的 [[标题]] 和共享来源文档，重建 Wiki 关系边。"""
         pages = self.wiki_pages(cid)
         by_title = {str(p.get("title") or "").strip().lower(): p for p in pages}
-        by_id = {p.get("id"): p for p in pages}
+        doc_folder = {d["id"]: d.get("folder") or ""
+                      for d in self.list_documents(cid)}
         edges = []
         seen = set()
 
@@ -605,6 +606,14 @@ class Library:
                 target = by_title.get(name.strip().lower())
                 if target is not None:
                     add(p["id"], target["id"], "link")
+            # 模型有时直接写页面名而不加 [[ ]]；正文提到别的页面也算一条关系
+            lower = body.lower()
+            for q in pages:
+                if q["id"] == p["id"]:
+                    continue
+                name = str(q.get("title") or "").strip().lower()
+                if len(name) >= 2 and name in lower:
+                    add(p["id"], q["id"], "mention")
         # 共享来源文档：两页至少共用一篇资料就连一条弱关系
         for i, a in enumerate(pages):
             sa = set(a.get("source_doc_ids") or [])
@@ -615,6 +624,18 @@ class Library:
                 if shared:
                     add(a["id"], b["id"], "shared", len(shared))
                     add(b["id"], a["id"], "shared", len(shared))
+        # 同一文件夹下的页面连一条弱关系，默认库也能看出分组
+        for i, a in enumerate(pages):
+            fa = next((doc_folder.get(d) for d in (a.get("source_doc_ids") or [])
+                       if doc_folder.get(d)), "")
+            if not fa:
+                continue
+            for b in pages[i + 1:]:
+                fb = next((doc_folder.get(d) for d in (b.get("source_doc_ids") or [])
+                           if doc_folder.get(d)), "")
+                if fb == fa:
+                    add(a["id"], b["id"], "folder")
+                    add(b["id"], a["id"], "folder")
         # 每个页面最多留 6 条出边，图不至于糊成一团
         out = {}
         for e in edges:

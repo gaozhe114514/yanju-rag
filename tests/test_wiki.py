@@ -76,6 +76,12 @@ class WikiLibraryTest(unittest.TestCase):
         links = self.lib.rebuild_wiki_links(self.cid)
         self.assertTrue(any(e["from"] == a["id"] and e["to"] == b["id"]
                             for e in links))
+        # 不加 [[ ]]、正文直接提到页面名，也要有一条关系
+        self.lib.update_wiki_page(self.cid, a["id"], a["title"], a["summary"],
+                                  "参见 会议室规则", "张三")
+        links = self.lib.rebuild_wiki_links(self.cid)
+        self.assertTrue(any(e["from"] == a["id"] and e["to"] == b["id"]
+                            and e["kind"] == "mention" for e in links))
 
 
 class _FakeProvider:

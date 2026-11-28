@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.84.0">
+  <meta name="app-version" content="0.84.1">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1566,78 +1566,146 @@
     .kb-act-main { flex: 1; min-width: 0; }
     .kb-act-title { color: var(--ink); font-size: 12.5px; line-height: 1.5; }
     .kb-act-meta { margin-top: 2px; color: var(--muted); font-size: 10.5px; }
-    .kb-wiki-bar {
-      display: flex; align-items: center; gap: 8px; margin: 4px 0 12px;
+    .kb-wiki-top {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin: 4px 0 3px;
     }
-    .kb-wiki-meta { flex: 1; min-width: 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-wiki-crumb {
+      flex: 1; min-width: 0; color: var(--muted); font-size: 12px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kb-wiki-crumb b { color: var(--ink); font-weight: 600; }
+    .kb-seg {
+      display: inline-flex; gap: 2px; padding: 2px;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2);
+    }
+    .kb-seg button {
+      padding: 5px 12px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--muted); font-size: 12px;
+    }
+    .kb-seg button.active { background: var(--card); color: var(--ink); font-weight: 600; }
+    .kb-wiki-meta { margin: 0 0 12px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
     .kb-wiki {
-      display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 14px;
-      min-height: 360px;
+      display: grid; grid-template-columns: 238px minmax(0, 1fr);
+      min-height: 520px; border: 1px solid var(--line); border-radius: 14px;
+      background: var(--card); overflow: hidden;
     }
-    .kb-wiki-list {
-      display: flex; flex-direction: column; gap: 3px; padding-right: 4px;
-      border-right: 1px solid var(--line); overflow-y: auto; max-height: 620px;
+    .kb-wiki-side {
+      display: flex; flex-direction: column; min-height: 0; max-height: 680px;
+      border-right: 1px solid var(--line); background: var(--surface-2);
     }
+    .kb-wiki-search { padding: 10px; border-bottom: 1px solid var(--line); }
+    .kb-wiki-search input {
+      width: 100%; height: 32px; padding: 6px 9px; border: 1px solid var(--line);
+      border-radius: 8px; background: var(--card); color: var(--ink); font-size: 12px;
+    }
+    .kb-wiki-list { flex: 1; overflow-y: auto; padding: 8px; }
+    .kb-wiki-root, .kb-wiki-folder {
+      display: flex; align-items: center; gap: 5px; width: 100%;
+      padding: 5px 7px; border: 0; border-radius: 7px; background: transparent;
+      color: var(--ink-3); text-align: left; font-size: 11.5px; font-weight: 600;
+      cursor: pointer;
+    }
+    .kb-wiki-root:hover, .kb-wiki-folder:hover { background: var(--muted-surface); }
+    .kb-wiki-root.active { background: var(--wash); color: var(--ink); }
+    .kb-wiki-caret { flex: none; width: 14px; color: var(--muted); font-size: 9px; text-align: center; }
+    .kb-wiki-fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kb-wiki-count { flex: none; color: var(--muted); font-size: 10px; }
     .kb-wiki-item {
-      display: block; width: 100%; padding: 8px 9px; border: 0; border-radius: 9px;
+      display: flex; align-items: center; gap: 6px; width: 100%;
+      padding: 6px 8px; border: 0; border-radius: 7px;
       background: transparent; color: var(--ink-2); text-align: left; cursor: pointer;
     }
     .kb-wiki-item:hover { background: var(--muted-surface); }
     .kb-wiki-item.active { background: var(--wash); color: var(--ink); }
     .kb-wiki-item-title {
-      display: flex; align-items: center; gap: 5px;
-      font-size: 12.5px; font-weight: 600; line-height: 1.4;
-    }
-    .kb-wiki-item-title span:first-child {
       flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 12.5px; line-height: 1.5;
     }
-    .kb-wiki-item-summary {
-      margin-top: 3px; color: var(--muted); font-size: 10.5px; line-height: 1.5;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
+    .kb-wiki-item.active .kb-wiki-item-title { font-weight: 600; }
     .kb-wiki-main {
-      min-width: 0; padding: 16px 18px; border: 1px solid var(--line);
-      border-radius: 12px; background: var(--card); overflow-y: auto; max-height: 620px;
+      min-width: 0; overflow-y: auto; max-height: 680px; background: var(--card);
     }
-    .kb-wiki-head { display: flex; align-items: flex-start; gap: 10px; }
+    .kb-wiki-doc { max-width: 880px; padding: 26px 34px 44px; }
+    .kb-wiki-kicker {
+      color: var(--brand); font-size: 10.5px; font-weight: 600;
+      letter-spacing: .08em; text-transform: uppercase;
+    }
+    .kb-wiki-head { display: flex; align-items: flex-start; gap: 12px; margin-top: 4px; }
     .kb-wiki-head-main { flex: 1; min-width: 0; }
-    .kb-wiki-title { margin: 0; color: var(--ink); font: 600 19px/1.35 var(--display); }
-    .kb-wiki-sub { margin: 4px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-wiki-title { margin: 0; color: var(--ink); font: 600 24px/1.35 var(--display); }
+    .kb-wiki-sub { margin: 6px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.7; }
     .kb-wiki-actions { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
     .kb-wiki-body {
-      margin-top: 14px; color: var(--ink-2); font-size: 13.5px; line-height: 1.85;
+      margin-top: 20px; color: var(--ink-2); font-size: 14px; line-height: 1.9;
       word-break: break-word;
     }
     .kb-wiki-body h1, .kb-wiki-body h2, .kb-wiki-body h3 {
       color: var(--ink); font-family: var(--sans); line-height: 1.45;
     }
-    .kb-wiki-body h1 { font-size: 17px; }
-    .kb-wiki-body h2 { font-size: 15px; margin: 18px 0 7px; }
-    .kb-wiki-body h3 { font-size: 13.5px; margin: 14px 0 6px; }
-    .kb-wiki-body p { margin: 0 0 10px; }
-    .kb-wiki-body ul, .kb-wiki-body ol { margin: 0 0 10px; padding-left: 20px; }
-    .kb-wiki-body .md-wiki { color: var(--brand); border-bottom: 1px dashed var(--brand); text-decoration: none; }
-    .kb-wiki-sources { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
-    .kb-wiki-sources-title { color: var(--ink-3); font-size: 11.5px; font-weight: 600; margin-bottom: 7px; }
-    .kb-wiki-source {
-      padding: 8px 10px; margin-bottom: 6px; border: 1px solid var(--line);
-      border-radius: 8px; background: var(--surface-2); cursor: pointer;
+    .kb-wiki-body h1 { font-size: 19px; margin: 22px 0 8px; }
+    .kb-wiki-body h2 {
+      font-size: 16.5px; margin: 24px 0 8px; padding-bottom: 5px;
+      border-bottom: 1px solid var(--line);
     }
-    .kb-wiki-source:hover { border-color: var(--line-strong); }
-    .kb-wiki-source-head { color: var(--ink); font-size: 11.5px; font-weight: 600; }
-    .kb-wiki-source-text {
-      margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.6;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    .kb-wiki-body h3 { font-size: 14.5px; margin: 18px 0 6px; }
+    .kb-wiki-body p { margin: 0 0 12px; }
+    .kb-wiki-body ul, .kb-wiki-body ol { margin: 0 0 12px; padding-left: 22px; }
+    .kb-wiki-body li { margin: 3px 0; }
+    .kb-wiki-body blockquote {
+      margin: 12px 0; padding: 8px 12px; border-left: 2px solid var(--brand);
+      background: var(--surface-2); color: var(--ink-3);
     }
-    .kb-wiki-graph { width: 100%; min-height: 420px; }
+    .kb-wiki-body .md-wiki {
+      color: var(--brand); border-bottom: 1px dashed color-mix(in srgb, var(--brand) 55%, transparent);
+      text-decoration: none;
+    }
+    .kb-wiki-body .md-table-wrap { overflow-x: auto; margin: 12px 0; }
+    .kb-wiki-body .md-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.65; }
+    .kb-wiki-body .md-table th, .kb-wiki-body .md-table td {
+      padding: 7px 10px; border: 1px solid var(--line); text-align: left;
+    }
+    .kb-wiki-body .md-table th { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+    .kb-wiki-body code {
+      padding: 1px 5px; border-radius: 5px; background: var(--muted-surface);
+      font-family: var(--mono, monospace); font-size: 12.5px;
+    }
+    .kb-wiki-sources { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .kb-wiki-sources-title { color: var(--ink-3); font-size: 11.5px; font-weight: 600; margin-bottom: 8px; }
+    .kb-wiki-source-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .kb-wiki-source-chip {
+      display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+      padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--surface-2); color: var(--ink-3); font-size: 11px;
+      cursor: pointer;
+    }
+    .kb-wiki-source-chip:hover { border-color: var(--line-strong); color: var(--brand); }
+    .kb-wiki-source-chip span:last-child {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .kb-wiki-graph { width: 100%; min-height: 520px; padding: 8px; }
     .kb-wiki-graph svg { width: 100%; height: auto; display: block; }
-    .kg-edge { stroke: var(--line-strong); stroke-width: 1.2; }
-    .kg-edge.link { stroke: var(--brand); stroke-dasharray: 4 3; }
-    .kg-node circle { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 1.4; cursor: pointer; }
-    .kg-node.edited circle { fill: var(--wash); }
-    .kg-node text { fill: var(--ink-2); font-size: 12px; font-family: var(--sans); pointer-events: none; }
+    .kg-edge { stroke: color-mix(in srgb, var(--ink-3) 55%, transparent); stroke-width: 1.3; }
+    .kg-edge.link { stroke: color-mix(in srgb, var(--brand) 65%, transparent); stroke-dasharray: 4 3; }
+    .kg-edge.mention { stroke-dasharray: 2 4; opacity: .75; }
+    .kg-node circle { fill: var(--brand-soft); stroke: var(--brand); stroke-width: 2.2; cursor: pointer; }
+    .kg-node text { fill: var(--ink-2); font-size: 11.5px; font-family: var(--sans); pointer-events: none; paint-order: stroke; stroke: var(--card); stroke-width: 3px; stroke-linejoin: round; }
     .kg-node.active circle { fill: var(--brand); }
+    .kg-node.dim { opacity: .18; }
+    .kg-edge.dim { opacity: .12; }
+    .kb-graph-wrap { border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); overflow: hidden; }
+    .kb-graph-modal .kb-graph-wrap { border: 0; background: transparent; }
+    .kb-graph-toolbar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 8px 10px 4px;
+    }
+    .kb-graph-toolbar .grow { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; }
+    .kb-graph-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px 4px 6px; }
+    .kb-graph-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+    .kb-graph-shape { color: var(--muted); font-size: 11px; }
+    .kg-doc text { font-size: 10.5px; fill: var(--ink-3); }
+    .kg-edge.source { stroke: color-mix(in srgb, var(--ink-3) 40%, transparent); stroke-dasharray: 1 3; opacity: .7; }
+    .kb-graph-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .kb-settings-form {
       display: flex; flex-direction: column; gap: 10px;
       margin: 14px 0 6px; padding: 14px; border: 1px solid var(--line);
@@ -1698,16 +1766,17 @@
       .kb-tabs { margin-top: 10px; overflow-x: auto; }
       .kb-doc-tools { flex-wrap: wrap; }
       .kb-doc-tools input { flex-basis: 100%; }
-      .kb-wiki { grid-template-columns: 1fr; }
-      .kb-wiki-list {
-        max-height: 188px; flex-direction: row; overflow-x: auto;
-        border-right: 0; border-bottom: 1px solid var(--line);
-        padding: 0 0 6px;
-      }
-      .kb-wiki-item { flex: 0 0 176px; width: 176px; }
-      .kb-wiki-main { max-height: none; padding: 14px; }
-      .kb-wiki-bar { flex-wrap: wrap; }
-      .kb-wiki-meta { flex-basis: 100%; }
+      .kb-wiki { grid-template-columns: 1fr; min-height: 0; }
+      .kb-wiki-side { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+      .kb-wiki-list { max-height: 210px; overflow-y: auto; }
+      .kb-wiki-main { max-height: none; }
+      .kb-wiki-doc { padding: 18px 16px 34px; }
+      .kb-wiki-title { font-size: 21px; }
+      .kb-wiki-top { gap: 7px; }
+      .kb-wiki-crumb { flex-basis: 100%; }
+      .kb-wiki-meta { margin-bottom: 8px; }
+      .kb-wiki-body { font-size: 13.5px; }
+      .kb-wiki-graph { min-height: 380px; padding: 0; }
     }
 
     /* ---------- 弹层 ---------- */
@@ -4505,13 +4574,22 @@
           <div class="stack" id="kb-search-results"></div>
         </div>
         <div class="kb-pane" data-kb-pane="wiki" hidden>
-          <div class="kb-wiki-bar">
-            <div class="kb-wiki-meta" id="kb-wiki-meta">从资料里整理概念、流程和制度，生成带来源的页面。</div>
-            <button type="button" class="row-btn" id="kb-wiki-graph">关系图</button>
+          <div class="kb-wiki-top">
+            <div class="kb-wiki-crumb" id="kb-wiki-crumb">知识库 / Wiki</div>
+            <div class="kb-seg" id="kb-wiki-views" role="tablist" aria-label="Wiki 视图">
+              <button type="button" data-wiki-view="page" class="active">页面</button>
+              <button type="button" data-wiki-view="graph">图谱</button>
+            </div>
             <button type="button" class="primary" id="kb-wiki-generate">生成 Wiki</button>
           </div>
+          <div class="kb-wiki-meta" id="kb-wiki-meta">从资料里整理概念、流程和制度，生成带来源的页面。</div>
           <div class="kb-wiki" id="kb-wiki">
-            <aside class="kb-wiki-list" id="kb-wiki-list"></aside>
+            <aside class="kb-wiki-side">
+              <div class="kb-wiki-search">
+                <input id="kb-wiki-q" type="search" placeholder="搜索 Wiki 页面" aria-label="搜索 Wiki 页面">
+              </div>
+              <div class="kb-wiki-list" id="kb-wiki-list"></div>
+            </aside>
             <div class="kb-wiki-main" id="kb-wiki-main"></div>
           </div>
         </div>
@@ -4824,6 +4902,9 @@
     wikiPageId: '',
     wikiPage: null,
     wikiView: 'page',
+    wikiQuery: '',
+    wikiOpen: {},
+    wikiGraph: null,
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
@@ -7064,10 +7145,41 @@
     }
   }
 
+  function setWikiView(view) {
+    state.wikiView = view;
+    $$('#kb-wiki-views [data-wiki-view]').forEach(b =>
+      b.classList.toggle('active', b.dataset.wikiView === view));
+    const c = state.kbCurrent;
+    if (!c) return;
+    if (view === 'graph') renderWikiGraph(c);
+    else if (state.wikiPages.length) {
+      selectWikiPage(c, state.wikiPageId || state.wikiPages[0].id);
+    } else {
+      wikiEmpty(c, c.can_write
+        ? '这个库还没有 Wiki。点「生成 Wiki」，会从已完成的资料里整理页面。'
+        : '这个库还没有 Wiki。内置库只读，登录后在自己的库里生成。');
+    }
+  }
+
+  function wikiFilteredPages() {
+    const q = (state.wikiQuery || '').trim().toLowerCase();
+    if (!q) return state.wikiPages.slice();
+    return state.wikiPages.filter(p =>
+      [p.title, p.summary, p.folder].join(' ').toLowerCase().indexOf(q) >= 0);
+  }
+
   function loadKbWiki(c) {
     const list = $('#kb-wiki-list');
     const main = $('#kb-wiki-main');
     if (!list || !main || !c) return;
+    const crumb = $('#kb-wiki-crumb');
+    if (crumb) {
+      crumb.replaceChildren(document.createTextNode('知识库 / '));
+      crumb.appendChild(el('b', '', c.name || '当前库'));
+      crumb.appendChild(document.createTextNode(' / Wiki'));
+    }
+    const q = $('#kb-wiki-q');
+    if (q && q.value !== state.wikiQuery) q.value = state.wikiQuery || '';
     list.replaceChildren(el('div', 'chunk-note', '正在读取 Wiki…'));
     api('/collections/' + encodeURIComponent(c.id) + '/wiki')
       .then(out => {
@@ -7075,23 +7187,22 @@
         const meta = $('#kb-wiki-meta');
         if (meta) {
           meta.textContent = state.wikiPages.length
-            ? '共 ' + state.wikiPages.length + ' 页，来源都来自本库资料；页面可直接编辑。'
+            ? '共 ' + state.wikiPages.length + ' 页 · 每页都挂着本库的原文片段 · 页面可直接编辑'
             : '从资料里整理概念、流程和制度，生成带来源的页面。';
         }
         const gen = $('#kb-wiki-generate');
         if (gen) gen.hidden = !c.can_write;
+        if (state.wikiView === 'graph') {
+          setWikiView('graph');
+          return;
+        }
         renderWikiList(c);
         if (!state.wikiPages.length) {
           state.wikiPage = null;
           state.wikiPageId = '';
-          state.wikiView = 'page';
           wikiEmpty(c, c.can_write
             ? '这个库还没有 Wiki。点「生成 Wiki」，会从已完成的资料里整理页面。'
             : '这个库还没有 Wiki。内置库只读，登录后在自己的库里生成。');
-          return;
-        }
-        if (state.wikiView === 'graph') {
-          renderWikiGraph(c);
           return;
         }
         const keep = state.wikiPages.some(p => p.id === state.wikiPageId)
@@ -7104,37 +7215,107 @@
       });
   }
 
+  function wikiGroupTree(pages) {
+    const paths = {};
+    const add = p => {
+      const clean = String(p || '').replace(/^\/+|\/+$/g, '');
+      if (!clean) return;
+      const parts = clean.split('/').filter(Boolean);
+      for (let i = 1; i <= parts.length; i += 1) {
+        paths[parts.slice(0, i).join('/')] = true;
+      }
+    };
+    pages.forEach(p => add(p.folder));
+    const all = Object.keys(paths).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    const children = {};
+    all.forEach(path => {
+      const i = path.lastIndexOf('/');
+      const parent = i < 0 ? '' : path.slice(0, i);
+      (children[parent] = children[parent] || []).push(path);
+    });
+    Object.keys(children).forEach(k =>
+      children[k].sort((a, b) => a.localeCompare(b, 'zh-CN')));
+    const direct = {};
+    pages.forEach(p => {
+      const f = String(p.folder || '');
+      (direct[f] = direct[f] || []).push(p);
+    });
+    return { all, children, direct };
+  }
+
   function renderWikiList(c) {
     const list = $('#kb-wiki-list');
     if (!list) return;
     list.replaceChildren();
+    const pages = wikiFilteredPages();
     if (!state.wikiPages.length) {
       list.appendChild(el('div', 'kb-rail-empty', '还没有页面。'));
       return;
     }
-    state.wikiPages.forEach(p => {
+    if (!pages.length) {
+      list.appendChild(el('div', 'kb-rail-empty', '没有匹配的页面。'));
+      return;
+    }
+    const tree = wikiGroupTree(pages);
+    const totalIn = path => pages.filter(p => {
+      const f = String(p.folder || '');
+      return f === path || f.indexOf(path + '/') === 0;
+    }).length;
+    const searching = !!(state.wikiQuery || '').trim();
+    const root = el('button', 'kb-wiki-root');
+    root.type = 'button';
+    root.appendChild(el('span', 'kb-wiki-caret', ''));
+    root.appendChild(el('span', 'kb-wiki-fname', '全部页面'));
+    root.appendChild(el('span', 'kb-wiki-count', String(pages.length)));
+    root.addEventListener('click', () => {
+      if (state.wikiPages.length) selectWikiPage(c, state.wikiPages[0].id);
+    });
+    list.appendChild(root);
+
+    const pageRow = (p, depth) => {
       const item = el('button', 'kb-wiki-item' +
         (state.wikiPageId === p.id && state.wikiView === 'page' ? ' active' : ''));
       item.type = 'button';
-      const title = el('div', 'kb-wiki-item-title');
-      title.appendChild(el('span', '', p.title || '未命名页面'));
-      if (p.edited) title.appendChild(el('span', 'kb-item-kind private', '手改'));
-      item.appendChild(title);
-      item.appendChild(el('div', 'kb-wiki-item-summary',
-        p.summary || (p.source_count || 0) + ' 段来源'));
-      item.addEventListener('click', () => {
-        state.wikiView = 'page';
-        selectWikiPage(c, p.id);
-      });
+      item.style.paddingLeft = (8 + depth * 14) + 'px';
+      item.appendChild(el('span', 'kb-wiki-item-title', p.title || '未命名页面'));
+      if (p.edited) item.appendChild(el('span', 'kb-item-kind private', '手改'));
+      item.appendChild(el('span', 'kb-wiki-count', String(p.source_count || 0)));
+      item.addEventListener('click', () => selectWikiPage(c, p.id));
       list.appendChild(item);
-    });
+    };
+
+    const walk = (parent, depth) => {
+      (tree.direct[parent] || []).sort((a, b) =>
+        String(a.title || '').localeCompare(String(b.title || ''), 'zh-CN'))
+        .forEach(p => pageRow(p, depth));
+      (tree.children[parent] || []).forEach(path => {
+        const name = parent ? path.slice(parent.length + 1) : path;
+        const open = searching || state.wikiOpen[path] !== false;
+        const hasChildren = (tree.children[path] || []).length ||
+          (tree.direct[path] || []).length;
+        const folder = el('button', 'kb-wiki-folder');
+        folder.type = 'button';
+        folder.style.paddingLeft = (7 + depth * 14) + 'px';
+        folder.appendChild(el('span', 'kb-wiki-caret',
+          hasChildren ? (open ? '▾' : '▸') : ''));
+        folder.appendChild(el('span', 'kb-wiki-fname', name));
+        folder.appendChild(el('span', 'kb-wiki-count', String(totalIn(path))));
+        folder.addEventListener('click', () => {
+          state.wikiOpen[path] = !open;
+          renderWikiList(c);
+        });
+        list.appendChild(folder);
+        if (open) walk(path, depth + 1);
+      });
+    };
+    walk('', 0);
   }
 
   function selectWikiPage(c, pageId) {
     state.wikiPageId = pageId;
     state.wikiView = 'page';
-    const toggle = $('#kb-wiki-graph');
-    if (toggle) toggle.textContent = '关系图';
+    $$('#kb-wiki-views [data-wiki-view]').forEach(b =>
+      b.classList.toggle('active', b.dataset.wikiView === 'page'));
     renderWikiList(c);
     const main = $('#kb-wiki-main');
     if (main) main.replaceChildren(el('div', 'chunk-note', '正在读取页面…'));
@@ -7153,13 +7334,17 @@
     const main = $('#kb-wiki-main');
     if (!main) return;
     main.replaceChildren();
+    const doc = el('div', 'kb-wiki-doc');
+    doc.appendChild(el('div', 'kb-wiki-kicker',
+      page.edited ? '手动编辑 · WIKI' : '自动整理 · WIKI'));
     const head = el('div', 'kb-wiki-head');
     const headMain = el('div', 'kb-wiki-head-main');
     headMain.appendChild(el('h2', 'kb-wiki-title', page.title || '未命名页面'));
-    headMain.appendChild(el('p', 'kb-wiki-sub',
-      (page.edited ? '手动编辑 · 第 ' + (page.revision || 1) + ' 版'
-        : '自动整理') + ' · ' + (page.source_count || 0) + ' 段来源' +
-      (page.aliases && page.aliases.length ? ' · 别名 ' + page.aliases.join(' / ') : '')));
+    const metaBits = [page.edited ? '第 ' + (page.revision || 1) + ' 版'
+      : '来自本库资料', (page.source_count || 0) + ' 段来源'];
+    if (page.updated_at) metaBits.push('更新 ' +
+      String(page.updated_at).replace('T', ' ').replace(/\..*$/, '').slice(0, 16));
+    headMain.appendChild(el('p', 'kb-wiki-sub', metaBits.join(' · ')));
     head.appendChild(headMain);
     const actions = el('div', 'kb-wiki-actions');
     if (page.can_write) {
@@ -7174,7 +7359,7 @@
       actions.appendChild(del);
     }
     head.appendChild(actions);
-    main.appendChild(head);
+    doc.appendChild(head);
 
     const body = el('div', 'kb-wiki-body doc-md');
     body.innerHTML = renderMarkdown(page.body || '', new Map());
@@ -7188,24 +7373,29 @@
       if (target) selectWikiPage(c, target.id);
       else toast('还没有这个页面：' + (link.dataset.wiki || ''), 'err');
     });
-    main.appendChild(body);
+    doc.appendChild(body);
 
     if ((page.sources || []).length) {
       const box = el('div', 'kb-wiki-sources');
       box.appendChild(el('div', 'kb-wiki-sources-title',
-        '来源 · ' + page.sources.length + ' 段（点开看原文）'));
-      page.sources.forEach(src => {
-        const card = el('div', 'kb-wiki-source');
-        card.appendChild(el('div', 'kb-wiki-source-head',
-          src.document_title || '资料'));
-        card.appendChild(el('div', 'kb-wiki-source-text', src.text || ''));
-        card.addEventListener('click', () => {
+        '来源 · ' + page.sources.length + ' 段原文（点开看全文）'));
+      const chips = el('div', 'kb-wiki-source-chips');
+      page.sources.forEach((src, i) => {
+        const chip = el('button', 'kb-wiki-source-chip');
+        chip.type = 'button';
+        chip.title = src.text || '';
+        chip.appendChild(el('span', '', '↗'));
+        chip.appendChild(el('span', '', (src.document_title || '资料') +
+          ' · 片段 ' + (i + 1)));
+        chip.addEventListener('click', () => {
           openDocPreview(c, {id: src.document_id, title: src.document_title});
         });
-        box.appendChild(card);
+        chips.appendChild(chip);
       });
-      main.appendChild(box);
+      box.appendChild(chips);
+      doc.appendChild(box);
     }
+    main.appendChild(doc);
   }
 
   function openWikiEditor(c, page) {
@@ -7332,95 +7522,314 @@
     });
   }
 
+  const WIKI_CATEGORY_COLORS = ['--brand', '--info', '--ok', '--warn', '--violet'];
+
+  function wikiCategoryOf(n) {
+    return String(n.folder || '').split('/').filter(Boolean).join('/') || '未分组';
+  }
+
+  function wikiCategories(nodes) {
+    const names = [];
+    nodes.forEach(n => {
+      const top = wikiCategoryOf(n);
+      if (names.indexOf(top) < 0) names.push(top);
+    });
+    names.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    const out = {};
+    names.forEach((name, i) => {
+      out[name] = {
+        name, color: WIKI_CATEGORY_COLORS[i % WIKI_CATEGORY_COLORS.length],
+        count: nodes.filter(n => wikiCategoryOf(n) === name).length,
+      };
+    });
+    return out;
+  }
+
+  function radioLayout(nodes, edges, W, H, cats) {
+    const list = Object.keys(cats);
+    nodes.forEach((n, i) => {
+      const top = wikiCategoryOf(n);
+      const ci = Math.max(0, list.indexOf(top));
+      const base = (Math.PI * 2 * ci) / Math.max(1, list.length);
+      const a = base + (Math.random() - 0.5) * 0.7;
+      const r = Math.min(W, H) * (0.18 + 0.1 * (i % 3));
+      n.x = W / 2 + Math.cos(a) * r;
+      n.y = H / 2 + Math.sin(a) * r;
+    });
+    const byId = {};
+    nodes.forEach(n => { byId[n.id] = n; });
+    const springs = edges.filter(e => byId[e.from] && byId[e.to]);
+    for (let it = 0; it < 220; it += 1) {
+      for (let i = 0; i < nodes.length; i += 1) {
+        for (let j = i + 1; j < nodes.length; j += 1) {
+          const a = nodes[i], b = nodes[j];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          let d2 = dx * dx + dy * dy;
+          if (d2 < 1) { dx = 1; dy = 1; d2 = 2; }
+          const f = Math.min(60, 42000 / d2);
+          const d = Math.sqrt(d2);
+          a.x -= dx / d * f; a.y -= dy / d * f;
+          b.x += dx / d * f; b.y += dy / d * f;
+        }
+      }
+      springs.forEach(e => {
+        const a = byId[e.from], b = byId[e.to];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+        const f = (d - 200) * 0.005;
+        a.x += dx / d * f; a.y += dy / d * f;
+        b.x -= dx / d * f; b.y -= dy / d * f;
+      });
+      // 同组往组中心靠一点，不同组自然分开
+      const centers = {};
+      nodes.forEach(n => {
+        const top = wikiCategoryOf(n);
+        const c = centers[top] = centers[top] || { x: 0, y: 0, n: 0 };
+        c.x += n.x; c.y += n.y; c.n += 1;
+      });
+      Object.keys(centers).forEach(k => {
+        const c = centers[k];
+        c.x /= c.n; c.y /= c.n;
+      });
+      nodes.forEach(n => {
+        const top = wikiCategoryOf(n);
+        const c = centers[top];
+        if (c) { n.x += (c.x - n.x) * 0.003; n.y += (c.y - n.y) * 0.003; }
+        n.x += (W / 2 - n.x) * 0.0015;
+        n.y += (H / 2 - n.y) * 0.0015;
+        n.x = Math.max(56, Math.min(W - 56, n.x));
+        n.y = Math.max(36, Math.min(H - 42, n.y));
+      });
+    }
+    if (nodes.length > 1) {
+      const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      const sx = Math.min(2.4, (W - 180) / Math.max(80, maxX - minX));
+      const sy = Math.min(2.4, (H - 170) / Math.max(80, maxY - minY));
+      nodes.forEach(n => {
+        n.x = W / 2 + (n.x - cx) * Math.max(0.8, sx);
+        n.y = H / 2 + (n.y - cy) * Math.max(0.8, sy);
+      });
+    }
+    return { nodes, springs };
+  }
+
+  function drawWikiGraph(host, c, data, size, opts) {
+    host.replaceChildren();
+    const showDocs = !!(opts && opts.showDocs);
+    const allNodes = (data.nodes || []).map(n => Object.assign({}, n));
+    const nodes = showDocs ? allNodes : allNodes.filter(n => n.kind !== 'document');
+    const validIds = {};
+    nodes.forEach(n => { validIds[n.id] = true; });
+    const edges = (data.edges || []).filter(e => validIds[e.from] && validIds[e.to]);
+    if (!nodes.length) {
+      host.appendChild(el('div', 'empty-panel', '还没有 Wiki 页面。'));
+      return;
+    }
+    const W = size.width, H = size.height;
+    const cats = wikiCategories(nodes);
+    const laid = radioLayout(nodes, edges, W, H, cats);
+    const byId = {};
+    laid.nodes.forEach(n => { byId[n.id] = n; });
+    const degree = {};
+    laid.springs.forEach(e => {
+      degree[e.from] = (degree[e.from] || 0) + 1;
+      degree[e.to] = (degree[e.to] || 0) + 1;
+    });
+
+    const wrap = el('div', 'kb-graph-wrap');
+    const bar = el('div', 'kb-graph-toolbar');
+    const hint = el('span', 'grow', '拖动平移 · 滚轮缩放 · 点节点打开页面');
+    bar.appendChild(hint);
+    const fit = el('button', 'row-btn', '复位');
+    fit.type = 'button';
+    bar.appendChild(fit);
+    wrap.appendChild(bar);
+
+    const legend = el('div', 'kb-graph-legend');
+    if (showDocs) {
+      legend.appendChild(el('span', 'kb-graph-shape', '● 页面'));
+      legend.appendChild(el('span', 'kb-graph-shape', '■ 来源资料'));
+    }
+    Object.keys(cats).forEach(name => {
+      const cat = cats[name];
+      const item = el('span');
+      const dot = el('span', 'kb-graph-dot');
+      dot.style.background = 'var(' + cat.color + ')';
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(cat.name + ' ' + cat.count));
+      legend.appendChild(item);
+    });
+    wrap.appendChild(legend);
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Wiki 关系图');
+    svg.style.cursor = 'grab';
+    const view = document.createElementNS(NS, 'g');
+    svg.appendChild(view);
+
+    const edgeEls = laid.springs.map(e => {
+      const a = byId[e.from], b = byId[e.to];
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+      line.setAttribute('class', 'kg-edge' + (e.kind === 'link' ? ' link' : (e.kind === 'mention' ? ' mention' : (e.kind === 'source' ? ' source' : ''))));
+      line.dataset.from = e.from; line.dataset.to = e.to;
+      view.appendChild(line);
+      return line;
+    });
+
+    const nodeEls = {};
+    laid.nodes.forEach(n => {
+      const top = wikiCategoryOf(n);
+      const color = 'var(' + (cats[top] ? cats[top].color : '--brand') + ')';
+      const isDoc = n.kind === 'document';
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'kg-node' + (n.edited ? ' edited' : '') +
+        (isDoc ? ' kg-doc' : '') +
+        (n.id === state.wikiPageId ? ' active' : ''));
+      g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+      let r = 9 + Math.min(7, (degree[n.id] || 0) * 1.4);
+      if (isDoc) {
+        const rect = document.createElementNS(NS, 'rect');
+        r = 8;
+        rect.setAttribute('x', String(-r)); rect.setAttribute('y', String(-r));
+        rect.setAttribute('width', String(r * 2)); rect.setAttribute('height', String(r * 2));
+        rect.setAttribute('rx', '3');
+        rect.style.fill = 'color-mix(in srgb, ' + color + ' 18%, var(--card))';
+        rect.style.stroke = color;
+        rect.style.strokeDasharray = '3 2';
+        g.appendChild(rect);
+      } else {
+        const circle = document.createElementNS(NS, 'circle');
+        circle.setAttribute('r', String(r));
+        circle.style.fill = 'color-mix(in srgb, ' + color + ' 34%, var(--card))';
+        circle.style.stroke = color;
+        g.appendChild(circle);
+      }
+      const text = document.createElementNS(NS, 'text');
+      text.setAttribute('x', '0');
+      text.setAttribute('y', String(r + 15));
+      text.setAttribute('text-anchor', 'middle');
+      text.textContent = (isDoc ? '资料 · ' : '') + (n.title || '').slice(0, 14);
+      g.appendChild(text);
+      g.addEventListener('click', ev => {
+        ev.stopPropagation();
+        if (isDoc) openDocPreview(c, {id: n.id.slice(4), title: n.title});
+        else selectWikiPage(c, n.id);
+      });
+      g.addEventListener('mouseenter', () => {
+        const near = {};
+        near[n.id] = true;
+        laid.springs.forEach(e => {
+          if (e.from === n.id) near[e.to] = true;
+          if (e.to === n.id) near[e.from] = true;
+        });
+        Object.keys(nodeEls).forEach(id => {
+          nodeEls[id].classList.toggle('dim', !near[id]);
+        });
+        edgeEls.forEach(line => {
+          line.classList.toggle('dim',
+            line.dataset.from !== n.id && line.dataset.to !== n.id);
+        });
+      });
+      g.addEventListener('mouseleave', () => {
+        Object.keys(nodeEls).forEach(id => nodeEls[id].classList.remove('dim'));
+        edgeEls.forEach(line => line.classList.remove('dim'));
+      });
+      nodeEls[n.id] = g;
+      view.appendChild(g);
+    });
+
+    wrap.appendChild(svg);
+    host.appendChild(wrap);
+
+    let tx = 0, ty = 0, scale = 1;
+    const apply = () => {
+      view.setAttribute('transform',
+        'translate(' + tx + ',' + ty + ') scale(' + scale + ')');
+    };
+    const reset = () => { tx = 0; ty = 0; scale = 1; apply(); };
+    fit.addEventListener('click', reset);
+    svg.addEventListener('wheel', e => {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width * W;
+      const my = (e.clientY - rect.top) / rect.height * H;
+      const next = Math.max(0.55, Math.min(2.6, scale * (e.deltaY < 0 ? 1.12 : 0.9)));
+      const k = next / scale;
+      tx = mx - (mx - tx) * k;
+      ty = my - (my - ty) * k;
+      scale = next;
+      apply();
+    }, {passive: false});
+    let drag = null;
+    svg.addEventListener('pointerdown', e => {
+      drag = {x: e.clientX, y: e.clientY, tx, ty, moved: false};
+    });
+    svg.addEventListener('pointermove', e => {
+      if (!drag) return;
+      if (!drag.moved) {
+        if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 4) return;
+        drag.moved = true;
+        svg.style.cursor = 'grabbing';
+        try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+      const rect = svg.getBoundingClientRect();
+      tx = drag.tx + (e.clientX - drag.x) / rect.width * W;
+      ty = drag.ty + (e.clientY - drag.y) / rect.height * H;
+      apply();
+    });
+    const stop = () => { drag = null; svg.style.cursor = 'grab'; };
+    svg.addEventListener('pointerup', stop);
+    svg.addEventListener('pointercancel', stop);
+  }
+
   function renderWikiGraph(c) {
     state.wikiView = 'graph';
+    $$('#kb-wiki-views [data-wiki-view]').forEach(b =>
+      b.classList.toggle('active', b.dataset.wikiView === 'graph'));
     renderWikiList(c);
     const main = $('#kb-wiki-main');
     if (!main) return;
     main.replaceChildren(el('div', 'chunk-note', '正在画关系图…'));
-    const toggle = $('#kb-wiki-graph');
-    if (toggle) toggle.textContent = '页面视图';
     api('/collections/' + encodeURIComponent(c.id) + '/wiki/graph').then(data => {
-      const nodes = (data.nodes || []).map(n => Object.assign({}, n));
-      const edges = data.edges || [];
-      if (!nodes.length) {
-        main.replaceChildren(el('div', 'empty-panel', '还没有 Wiki 页面。'));
-        return;
-      }
-      const W = 760, H = 440, R = Math.min(190, 85 + nodes.length * 14);
-      nodes.forEach((n, i) => {
-        const a = (Math.PI * 2 * i) / Math.max(1, nodes.length);
-        n.x = W / 2 + Math.cos(a) * R + (Math.random() - 0.5) * 20;
-        n.y = H / 2 + Math.sin(a) * R + (Math.random() - 0.5) * 20;
-      });
-      const byId = {};
-      nodes.forEach(n => { byId[n.id] = n; });
-      const springs = edges.filter(e => byId[e.from] && byId[e.to]);
-      for (let it = 0; it < 160; it += 1) {
-        for (let i = 0; i < nodes.length; i += 1) {
-          for (let j = i + 1; j < nodes.length; j += 1) {
-            const a = nodes[i], b = nodes[j];
-            let dx = b.x - a.x, dy = b.y - a.y;
-            let d2 = dx * dx + dy * dy;
-            if (d2 < 1) { dx = 1; dy = 1; d2 = 2; }
-            const f = 12000 / d2;
-            const d = Math.sqrt(d2);
-            a.x -= dx / d * f; a.y -= dy / d * f;
-            b.x += dx / d * f; b.y += dy / d * f;
-          }
-        }
-        springs.forEach(e => {
-          const a = byId[e.from], b = byId[e.to];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-          const f = (d - 170) * 0.012;
-          a.x += dx / d * f; a.y += dy / d * f;
-          b.x -= dx / d * f; b.y -= dy / d * f;
-        });
-        nodes.forEach(n => {
-          n.x += (W / 2 - n.x) * 0.003;
-          n.y += (H / 2 - n.y) * 0.003;
-          n.x = Math.max(46, Math.min(W - 46, n.x));
-          n.y = Math.max(30, Math.min(H - 34, n.y));
-        });
-      }
-      const NS = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(NS, 'svg');
-      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-      svg.setAttribute('role', 'img');
-      svg.setAttribute('aria-label', 'Wiki 关系图');
-      springs.forEach(e => {
-        const a = byId[e.from], b = byId[e.to];
-        const line = document.createElementNS(NS, 'line');
-        line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
-        line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-        line.setAttribute('class', 'kg-edge' + (e.kind === 'link' ? ' link' : ''));
-        svg.appendChild(line);
-      });
-      nodes.forEach(n => {
-        const g = document.createElementNS(NS, 'g');
-        g.setAttribute('class', 'kg-node' + (n.edited ? ' edited' : ''));
-        g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
-        const circle = document.createElementNS(NS, 'circle');
-        circle.setAttribute('r', '11');
-        g.appendChild(circle);
-        const text = document.createElementNS(NS, 'text');
-        text.setAttribute('x', '0');
-        text.setAttribute('y', '24');
-        text.setAttribute('text-anchor', 'middle');
-        text.textContent = (n.title || '').slice(0, 16);
-        g.appendChild(text);
-        g.addEventListener('click', () => selectWikiPage(c, n.id));
-        svg.appendChild(g);
-      });
-      const box = el('div', 'kb-wiki-graph');
-      box.appendChild(svg);
-      const legend = el('div', 'kb-test-hint',
-        '实线 = 共用来源资料；虚线 = 正文里写了 [[页面]]；点节点打开页面。');
-      main.replaceChildren(box, legend);
+      state.wikiGraph = data;
+      main.replaceChildren();
+      const doc = el('div', 'kb-wiki-doc');
+      const head = el('div', 'kb-wiki-head');
+      const headMain = el('div', 'kb-wiki-head-main');
+      headMain.appendChild(el('h2', 'kb-wiki-title', 'Wiki 关系图'));
+      const pageLinks = (data.edges || []).filter(e => e.kind !== 'source').length;
+      headMain.appendChild(el('p', 'kb-wiki-sub',
+        (data.pages || 0) + ' 个页面 · ' + pageLinks +
+        ' 条页面关系 · 放大显示可看来源资料'));
+      head.appendChild(headMain);
+      const actions = el('div', 'kb-wiki-actions');
+      const expand = el('button', 'row-btn', '放大显示');
+      expand.addEventListener('click', () => openWikiGraphModal(c));
+      actions.appendChild(expand);
+      head.appendChild(actions);
+      doc.appendChild(head);
+      const host = el('div', 'kb-wiki-graph');
+      doc.appendChild(host);
+      main.appendChild(doc);
+      drawWikiGraph(host, c, data, {width: 860, height: 540}, {showDocs: false});
     }).catch(e => {
       main.replaceChildren(el('div', 'empty-panel', '读取关系图失败：' + e.message));
     });
+  }
+
+  function openWikiGraphModal(c) {
+    const data = state.wikiGraph || {nodes: [], edges: [], total: 0};
+    const wrap = el('div', 'kb-graph-modal');
+    openModal('Wiki 关系图 · ' + (c.name || ''), wrap, {wide: true});
+    drawWikiGraph(wrap, c, data, {width: 1040, height: 640}, {showDocs: true});
   }
 
   function loadKbActivity(c) {
@@ -7929,6 +8338,8 @@
       state.wikiPageId = '';
       state.wikiPage = null;
       state.wikiView = 'page';
+      state.wikiQuery = '';
+      state.wikiOpen = {};
     }
     state.collectionId = id;
     const docQueryInput = $('#lib-doc-q');
@@ -12022,16 +12433,13 @@
     const wikiGenerate = $('#kb-wiki-generate');
     if (wikiGenerate) wikiGenerate.addEventListener('click',
       () => generateKbWiki(state.kbCurrent));
-    const wikiGraph = $('#kb-wiki-graph');
-    if (wikiGraph) wikiGraph.addEventListener('click', () => {
-      const c = state.kbCurrent;
-      if (!c) return;
-      if (state.wikiView === 'graph') {
-        if (state.wikiPageId) selectWikiPage(c, state.wikiPageId);
-        else if (state.wikiPages.length) selectWikiPage(c, state.wikiPages[0].id);
-      } else {
-        renderWikiGraph(c);
-      }
+    $$('#kb-wiki-views [data-wiki-view]').forEach(b => {
+      b.addEventListener('click', () => setWikiView(b.dataset.wikiView));
+    });
+    const wikiQ = $('#kb-wiki-q');
+    if (wikiQ) wikiQ.addEventListener('input', () => {
+      state.wikiQuery = wikiQ.value;
+      if (state.kbCurrent) renderWikiList(state.kbCurrent);
     });
     const settingsSave = $('#kb-settings-save');
     if (settingsSave) settingsSave.addEventListener('click', () => {

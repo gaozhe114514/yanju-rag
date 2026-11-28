@@ -339,6 +339,7 @@ def _seed_default_wiki(lib, cid: str) -> None:
         return
     try:
         if lib.wiki_pages(cid):
+            lib.rebuild_wiki_links(cid)
             return
         docs = [lib.get_document(cid, d["id"])
                 for d in lib.list_documents(cid)
@@ -2001,12 +2002,19 @@ def _wiki_payload(cid: str, page: Dict) -> Dict:
 def wiki_list(cid: str, request: Request,
               _: None = Depends(enforce_content)) -> dict:
     user, coll, role = _guard_collection(cid, request, write=False)
-    pages = _library().wiki_pages(cid)
+    lib = _library()
+    pages = lib.wiki_pages(cid)
+    doc_folders = {d["id"]: d.get("folder") or ""
+                   for d in lib.list_documents(cid)}
     items = []
     for p in pages:
+        folders = [doc_folders.get(did, "")
+                   for did in (p.get("source_doc_ids") or [])]
+        folder = next((f for f in folders if f), "")
         items.append({
             "id": p["id"], "slug": p.get("slug") or "",
             "title": p.get("title") or "", "summary": p.get("summary") or "",
+            "folder": folder,
             "edited": bool(p.get("edited")), "revision": int(p.get("revision") or 0),
             "source_count": len(p.get("source_chunk_ids") or []),
             "updated_at": p.get("updated_at") or "",
@@ -2050,9 +2058,33 @@ def wiki_graph(cid: str, request: Request,
     _guard_collection(cid, request, write=False)
     lib = _library()
     pages = lib.wiki_pages(cid)
-    nodes = [{"id": p["id"], "title": p.get("title") or "",
-              "summary": p.get("summary") or "", "edited": bool(p.get("edited"))}
-             for p in pages]
+    doc_rows = lib.list_documents(cid)
+    doc_folders = {d["id"]: d.get("folder") or "" for d in doc_rows}
+    nodes = []
+    doc_titles = {}
+    for p in pages:
+        folders = [doc_folders.get(did, "")
+                   for did in (p.get("source_doc_ids") or [])]
+        nodes.append({
+            "id": p["id"], "kind": "page", "title": p.get("title") or "",
+            "summary": p.get("summary") or "",
+            "folder": next((f for f in folders if f), ""),
+            "edited": bool(p.get("edited")),
+        })
+        for did in (p.get("source_doc_ids") or []):
+            doc_titles[did] = True
+    # 把来源资料也画成节点：页面挂在资料上，图更像知识图谱而不是几个孤页
+    docs_by_id = {d["id"]: d for d in doc_rows}
+    for did in doc_titles:
+        row = docs_by_id.get(did)
+        if row is None:
+            continue
+        nodes.append({
+            "id": "doc:" + did, "kind": "document",
+            "title": row.get("title") or "资料",
+            "summary": "", "folder": row.get("folder") or "",
+            "edited": False,
+        })
     links = lib.wiki_links(cid)
     valid = {n["id"] for n in nodes}
     edges = [{"from": e.get("from_page") or "", "to": e.get("to_page") or "",
@@ -2060,7 +2092,12 @@ def wiki_graph(cid: str, request: Request,
               "weight": int(e.get("weight") or 1)}
              for e in links
              if (e.get("from_page") in valid) and (e.get("to_page") in valid)]
-    return {"nodes": nodes, "edges": edges, "total": len(nodes)}
+    for p in pages:
+        for did in (p.get("source_doc_ids") or []):
+            if ("doc:" + did) in valid:
+                edges.append({"from": p["id"], "to": "doc:" + did,
+                              "kind": "source", "weight": 1})
+    return {"nodes": nodes, "edges": edges, "total": len(nodes), "pages": len(pages), "documents": len(doc_titles)}
 
 
 @app.get("/collections/{cid}/wiki/{page_id}")
