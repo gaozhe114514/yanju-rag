@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.80.0">
+  <meta name="app-version" content="0.81.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1444,6 +1444,119 @@
     .gap-tag { background: var(--wash); color: var(--brand-dark); }
     .empty-block { color: var(--muted); }
 
+    /* ---------- 知识库工作台 ---------- */
+    #page-library.active, #page-collection.active {
+      display: flex; flex-direction: row; align-items: stretch;
+      overflow: hidden; min-height: 0;
+    }
+    .kb-page .page-inner {
+      flex: 1; min-width: 0; max-width: none; overflow-y: auto;
+      padding: 22px 28px 36px;
+    }
+    .kb-rail {
+      width: 252px; flex: none; display: flex; flex-direction: column; gap: 9px;
+      padding: 20px 12px; overflow-y: auto;
+      border-right: 1px solid var(--line); background: var(--cream);
+    }
+    .kb-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 2px; }
+    .kb-rail-title { flex: 1; color: var(--ink); font: 600 15px/1.3 var(--sans); }
+    .kb-rail-new {
+      width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--card); color: var(--brand); font-size: 18px; line-height: 1;
+    }
+    .kb-rail-new:hover { border-color: var(--brand); background: var(--wash); }
+    .kb-search {
+      width: 100%; height: 34px; padding: 7px 10px;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: var(--card); color: var(--ink); font-size: 12.5px;
+    }
+    .kb-list { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+    .kb-item {
+      display: block; width: 100%; padding: 8px 9px; border: 0; border-radius: 9px;
+      background: transparent; color: var(--ink-2); text-align: left; cursor: pointer;
+    }
+    .kb-item:hover { background: var(--muted-surface); }
+    .kb-item.active { background: var(--wash); color: var(--ink); }
+    .kb-item-name {
+      display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 13px; font-weight: 600;
+    }
+    .kb-item-meta { display: block; margin-top: 2px; color: var(--muted); font-size: 10.5px; }
+    .kb-item-kind { float: right; margin-left: 6px; color: var(--muted); font-size: 10px; }
+    .kb-rail-empty { padding: 10px 8px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-new-wide {
+      width: 100%; margin-top: 4px; padding: 8px 10px;
+      border: 1px dashed var(--line-strong); border-radius: 8px;
+      background: transparent; color: var(--muted); font-size: 12px;
+    }
+    .kb-new-wide:hover { border-color: var(--brand); color: var(--brand); background: var(--wash); }
+    .kb-main-title { margin: 0; color: var(--ink); font: 600 18px/1.3 var(--sans); }
+    .kb-main-sub { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .kb-tabs {
+      display: flex; gap: 4px; margin: 14px 0 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .kb-tabs button {
+      margin-bottom: -1px; padding: 7px 4px 9px; border: 0; border-bottom: 2px solid transparent;
+      background: transparent; color: var(--muted); font-size: 13px;
+    }
+    .kb-tabs button.active { border-bottom-color: var(--brand); color: var(--ink); font-weight: 600; }
+    .kb-doc-tools { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; }
+    .kb-doc-tools input {
+      flex: 1; min-width: 0; height: 34px; padding: 7px 10px;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: var(--card); color: var(--ink); font-size: 12.5px;
+    }
+    .kb-doc-tools .select { height: 34px; width: auto; min-width: 112px; }
+    .kb-doc-count { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+    .kb-batch {
+      display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+      padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px;
+      background: var(--surface-2); color: var(--muted); font-size: 11.5px;
+    }
+    .kb-batch span { flex: 1; }
+    .kb-test-bar { display: flex; gap: 8px; margin: 4px 0 8px; }
+    .kb-test-bar input {
+      flex: 1; min-width: 0; height: 38px; padding: 8px 11px;
+      border: 1px solid var(--line); border-radius: 9px;
+      background: var(--card); color: var(--ink); font-size: 13px;
+    }
+    .kb-test-hint { margin-bottom: 14px; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+    .kb-search-result {
+      padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--card);
+    }
+    .kb-search-result-head { display: flex; align-items: baseline; gap: 8px; }
+    .kb-score { color: var(--brand); font: 700 12px/1.4 var(--mono, monospace); }
+    .kb-search-result-title { color: var(--ink); font-size: 13px; font-weight: 600; }
+    .kb-search-result-text {
+      margin-top: 5px; color: var(--ink-2); font-size: 12.5px; line-height: 1.7;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .kb-search-result-meta { margin-top: 5px; color: var(--muted); font-size: 10.5px; }
+    .kb-doc-check { flex: none; margin-top: 2px; }
+    .doc-preview-text {
+      max-height: 58vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+      color: var(--ink-2); font-size: 13.5px; line-height: 1.85;
+    }
+
+    @media (max-width: 1024px) {
+      #page-library.active, #page-collection.active {
+        flex-direction: column; overflow-y: auto;
+      }
+      .kb-page .page-inner { padding: 16px 16px 30px; overflow-y: visible; }
+      .kb-rail {
+        width: auto; max-height: 230px; overflow-y: auto;
+        border-right: 0; border-bottom: 1px solid var(--line);
+        padding: 12px 14px;
+      }
+      .kb-list { flex-direction: row; overflow-x: auto; padding-bottom: 3px; }
+      .kb-item { min-width: 168px; flex: none; }
+      .kb-tabs { margin-top: 10px; }
+      .kb-doc-tools { flex-wrap: wrap; }
+      .kb-doc-tools input { flex-basis: 100%; }
+    }
+
     /* ---------- 弹层 ---------- */
     .modal { background: rgba(28, 24, 22, .42); }
     .modal-card {
@@ -1527,7 +1640,7 @@
       .today-ask input { min-height: 38px; }
       .tabbar {
         position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-        display: grid; grid-template-columns: repeat(4, 1fr);
+        display: grid; grid-template-columns: repeat(5, 1fr);
         padding: 5px 8px;
         padding: 5px 8px calc(5px + env(safe-area-inset-bottom));
         border-top: 1px solid var(--line);
@@ -2116,7 +2229,7 @@
       .kanban-board { grid-template-columns: 1fr; }
       .kanban-col { min-height: 120px; }
       .page-head-row { gap: 16px; }
-      .tabbar { grid-template-columns: repeat(4, 1fr); padding-left: 2px; padding-right: 2px; }
+      .tabbar { grid-template-columns: repeat(5, 1fr); padding-left: 2px; padding-right: 2px; }
       .tabbar button { font-size: 10px; gap: 2px; padding: 3px 0; }
       .tabbar .nav-ico svg { width: 17px; height: 17px; }
       .subnav { flex-wrap: nowrap; overflow-x: auto; }
@@ -4072,6 +4185,7 @@
     <button class="new-chat" id="new-chat" title="新建对话"><span class="new-chat-ico">＋</span><span class="new-chat-label">新建对话</span></button>
     <nav class="nav" id="nav">
       <button data-page="chat" class="active" title="问答"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span><span class="nav-label">问答</span></button>
+      <button data-page="library" title="知识库"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-db"></use></svg></span><span class="nav-label">知识库</span></button>
       <button data-page="space" title="知识空间"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span><span class="nav-label">知识空间</span></button>
       <button data-page="create" title="创作"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span><span class="nav-label">创作</span></button>
       <button data-page="kanban" title="任务清单"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span><span class="nav-label">任务清单</span></button>
@@ -4102,7 +4216,6 @@
     </header>
 
     <div class="subnav" id="space-subnav" hidden>
-      <button data-space="library" class="active">知识库</button>
       <button data-space="notebooks">笔记本</button>
       <button data-space="history">对话</button>
       <button data-space="personas">人格</button>
@@ -4138,11 +4251,14 @@
       </div>
     </section>
 
-    <section class="page" id="page-library">
+    <section class="page kb-page" id="page-library">
+      <aside class="kb-rail" data-kb-rail></aside>
       <div class="page-inner">
         <div class="deck-toolbar">
-          <button class="primary" id="lib-new">新建知识库</button>
-          <span class="grow"></span>
+          <div class="grow">
+            <h2 class="kb-main-title">全部知识库</h2>
+            <p class="kb-main-sub">左边选一个库，或新建自己的知识库</p>
+          </div>
           <span class="bank-meta" id="lib-meta"></span>
         </div>
         <div class="deck-grid" id="lib-grid"></div>
@@ -4150,7 +4266,8 @@
       </div>
     </section>
 
-    <section class="page" id="page-collection">
+    <section class="page kb-page" id="page-collection">
+      <aside class="kb-rail" data-kb-rail></aside>
       <div class="page-inner">
         <div class="deck-bar">
           <div class="grow">
@@ -4164,6 +4281,28 @@
         </div>
         <div class="lib-readonly" id="lib-readonly" hidden>
           这个知识库对你只读。公司库的写权限由管理员或被指定的成员维护；个人库只有建库人自己能改。
+        </div>
+        <div class="kb-tabs" id="kb-tabs">
+          <button type="button" data-kb-tab="docs" class="active">资料</button>
+          <button type="button" data-kb-tab="search">检索测试</button>
+          <button type="button" data-kb-tab="settings">设置</button>
+        </div>
+        <div class="kb-pane" data-kb-pane="docs">
+        <div class="kb-doc-tools">
+          <input id="lib-doc-q" type="search" placeholder="搜索资料标题或正文" aria-label="搜索资料">
+          <select id="lib-doc-status" class="select" aria-label="按状态筛选">
+            <option value="">全部状态</option>
+            <option value="completed">已完成</option>
+            <option value="processing">解析中</option>
+            <option value="pending">等待中</option>
+            <option value="failed">失败</option>
+          </select>
+          <span class="kb-doc-count" id="lib-doc-count"></span>
+        </div>
+        <div class="kb-batch" id="lib-doc-batch" hidden>
+          <span id="lib-doc-selected"></span>
+          <button type="button" class="row-btn" data-batch="reparse">重新解析</button>
+          <button type="button" class="row-btn danger" data-batch="delete">删除所选</button>
         </div>
         <div class="lib-add" id="lib-add">
           <input id="lib-doc-title" maxlength="80" placeholder="资料标题（可选，默认取正文第一行）">
@@ -4181,9 +4320,26 @@
                    accept=".pdf,.docx,.xlsx,.pptx,.md,.markdown,.txt,.html,.htm,.csv,.json,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff">
           </div>
           <div class="upload-list" id="lib-uploads"></div>
+          <div class="lib-add-row">
+            <span class="lib-add-hint">也可以从公开网页导入正文。</span>
+            <button type="button" class="ghost" id="lib-url-add">从链接导入</button>
+          </div>
         </div>
         <div class="bank-meta" id="lib-doc-meta"></div>
         <div class="stack" id="lib-docs"></div>
+        </div>
+        <div class="kb-pane" data-kb-pane="search" hidden>
+          <div class="kb-test-bar">
+            <input id="kb-search-q" type="search" placeholder="输入一个问题，看看会召回哪些片段" aria-label="检索测试问题">
+            <button type="button" class="primary" id="kb-search-go">检索</button>
+          </div>
+          <div class="kb-test-hint">只做检索，不生成答案；分数、片段和出处都在这里，点片段可看原文。</div>
+          <div class="stack" id="kb-search-results"></div>
+        </div>
+        <div class="kb-pane" data-kb-pane="settings" hidden>
+          <div class="set-facts" id="kb-settings-facts"></div>
+          <div class="practice-note">切片大小、重叠、索引重建、URL 导入、标签与文件夹会在下一阶段接入。</div>
+        </div>
       </div>
     </section>
 
@@ -4251,6 +4407,7 @@
 
 <nav class="tabbar" id="tabbar" aria-label="主要页面">
   <button data-page="chat" class="active"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat"></use></svg></span>问答</button>
+  <button data-page="library"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-db"></use></svg></span>知识库</button>
   <button data-page="space"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-grid"></use></svg></span>知识空间</button>
   <button data-page="create"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pen"></use></svg></span>创作</button>
   <button data-page="kanban"><span class="nav-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-board"></use></svg></span>任务清单</button>
@@ -4446,6 +4603,11 @@
     collectionsNeedLogin: false,
     collectionsCanCreateShared: false,
     collectionId: '',
+    kbQuery: '',
+    kbTab: 'docs',
+    docQuery: '',
+    docStatus: '',
+    docSelected: {},
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
@@ -6318,11 +6480,203 @@
     go('settings');
   }
 
+  function kbKindLabel(c) {
+    if (c.builtin) return '内置';
+    return c.visibility === 'private' ? '个人' : '公司';
+  }
+
+  function renderKbRail(activeId, items) {
+    const rails = $$('[data-kb-rail]');
+    if (!rails.length) return;
+    const all = items || state.collections || [];
+    const query = (state.kbQuery || '').trim().toLowerCase();
+    const list = all.filter(c => !query ||
+      String(c.name || '').toLowerCase().indexOf(query) >= 0 ||
+      String(c.description || '').toLowerCase().indexOf(query) >= 0);
+    rails.forEach(rail => {
+      rail.replaceChildren();
+      const head = el('div', 'kb-rail-head');
+      head.appendChild(el('span', 'kb-rail-title', '知识库'));
+      const add = el('button', 'kb-rail-new', '+');
+      add.type = 'button';
+      add.title = '新建知识库';
+      add.setAttribute('aria-label', '新建知识库');
+      add.addEventListener('click', openCollectionEditor);
+      head.appendChild(add);
+      rail.appendChild(head);
+
+      const search = el('input', 'kb-search');
+      search.type = 'search';
+      search.placeholder = '搜索知识库';
+      search.value = state.kbQuery || '';
+      search.setAttribute('aria-label', '搜索知识库');
+      search.addEventListener('input', () => {
+        state.kbQuery = search.value;
+        renderKbRail(activeId, state.collections);
+      });
+      rail.appendChild(search);
+
+      const box = el('div', 'kb-list');
+      if (!list.length) {
+        box.appendChild(el('div', 'kb-rail-empty',
+          query ? '没有匹配的知识库。' : '还没有知识库，点右上角 + 新建。'));
+      }
+      list.forEach(c => {
+        const item = el('button', 'kb-item' + (c.id === activeId ? ' active' : ''));
+        item.type = 'button';
+        const kind = el('span', 'kb-item-kind', kbKindLabel(c));
+        const name = el('span', 'kb-item-name', c.name || '未命名知识库');
+        name.appendChild(kind);
+        item.appendChild(name);
+        item.appendChild(el('span', 'kb-item-meta',
+          (c.documents || 0) + ' 篇 · ' + (c.chunks || 0) + ' 段'));
+        item.addEventListener('click', () => go('collection', c.id));
+        box.appendChild(item);
+      });
+      rail.appendChild(box);
+      const wide = el('button', 'kb-new-wide', '＋ 新建知识库');
+      wide.type = 'button';
+      wide.addEventListener('click', openCollectionEditor);
+      rail.appendChild(wide);
+    });
+  }
+
+  function setKbTab(tab) {
+    if (['docs', 'search', 'settings'].indexOf(tab) < 0) tab = 'docs';
+    state.kbTab = tab;
+    $$('#kb-tabs [data-kb-tab]').forEach(b =>
+      b.classList.toggle('active', b.dataset.kbTab === tab));
+    $$('.kb-pane').forEach(p =>
+      p.hidden = p.dataset.kbPane !== tab);
+  }
+
+  function openUrlImport(cid) {
+    const wrap = el('div', 'form-grid');
+    const url = el('input');
+    url.placeholder = 'https://example.com/handbook';
+    url.maxLength = 2000;
+    const title = el('input');
+    title.placeholder = '资料标题（可选）';
+    title.maxLength = 80;
+    wrap.appendChild(field('网页链接', url, '只抓公网 http/https 页面正文；登录后导入到当前库。'));
+    wrap.appendChild(field('标题', title, '留空就用网址域名。'));
+    const acts = el('div', 'form-actions');
+    const cancel = el('button', 'ghost', '取消');
+    cancel.addEventListener('click', closeModal);
+    const save = el('button', 'primary', '导入');
+    save.addEventListener('click', () => {
+      const value = url.value.trim();
+      if (!value) { url.focus(); return; }
+      save.disabled = true;
+      api('/collections/' + encodeURIComponent(cid) + '/url', {
+        method: 'POST', body: {url: value, title: title.value.trim()}
+      }).then(doc => {
+        closeModal();
+        toast('已导入：' + (doc.title || '网页'));
+        renderCollectionPage(cid);
+      }).catch(e => {
+        save.disabled = false;
+        toast('导入失败：' + e.message, 'err');
+      });
+    });
+    acts.appendChild(cancel);
+    acts.appendChild(save);
+    wrap.appendChild(acts);
+    openModal('从链接导入', wrap);
+    url.focus();
+  }
+
+  function openDocPreview(c, d) {
+    api('/collections/' + encodeURIComponent(c.id) + '/documents/' +
+      encodeURIComponent(d.id)).then(doc => {
+      const wrap = el('div', 'stack');
+      const meta = el('div', 'chunk-note',
+        (doc.title || d.title || '资料原文') + ' · ' +
+        (doc.chars || 0) + ' 字 · ' + (doc.chunks || d.chunks || 0) + ' 段');
+      wrap.appendChild(meta);
+      const body = el('div', 'doc-preview-text');
+      body.textContent = doc.text || '';
+      wrap.appendChild(body);
+      openModal(doc.title || d.title || '资料原文', wrap, {wide: true});
+    }).catch(e => toast('打不开资料原文：' + e.message, 'err'));
+  }
+
+  function runKbSearch(c) {
+    const input = $('#kb-search-q');
+    const box = $('#kb-search-results');
+    if (!input || !box || !c) return;
+    const q = input.value.trim();
+    if (!q) { input.focus(); return; }
+    box.replaceChildren(el('div', 'chunk-note', '正在检索…'));
+    api('/collections/' + encodeURIComponent(c.id) + '/search?q=' +
+      encodeURIComponent(q) + '&k=8').then(data => {
+      box.replaceChildren();
+      const items = (data && data.items) || [];
+      if (!items.length) {
+        box.appendChild(el('div', 'empty-panel',
+          '没有命中片段。可以换一个更具体的问法，或先补资料。'));
+        return;
+      }
+      items.forEach(item => {
+        const card = el('div', 'kb-search-result');
+        const head = el('div', 'kb-search-result-head');
+        head.appendChild(el('span', 'kb-score', Number(item.score || 0).toFixed(3)));
+        head.appendChild(el('span', 'kb-search-result-title',
+          item.title || item.chunk_id || '片段'));
+        card.appendChild(head);
+        card.appendChild(el('div', 'kb-search-result-text', item.text || ''));
+        const ref = item.source_ref || {};
+        card.appendChild(el('div', 'kb-search-result-meta',
+          '文档 ' + (ref.document_title || item.title || '—') +
+          ' · 片段 ' + (item.chunk_id || '') +
+          (ref.start != null ? ' · 原文 ' + ref.start + '–' + ref.end : '')));
+        card.addEventListener('click', () => {
+          if (ref.document_id) {
+            openDocPreview(c, {id: ref.document_id,
+              title: ref.document_title || item.title, chunks: 0});
+          }
+        });
+        box.appendChild(card);
+      });
+    }).catch(e => {
+      box.replaceChildren(el('div', 'warn-box', '检索失败：' + e.message));
+    });
+  }
+
+  function batchReparseDocs(c) {
+    const ids = Object.keys(state.docSelected || {});
+    if (!ids.length || !c) return;
+    if (!window.confirm('重新解析所选的 ' + ids.length + ' 篇资料？现有片段会被替换。')) return;
+    Promise.all(ids.map(id => api('/collections/' + encodeURIComponent(c.id) +
+      '/documents/' + encodeURIComponent(id) + '/reparse', {method: 'POST'})))
+      .then(() => {
+        state.docSelected = {};
+        toast('已提交重新解析');
+        renderCollectionPage(c.id);
+      })
+      .catch(e => toast('重新解析失败：' + e.message, 'err'));
+  }
+
+  function batchDeleteDocs(c) {
+    const ids = Object.keys(state.docSelected || {});
+    if (!ids.length || !c) return;
+    if (!window.confirm('删除所选的 ' + ids.length + ' 篇资料？片段和引用会一起删除，不能恢复。')) return;
+    Promise.all(ids.map(id => api('/collections/' + encodeURIComponent(c.id) +
+      '/documents/' + encodeURIComponent(id), {method: 'DELETE'})))
+      .then(() => {
+        state.docSelected = {};
+        toast('资料已删除');
+        renderCollectionPage(c.id);
+      })
+      .catch(e => toast('删除失败：' + e.message, 'err'));
+  }
+
   function renderLibrary() {
     const grid = clearNode('#lib-grid');
     if (!grid) return;
     fetchCollections(true).then(items => {
       if (state.page !== 'library') return;
+      renderKbRail('', items);
       grid.replaceChildren();
       const preset = items.filter(c => c.builtin);
       const shared = items.filter(c => !c.builtin && c.visibility === 'shared');
@@ -6636,7 +6990,16 @@
 
   function renderCollectionPage(id) {
     if (!id) { go('library'); return; }
+    if (state.collectionId !== id) {
+      state.docSelected = {};
+      state.docQuery = '';
+      state.docStatus = '';
+    }
     state.collectionId = id;
+    const docQueryInput = $('#lib-doc-q');
+    if (docQueryInput) docQueryInput.value = state.docQuery || '';
+    const docStatusInput = $('#lib-doc-status');
+    if (docStatusInput) docStatusInput.value = state.docStatus || '';
     const docs = clearNode('#lib-docs');
     if (docs) docs.replaceChildren();
     const title = $('#lib-title');
@@ -6648,6 +7011,7 @@
 
     fetchCollections(true).then(() => {
       if (state.page !== 'collection' || state.collectionId !== id) return;
+      renderKbRail(id, state.collections);
       return api('/collections/' + encodeURIComponent(id));
     }).then(c => {
       if (!c) return;
@@ -6663,6 +7027,8 @@
       }
       if (title) title.textContent = c.name;
       if (desc) desc.textContent = c.description || '还没有说明。';
+      setKbTab(state.kbTab);
+      renderKbSettings(c);
       if (askBtn) askBtn.hidden = false;
       const canWrite = !!c.can_write;
       const canManage = !!c.can_manage;
@@ -6701,39 +7067,100 @@
     });
   }
 
+  function renderKbSettings(c) {
+    const box = $('#kb-settings-facts');
+    if (!box) return;
+    box.replaceChildren();
+    const docs = c.documents || [];
+    const failed = docs.filter(d => d.status === 'failed').length;
+    const kind = c.builtin ? '默认知识库（内置只读）'
+      : (c.visibility === 'private' ? '个人知识库' : '公司知识库');
+    setFact(box, '类型', kind);
+    setFact(box, '资料', docs.length + ' 篇 · ' + (c.chunks || 0) + ' 段');
+    setFact(box, '状态', failed ? failed + ' 篇解析失败' : '全部正常');
+    setFact(box, '我的权限', c.can_manage ? '可管理'
+      : (c.can_write ? '可编辑' : '只读'));
+    setFact(box, '切片', '512 字 / 50 重叠（当前固定）');
+  }
+
+  function updateBatchBar() {
+    const bar = $('#lib-doc-batch');
+    const label = $('#lib-doc-selected');
+    if (!bar || !label) return;
+    const n = Object.keys(state.docSelected || {}).length;
+    bar.hidden = !n;
+    label.textContent = n ? '已选 ' + n + ' 篇' : '';
+  }
+
   function renderCollectionDocs(c) {
     const box = clearNode('#lib-docs');
     if (!box) return;
-    const list = c.documents || [];
+    const all = c.documents || [];
     const canWrite = !!c.can_write;
-    const meta = $('#lib-doc-meta');
-    if (meta) meta.textContent = list.length ? list.length + ' 篇资料' : '';
+    const q = (state.docQuery || '').trim().toLowerCase();
+    const status = state.docStatus || '';
+    const list = all.filter(d => {
+      if (status && String(d.status || '') !== status) return false;
+      if (!q) return true;
+      return String(d.title || '').toLowerCase().indexOf(q) >= 0;
+    });
+    const failed = all.filter(d => d.status === 'failed').length;
+    if ($('#lib-doc-meta')) {
+      $('#lib-doc-meta').textContent = list.length === all.length
+        ? '共 ' + all.length + ' 篇资料 · ' + (c.chunks || 0) + ' 段'
+        : '显示 ' + list.length + ' / ' + all.length + ' 篇 · ' + (c.chunks || 0) + ' 段';
+    }
+    if ($('#lib-doc-count')) {
+      $('#lib-doc-count').textContent = '共 ' + all.length + ' 篇' +
+        (failed ? ' · ' + failed + ' 篇失败' : '');
+    }
+    updateBatchBar();
     if (!list.length) {
-      box.appendChild(el('div', 'empty-panel', canWrite
-        ? '这个库还没有资料。把一段正文粘贴到上面，或把文件拖进上传区，切分后就能开始提问。'
-        : '这个库还没有资料。写权限在公司库管理员或被指定的成员手里。'));
+      box.appendChild(el('div', 'empty-panel', all.length
+        ? '没有符合条件的资料，换个搜索词或状态筛选。'
+        : (canWrite
+          ? '这个库还没有资料。把一段正文粘贴到上面，或把文件拖进上传区。'
+          : '这个库还没有资料。写权限在公司库管理员或被指定的成员手里。')));
       return;
     }
     list.forEach(d => {
-      const row = el('div', 'list-row');
+      const row = el('div', 'list-row kb-doc-row');
       const main = el('div', 'list-main');
-      const titleLine = el('div', 'list-title', d.title || '未命名资料');
-      const status = String(d.status || '');
-      if (status && status !== 'completed') {
+      const titleLine = el('div', 'list-title');
+      if (canWrite) {
+        const check = el('input', 'kb-doc-check');
+        check.type = 'checkbox';
+        check.checked = !!state.docSelected[d.id];
+        check.setAttribute('aria-label', '选择资料 ' + (d.title || ''));
+        check.addEventListener('change', () => {
+          if (check.checked) state.docSelected[d.id] = true;
+          else delete state.docSelected[d.id];
+          updateBatchBar();
+        });
+        titleLine.appendChild(check);
+      }
+      titleLine.appendChild(document.createTextNode(d.title || '未命名资料'));
+      const statusValue = String(d.status || '');
+      if (statusValue && statusValue !== 'completed') {
         titleLine.appendChild(document.createTextNode(' '));
-        titleLine.appendChild(el('span', 'badge' + (status === 'failed' ? ' err' : ''),
-          docStatusLabel(status)));
+        titleLine.appendChild(el('span',
+          'badge' + (statusValue === 'failed' ? ' err' : ''),
+          docStatusLabel(statusValue)));
       }
       main.appendChild(titleLine);
       const bits = [];
       if (d.chars) bits.push(d.chars + ' 字');
       bits.push((d.chunks || 0) + ' 段');
       if (d.bytes) bits.push(Math.max(1, Math.round(d.bytes / 1024)) + ' KB');
+      if (d.source) bits.push(d.source);
       main.appendChild(el('div', 'list-meta', bits.join(' · ')));
       if (d.error) main.appendChild(el('div', 'list-meta err', d.error));
       row.appendChild(main);
       const acts = el('div', 'list-actions');
-      if (canWrite && !c.weknora && status === 'completed') {
+      const preview = el('button', 'row-btn', '预览');
+      preview.addEventListener('click', () => openDocPreview(c, d));
+      acts.appendChild(preview);
+      if (canWrite && !c.weknora && statusValue === 'completed') {
         const edit = el('button', 'row-btn', '编辑');
         edit.addEventListener('click', () => openDocumentEditor(c, d));
         acts.appendChild(edit);
@@ -6742,7 +7169,8 @@
       chunks.addEventListener('click', () => openChunkManager(c, d));
       acts.appendChild(chunks);
       if (canWrite) {
-        if (status === 'failed' || status === 'pending' || status === 'processing') {
+        if (statusValue === 'failed' || statusValue === 'pending' ||
+            statusValue === 'processing') {
           const again = el('button', 'row-btn', '重切分');
           again.addEventListener('click', () => reparseLibraryDoc(c, d));
           acts.appendChild(again);
@@ -9345,12 +9773,11 @@
     history.pushState(null, '', target);
   }
 
-  const SPACE_PAGES = ['library', 'notebooks', 'history', 'personas',
-    'skills', 'memory'];
+  const SPACE_PAGES = ['notebooks', 'history', 'personas', 'skills', 'memory'];
   const DETAIL_PAGES = ['notebooks', 'collection'];
 
   function navPageFor(page) {
-    if (page === 'collection') return 'space';
+    if (page === 'collection') return 'library';
     if (SPACE_PAGES.indexOf(page) >= 0) return 'space';
     return page;
   }
@@ -9428,8 +9855,8 @@
 
     const spaceSub = $('#space-subnav');
     if (spaceSub) {
-      const onSpace = SPACE_PAGES.indexOf(page) >= 0 || page === 'collection';
-      const spaceActive = page === 'collection' ? 'library' : page;
+      const onSpace = SPACE_PAGES.indexOf(page) >= 0;
+      const spaceActive = page;
       spaceSub.hidden = !onSpace;
       $$('button', spaceSub).forEach(b =>
         b.classList.toggle('active', b.dataset.space === spaceActive));
@@ -10541,6 +10968,50 @@
     $('#scrim').addEventListener('click', closeSidebar);
     const sideToggle = $('#side-toggle');
     if (sideToggle) sideToggle.addEventListener('click', toggleSidebarCollapsed);
+    $$('#kb-tabs [data-kb-tab]').forEach(b => {
+      b.addEventListener('click', () => {
+        setKbTab(b.dataset.kbTab);
+        if (b.dataset.kbTab === 'search') {
+          const q = $('#kb-search-q');
+          if (q) q.focus();
+        }
+      });
+    });
+    const kbSearchGo = $('#kb-search-go');
+    if (kbSearchGo) kbSearchGo.addEventListener('click', () => {
+      runKbSearch(collectionById(state.collectionId));
+    });
+    const kbSearchQ = $('#kb-search-q');
+    if (kbSearchQ) kbSearchQ.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runKbSearch(collectionById(state.collectionId));
+      }
+    });
+    let kbDocTimer = null;
+    const docQ = $('#lib-doc-q');
+    if (docQ) docQ.addEventListener('input', () => {
+      state.docQuery = docQ.value;
+      clearTimeout(kbDocTimer);
+      kbDocTimer = setTimeout(() => {
+        if (state.page === 'collection') renderCollectionPage(state.collectionId);
+      }, 260);
+    });
+    const urlAdd = $('#lib-url-add');
+    if (urlAdd) urlAdd.addEventListener('click', () => openUrlImport(state.collectionId));
+    const docStatus = $('#lib-doc-status');
+    if (docStatus) docStatus.addEventListener('change', () => {
+      state.docStatus = docStatus.value;
+      if (state.page === 'collection') renderCollectionPage(state.collectionId);
+    });
+    $$('#lib-doc-batch [data-batch]').forEach(b => {
+      b.addEventListener('click', () => {
+        const c = collectionById(state.collectionId);
+        if (!c) return;
+        if (b.dataset.batch === 'delete') batchDeleteDocs(c);
+        else batchReparseDocs(c);
+      });
+    });
     $('#settings-btn').addEventListener('click', () => go('settings'));
     $('#auth-open').addEventListener('click', () => openSettings('这个站点需要访问口令。'));
     $('#modal-close').addEventListener('click', () => closeModal());
@@ -10561,7 +11032,6 @@
     if (settingsChip) settingsChip.addEventListener('click', openInputSettings);
     renderInputSettingsChip();
 
-    $('#lib-new').addEventListener('click', openCollectionEditor);
     $('#lib-doc-add').addEventListener('click', addLibraryDoc);
     const libDrop = $('#lib-drop');
     const libInput = $('#lib-file-input');

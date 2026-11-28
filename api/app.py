@@ -26,6 +26,7 @@ import os
 import threading
 import time
 import urllib.parse
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -41,7 +42,7 @@ from answer.daily import (daily_reply, daily_stream, general_reply,
                           general_stream)
 from answer import docgen
 from answer.pipeline import AnswerPipeline, AnswerResult
-from answer.tools import run_tools, tool_context, tool_will_run
+from answer.tools import (_url_allowed, run_tools, tool_context, tool_will_run)
 from answer.cache import (cache_key, cacheable, cached_payload, namespace,
                           storable_payload, ttl_from_env, with_cache_meta)
 from answer.gate import RefusalGate
@@ -138,6 +139,11 @@ class CollectionMemberRequest(BaseModel):
 class DocumentRequest(BaseModel):
     # 用户在页面里粘贴的资料；切分后只有片段进检索库，原文整篇留档以便回跳
     text: str = Field(..., min_length=20, max_length=50000)
+    title: str = Field("", max_length=80)
+
+
+class UrlDocumentRequest(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2000)
     title: str = Field("", max_length=80)
 
 
@@ -1858,6 +1864,39 @@ def collection_member_remove(cid: str, user_id: str, request: Request,
     return {"ok": removed, "removed": 1 if removed else 0}
 
 
+@app.get("/collections/{cid}/search")
+def collection_search(cid: str, request: Request, q: str = "", k: int = 8,
+                      _: None = Depends(enforce_content)) -> dict:
+    """知识库内检索测试：只读，返回片段、分数与出处，不生成答案。"""
+    query = (q or "").strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="检索词不能为空")
+    _guard_collection(cid, request, write=False)
+    pipeline = _pipeline_for(cid)
+    if pipeline is None:
+        return {"items": [], "total": 0, "query": query}
+    try:
+        hits = pipeline.searcher.search(query)
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail="检索失败：%s" % type(e).__name__)
+    limit = max(1, min(int(k or 8), 20))
+    items = []
+    for hit in hits[:limit]:
+        chunk = hit.chunk
+        items.append({
+            "chunk_id": chunk.id,
+            "title": chunk.title or (chunk.source_ref or {}).get(
+                "document_title") or "",
+            "text": chunk.text,
+            "score": round(float(hit.score), 4),
+            "bm25": round(float(getattr(hit, "bm25", 0.0) or 0.0), 4),
+            "vector": round(float(getattr(hit, "vector", 0.0) or 0.0), 4),
+            "source_ref": chunk.source_ref or {},
+        })
+    return {"items": items, "total": len(items), "query": query}
+
+
 @app.post("/collections/{cid}/documents")
 def document_add(cid: str, req: DocumentRequest, request: Request,
                  _: None = Depends(enforce_guard)) -> dict:
@@ -2115,6 +2154,50 @@ def _start_parse_job(cid: str, doc_id: str, name: str, data: bytes) -> None:
         work()
     else:
         threading.Thread(target=work, daemon=True).start()
+
+
+@app.post("/collections/{cid}/url")
+def collection_add_url(cid: str, req: UrlDocumentRequest, request: Request,
+                       _: None = Depends(enforce_guard)) -> dict:
+    """从公开网页导入一篇资料：只取正文，原文与片段照常入库。"""
+    user, coll, role = _guard_collection(cid, request, write=True)
+    url = req.url.strip()
+    if not _url_allowed(url):
+        raise HTTPException(status_code=400,
+                            detail="只允许导入公网 http/https 网页")
+    try:
+        ureq = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; yanju/1.0)"})
+        with urllib.request.urlopen(ureq, timeout=15) as resp:
+            data = resp.read(5 * 1024 * 1024 + 1)
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise HTTPException(status_code=502,
+                            detail="网页抓取失败：%s" % type(e).__name__)
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="网页超过 5MB，先另存后再上传")
+    path = urllib.parse.urlsplit(url).path.lower()
+    if "pdf" in ctype or path.endswith(".pdf"):
+        name = "page.pdf"
+    elif "html" in ctype or path.endswith((".html", ".htm")):
+        name = "page.html"
+    else:
+        name = "page.txt"
+    try:
+        text, _meta, _tables = extract_document(name, data)
+    except ParseError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    title = req.title.strip()
+    if not title:
+        host = urllib.parse.urlsplit(url).hostname or "网页"
+        title = host[:80]
+    try:
+        out = _library().add_document(
+            cid, text, title=title, source=url, nbytes=len(data))
+    except LibraryError as e:
+        raise _lib_error(e)
+    _state["doc_pipelines"].pop(cid, None)
+    return out
 
 
 @app.post("/collections/{cid}/files")
