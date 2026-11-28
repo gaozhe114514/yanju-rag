@@ -100,7 +100,8 @@ class Library:
         self._mem = {"collections": [], "documents": [], "chunks": [],
                      "members": [], "document_versions": [],
                      "document_assets": [], "wiki_pages": [],
-                     "wiki_versions": [], "wiki_links": []}
+                     "wiki_versions": [], "wiki_links": [],
+                     "wiki_entities": []}
         self._state_path = Path(state_path) if (state_path and store is None) else None
         if self._state_path is not None:
             self._load_state()
@@ -118,7 +119,8 @@ class Library:
             return
         for key in ("collections", "documents", "chunks", "members",
                     "document_versions", "document_assets", "folders",
-                    "audit", "wiki_pages", "wiki_versions", "wiki_links"):
+                    "audit", "wiki_pages", "wiki_versions", "wiki_links",
+                    "wiki_entities"):
             if isinstance(data.get(key), list):
                 self._mem[key] = data[key]
         for key in ("files", "ingest_jobs"):
@@ -488,6 +490,49 @@ class Library:
                     "weight": int(e.get("weight") or 1)})
         self._save_state()
         return self.wiki_pages(cid)
+
+    def replace_wiki_entities(self, cid: str, entities: List[Dict]) -> List[Dict]:
+        if self.store is not None:
+            self.store.replace_wiki_entities(cid, entities)
+            return self.wiki_entities(cid)
+        self._mem["wiki_entities"] = [
+            e for e in self._mem.setdefault("wiki_entities", [])
+            if e.get("collection_id") != cid]
+        for e in entities:
+            self._mem["wiki_entities"].append({
+                "id": e["id"], "collection_id": cid, "name": e["name"],
+                "kind": e.get("kind") or "概念",
+                "summary": e.get("summary") or "",
+                "aliases": list(e.get("aliases") or []),
+                "source_doc_ids": list(e.get("source_doc_ids") or []),
+                "source_chunk_ids": list(e.get("source_chunk_ids") or []),
+                "created_at": _now(), "updated_at": _now(),
+            })
+        self._save_state()
+        return self.wiki_entities(cid)
+
+    def wiki_entities(self, cid: str) -> List[Dict]:
+        if self.store is not None:
+            rows = self.store.list_wiki_entities(cid)
+        else:
+            rows = [dict(e) for e in self._mem.setdefault("wiki_entities", [])
+                    if e.get("collection_id") == cid]
+            rows.sort(key=lambda e: (str(e.get("kind") or ""), str(e.get("name") or "")))
+        return [{**r, "created_at": str(r.get("created_at") or ""),
+                 "updated_at": str(r.get("updated_at") or "")} for r in rows]
+
+    def wiki_entity(self, cid: str, entity_id: str) -> Optional[Dict]:
+        if self.store is not None:
+            row = self.store.get_wiki_entity(cid, entity_id)
+        else:
+            row = next((dict(e) for e in self._mem.setdefault("wiki_entities", [])
+                        if e.get("collection_id") == cid
+                        and e.get("id") == entity_id), None)
+        if row is None:
+            return None
+        row["created_at"] = str(row.get("created_at") or "")
+        row["updated_at"] = str(row.get("updated_at") or "")
+        return row
 
     def wiki_links(self, cid: str) -> List[Dict]:
         if self.store is not None:

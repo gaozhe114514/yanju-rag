@@ -224,3 +224,111 @@ def generate_wiki(provider, cid: str, docs: Sequence[Dict],
         pages = fallback_pages(cid, docs, chunks)
         source = "fallback" if source in ("empty", "") else source + "+fallback"
     return pages, source
+
+
+# ---------- 实体抽取（v0.86）：人物 / 部门 / 产品 / 概念独立成节点 ----------
+
+ENTITY_KINDS = ("人物", "部门", "产品", "概念", "组织", "其他")
+MAX_ENTITIES = 24
+
+
+def entity_id(cid: str, name: str) -> str:
+    return "ent-" + hashlib.sha1(
+        (cid + "|" + name.lower()).encode("utf-8")).hexdigest()[:10]
+
+
+ENTITY_SYSTEM = """你在整理公司知识库的实体表。只依据给出的资料片段，不要编造。
+输出严格 JSON：
+{"entities":[{"name":"实体名","kind":"人物|部门|产品|概念|组织|其他",
+"aliases":["别名"],"summary":"一句话说明","source_chunk_ids":["片段 id"]}]}
+要求：
+1. 8–20 个实体；优先人物、部门、产品、组织，其次是被反复提到的概念（如年假、报销、采购）。
+2. 每个实体必须引用 1–3 个真实存在的 source_chunk_ids，不能编造 id。
+3. 不要把同一实体拆成多个名字；别名放进 aliases。
+4. 只输出 JSON，不要代码块，不要解释。"""
+
+
+def infer_entity_kind(name: str, kind: str) -> str:
+    if kind in ENTITY_KINDS and kind != "其他":
+        return kind
+    if any(k in name for k in ("经理", "主管", "总监", "负责人", "员工", "专员")):
+        return "人物"
+    if any(k in name for k in ("部门", "团队", "事业部", "中心")):
+        return "部门"
+    if any(k in name for k in ("系统", "平台", "产品", "应用", "工具")):
+        return "产品"
+    return "其他"
+
+
+def _clean_entity(cid: str, item: Dict, chunk_map: Dict[str, Dict],
+                  doc_of_chunk: Dict[str, str]) -> Optional[Dict]:
+    if not isinstance(item, dict):
+        return None
+    name = " ".join(str(item.get("name") or "").split())[:30]
+    if len(name) < 2:
+        return None
+    sources = []
+    for key in item.get("source_chunk_ids") or []:
+        key = str(key).strip()
+        if key in chunk_map and key not in sources:
+            sources.append(key)
+    if not sources:
+        return None
+    sources = sources[:3]
+    kind = infer_entity_kind(name, str(item.get("kind") or "").strip())
+    aliases = []
+    for a in item.get("aliases") or []:
+        a = " ".join(str(a).split())[:20]
+        if a and a != name and a not in aliases:
+            aliases.append(a)
+    doc_ids = []
+    for key in sources:
+        did = doc_of_chunk.get(key) or ""
+        if did and did not in doc_ids:
+            doc_ids.append(did)
+    return {
+        "id": entity_id(cid, name), "name": name, "kind": kind,
+        "summary": " ".join(str(item.get("summary") or "").split())[:160],
+        "aliases": aliases[:5], "source_doc_ids": doc_ids,
+        "source_chunk_ids": sources,
+    }
+
+
+def generate_entities(provider, cid: str, docs: Sequence[Dict],
+                      chunks: Sequence[Dict],
+                      exclude_titles: Sequence[str] = ()) -> List[Dict]:
+    if provider is None or not hasattr(provider, "complete"):
+        return []
+    picked = sample_prompt_chunks(docs, chunks)
+    if not picked:
+        return []
+    lines = [_chunk_label(c["id"], c.get("_doc_title") or "", c.get("text") or "")
+             for c in picked]
+    messages = [
+        {"role": "system", "content": ENTITY_SYSTEM},
+        {"role": "user", "content": "资料片段：\n" + "\n\n".join(lines)},
+    ]
+    try:
+        raw = provider.complete(messages, temperature=0.1,
+                                max_tokens=2200, json_mode=True, retries=1)
+    except Exception:
+        return []
+    data = _parse_json(raw)
+    if not isinstance(data, dict) or not isinstance(data.get("entities"), list):
+        return []
+    chunk_map = {c["id"]: c for c in picked}
+    doc_of_chunk = {c["id"]: c.get("document_id") or "" for c in picked}
+    skip = {" ".join(str(t).lower().split()) for t in exclude_titles}
+    out, seen = [], set()
+    for item in data["entities"]:
+        e = _clean_entity(cid, item, chunk_map, doc_of_chunk)
+        if e is None:
+            continue
+        key = e["name"].lower()
+        if key in seen or key in skip:
+            continue
+        seen.add(key)
+        out.append(e)
+        if len(out) >= MAX_ENTITIES:
+            break
+    return out

@@ -134,6 +134,23 @@ CREATE TABLE IF NOT EXISTS wiki_page_versions (
 CREATE INDEX IF NOT EXISTS wiki_page_versions_idx
     ON wiki_page_versions (page_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS wiki_entities (
+    id               text PRIMARY KEY,
+    collection_id    text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    name             text NOT NULL,
+    kind             text NOT NULL DEFAULT '概念',
+    summary          text NOT NULL DEFAULT '',
+    aliases          text[] NOT NULL DEFAULT '{}',
+    source_doc_ids   text[] NOT NULL DEFAULT '{}',
+    source_chunk_ids text[] NOT NULL DEFAULT '{}',
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    updated_at       timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (collection_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS wiki_entities_coll_idx
+    ON wiki_entities (collection_id, kind, name);
+
 CREATE TABLE IF NOT EXISTS wiki_links (
     collection_id text NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
     from_page     text NOT NULL,

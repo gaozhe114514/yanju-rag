@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.85.0">
+  <meta name="app-version" content="0.86.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1726,7 +1726,10 @@
     .kb-graph-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
     .kb-graph-shape { color: var(--muted); font-size: 11px; }
     .kg-doc text { font-size: 10.5px; fill: var(--ink-3); }
+    .kg-entity text { font-size: 10.5px; fill: var(--ink-3); }
     .kg-edge.source { stroke: color-mix(in srgb, var(--ink-3) 40%, transparent); stroke-dasharray: 1 3; opacity: .7; }
+    .kg-edge.entity { stroke-dasharray: 2 4; opacity: .7; }
+    .kg-edge.entity-source { stroke: color-mix(in srgb, var(--ink-3) 32%, transparent); stroke-dasharray: 1 5; opacity: .55; }
     .kb-graph-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
     .kb-settings-form {
       display: flex; flex-direction: column; gap: 10px;
@@ -7638,7 +7641,7 @@
       if (btn) { btn.disabled = false; btn.textContent = '生成 Wiki'; }
       state.wikiType = 'all';
       state.wikiHops = 'all';
-      toast('已生成 ' + out.pages + ' 页、' + out.links + ' 条关系' +
+      toast('已生成 ' + out.pages + ' 页、' + (out.entities || 0) + ' 个实体、' + out.links + ' 条关系' +
         (String(out.source || '').indexOf('fallback') >= 0 ? '（按文档建页）' : ''));
       state.wikiPageId = '';
       loadKbWiki(c);
@@ -7651,6 +7654,7 @@
   const WIKI_CATEGORY_COLORS = ['--brand', '--info', '--ok', '--warn', '--violet'];
 
   function wikiCategoryOf(n) {
+    if (n.kind === 'entity') return '实体 · ' + (n.type || '概念');
     return String(n.folder || '').split('/').filter(Boolean).join('/') || '未分组';
   }
 
@@ -7660,7 +7664,11 @@
       const top = wikiCategoryOf(n);
       if (names.indexOf(top) < 0) names.push(top);
     });
-    names.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    names.sort((a, b) => {
+      const ea = a.indexOf('实体 · ') === 0, eb = b.indexOf('实体 · ') === 0;
+      if (ea !== eb) return ea ? 1 : -1;
+      return a.localeCompare(b, 'zh-CN');
+    });
     const out = {};
     names.forEach((name, i) => {
       out[name] = {
@@ -7856,10 +7864,11 @@
     wrap.appendChild(bar);
 
     const legend = el('div', 'kb-graph-legend');
-    if (showDocs) {
-      legend.appendChild(el('span', 'kb-graph-shape', '● 页面'));
-      legend.appendChild(el('span', 'kb-graph-shape', '■ 来源资料'));
+    legend.appendChild(el('span', 'kb-graph-shape', '● 页面'));
+    if (allNodes.some(n => n.kind === 'entity')) {
+      legend.appendChild(el('span', 'kb-graph-shape', '◆ 实体'));
     }
+    if (showDocs) legend.appendChild(el('span', 'kb-graph-shape', '■ 来源资料'));
     Object.keys(cats).forEach(name => {
       const cat = cats[name];
       const item = el('span');
@@ -7885,7 +7894,7 @@
       const line = document.createElementNS(NS, 'line');
       line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
       line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
-      line.setAttribute('class', 'kg-edge' + (e.kind === 'link' ? ' link' : (e.kind === 'mention' ? ' mention' : (e.kind === 'source' ? ' source' : ''))));
+      line.setAttribute('class', 'kg-edge' + (e.kind === 'link' ? ' link' : (e.kind === 'mention' ? ' mention' : (e.kind === 'source' ? ' source' : (e.kind === 'entity' ? ' entity' : (e.kind === 'entity_source' ? ' entity-source' : ''))))));
       line.dataset.from = e.from; line.dataset.to = e.to;
       view.appendChild(line);
       return line;
@@ -7896,13 +7905,24 @@
       const top = wikiCategoryOf(n);
       const color = 'var(' + (cats[top] ? cats[top].color : '--brand') + ')';
       const isDoc = n.kind === 'document';
+      const isEntity = n.kind === 'entity';
       const g = document.createElementNS(NS, 'g');
       g.setAttribute('class', 'kg-node' + (n.edited ? ' edited' : '') +
-        (isDoc ? ' kg-doc' : '') +
+        (isDoc ? ' kg-doc' : '') + (isEntity ? ' kg-entity' : '') +
         (n.id === state.wikiPageId ? ' active' : ''));
       g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
       let r = 9 + Math.min(7, (degree[n.id] || 0) * 1.4);
-      if (isDoc) {
+      if (isEntity) {
+        r = 8;
+        const diamond = document.createElementNS(NS, 'rect');
+        diamond.setAttribute('x', String(-r)); diamond.setAttribute('y', String(-r));
+        diamond.setAttribute('width', String(r * 2)); diamond.setAttribute('height', String(r * 2));
+        diamond.setAttribute('rx', '2');
+        diamond.setAttribute('transform', 'rotate(45)');
+        diamond.style.fill = 'color-mix(in srgb, ' + color + ' 26%, var(--card))';
+        diamond.style.stroke = color;
+        g.appendChild(diamond);
+      } else if (isDoc) {
         const rect = document.createElementNS(NS, 'rect');
         r = 8;
         rect.setAttribute('x', String(-r)); rect.setAttribute('y', String(-r));
@@ -7928,6 +7948,7 @@
       g.addEventListener('click', ev => {
         ev.stopPropagation();
         if (isDoc) openDocPreview(c, {id: n.id.slice(4), title: n.title});
+        else if (isEntity) openWikiEntity(c, n.id);
         else selectWikiPage(c, n.id);
       });
       g.addEventListener('mouseenter', () => {
@@ -8014,8 +8035,8 @@
       headMain.appendChild(el('h2', 'kb-wiki-title', 'Wiki 关系图'));
       const pageLinks = (data.edges || []).filter(e => e.kind !== 'source').length;
       headMain.appendChild(el('p', 'kb-wiki-sub',
-        (data.pages || 0) + ' 个页面 · ' + pageLinks +
-        ' 条页面关系 · 放大显示可看来源资料'));
+        (data.pages || 0) + ' 个页面 · ' + (data.entities || 0) + ' 个实体 · ' +
+        pageLinks + ' 条关系 · 放大显示可看来源资料'));
       head.appendChild(headMain);
       const actions = el('div', 'kb-wiki-actions');
       const expand = el('button', 'row-btn', '放大显示');
@@ -8029,6 +8050,70 @@
       drawWikiGraph(host, c, data, {width: 860, height: 540}, {showDocs: false});
     }).catch(e => {
       main.replaceChildren(el('div', 'empty-panel', '读取关系图失败：' + e.message));
+    });
+  }
+
+  function openWikiEntity(c, entityId) {
+    const wrap = el('div', 'stack');
+    wrap.appendChild(el('div', 'chunk-note', '正在读取实体…'));
+    openModal('Wiki 实体', wrap, {wide: true});
+    api('/collections/' + encodeURIComponent(c.id) + '/wiki/entities/' +
+      encodeURIComponent(entityId)).then(e => {
+      wrap.replaceChildren();
+      const head = el('div', 'kb-wiki-head');
+      const main = el('div', 'kb-wiki-head-main');
+      main.appendChild(el('h2', 'kb-wiki-title', e.name || '未命名实体'));
+      main.appendChild(el('p', 'kb-wiki-sub',
+        (e.kind || '概念') + (e.aliases && e.aliases.length
+          ? ' · 别名 ' + e.aliases.join(' / ') : '') +
+        ' · ' + (e.pages || []).length + ' 个页面提到'));
+      head.appendChild(main);
+      wrap.appendChild(head);
+      wrap.appendChild(el('div', 'kb-wiki-body',
+        e.summary || '资料里没有这个实体的独立说明，可以从下面的来源和页面继续看。'));
+      if ((e.sources || []).length) {
+        const box = el('div', 'kb-wiki-sources');
+        box.appendChild(el('div', 'kb-wiki-sources-title',
+          '来源 · ' + e.sources.length + ' 段原文'));
+        const chips = el('div', 'kb-wiki-source-chips');
+        e.sources.forEach((src, i) => {
+          const chip = el('button', 'kb-wiki-source-chip');
+          chip.type = 'button';
+          chip.title = src.text || '';
+          chip.appendChild(el('span', '', '↗'));
+          chip.appendChild(el('span', '', (src.document_title || '资料') +
+            ' · 片段 ' + (i + 1)));
+          chip.addEventListener('click', () => {
+            openDocPreview(c, {id: src.document_id, title: src.document_title});
+          });
+          chips.appendChild(chip);
+        });
+        box.appendChild(chips);
+        wrap.appendChild(box);
+      }
+      if ((e.pages || []).length) {
+        const box = el('div', 'kb-wiki-sources');
+        box.appendChild(el('div', 'kb-wiki-sources-title',
+          '出现在这些 Wiki 页面'));
+        const chips = el('div', 'kb-wiki-source-chips');
+        e.pages.forEach(p => {
+          const chip = el('button', 'kb-wiki-source-chip');
+          chip.type = 'button';
+          chip.appendChild(el('span', '', '→'));
+          chip.appendChild(el('span', '', p.title || '页面'));
+          chip.addEventListener('click', () => {
+            closeModal();
+            selectWikiPage(c, p.id);
+          });
+          chips.appendChild(chip);
+        });
+        box.appendChild(chips);
+        wrap.appendChild(box);
+      }
+      openModal('实体 · ' + (e.name || ''), wrap, {wide: true});
+    }).catch(err => {
+      wrap.replaceChildren(el('div', 'empty-panel',
+        '读取实体失败：' + err.message));
     });
   }
 

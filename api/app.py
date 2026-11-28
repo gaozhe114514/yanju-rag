@@ -52,7 +52,8 @@ from answer.stream import sse
 from kb import Library, LibraryError
 from kb.defaults import ensure_default_library
 from kb.parsers import ParseError, extension_of, extract_document
-from kb.wiki import fallback_pages, generate_wiki
+from kb.wiki import (WIKI_KINDS, fallback_pages, generate_entities,
+                     generate_wiki)
 from kb.weknora import WeKnora, WeKnoraError, WeKnoraSearcher
 from retrieval.vector import BgeEmbedder
 
@@ -2062,10 +2063,15 @@ def wiki_generate(cid: str, request: Request,
         raise HTTPException(status_code=422,
                             detail="没有整理出可用的页面；检查资料是否有足够正文")
     saved = lib.replace_wiki_pages(cid, pages, [])
+    entities = generate_entities(_state.get("provider_impl"), cid, docs, chunks,
+                                 exclude_titles=[p.get("title") or "" for p in saved])
+    lib.replace_wiki_entities(cid, entities)
     links = lib.rebuild_wiki_links(cid)
     _audit(cid, user, "wiki.generate", "collection", cid,
-           "生成 %d 页，%d 条关系（%s）" % (len(saved), len(links), source))
-    return {"pages": len(saved), "links": len(links), "source": source}
+           "生成 %d 页、%d 个实体、%d 条关系（%s）"
+           % (len(saved), len(entities), len(links), source))
+    return {"pages": len(saved), "entities": len(entities),
+            "links": len(links), "source": source}
 
 
 @app.get("/collections/{cid}/wiki/graph")
@@ -2089,6 +2095,15 @@ def wiki_graph(cid: str, request: Request,
             "edited": bool(p.get("edited")),
         })
         for did in (p.get("source_doc_ids") or []):
+            doc_titles[did] = True
+    entities = lib.wiki_entities(cid)
+    for e in entities:
+        nodes.append({
+            "id": e["id"], "kind": "entity", "type": e.get("kind") or "概念",
+            "title": e.get("name") or "", "summary": e.get("summary") or "",
+            "folder": "", "edited": False,
+        })
+        for did in (e.get("source_doc_ids") or []):
             doc_titles[did] = True
     # 把来源资料也画成节点：页面挂在资料上，图更像知识图谱而不是几个孤页
     docs_by_id = {d["id"]: d for d in doc_rows}
@@ -2114,7 +2129,59 @@ def wiki_graph(cid: str, request: Request,
             if ("doc:" + did) in valid:
                 edges.append({"from": p["id"], "to": "doc:" + did,
                               "kind": "source", "weight": 1})
-    return {"nodes": nodes, "edges": edges, "total": len(nodes), "pages": len(pages), "documents": len(doc_titles)}
+        # 页面正文提到实体名 / 别名，就连一条「提到」边
+        text = ((p.get("title") or "") + " " + (p.get("body") or "")).lower()
+        hits = 0
+        for e in entities:
+            names = [str(e.get("name") or "").lower()] + [
+                str(a).lower() for a in (e.get("aliases") or [])]
+            if any(n and n in text for n in names):
+                edges.append({"from": p["id"], "to": e["id"],
+                              "kind": "entity", "weight": 1})
+                hits += 1
+                if hits >= 8:
+                    break
+    for e in entities:
+        for did in (e.get("source_doc_ids") or []):
+            if ("doc:" + did) in valid:
+                edges.append({"from": e["id"], "to": "doc:" + did,
+                              "kind": "entity_source", "weight": 1})
+    return {"nodes": nodes, "edges": edges, "total": len(nodes),
+            "pages": len(pages), "entities": len(entities),
+            "documents": len(doc_titles)}
+
+
+def _entity_pages(cid: str, entity: Dict) -> List[Dict]:
+    names = [str(entity.get("name") or "").lower()] + [
+        str(a).lower() for a in (entity.get("aliases") or [])]
+    out = []
+    for p in _library().wiki_pages(cid):
+        text = ((p.get("title") or "") + " " + (p.get("body") or "")).lower()
+        if any(n and n in text for n in names):
+            out.append({"id": p["id"], "title": p.get("title") or "",
+                        "kind": p.get("kind") or "概念"})
+    return out
+
+
+@app.get("/collections/{cid}/wiki/entities")
+def wiki_entity_list(cid: str, request: Request,
+                     _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    entities = _library().wiki_entities(cid)
+    return {"items": entities, "total": len(entities)}
+
+
+@app.get("/collections/{cid}/wiki/entities/{entity_id}")
+def wiki_entity_detail(cid: str, entity_id: str, request: Request,
+                       _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    entity = _library().wiki_entity(cid, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail="实体不存在")
+    out = dict(entity)
+    out["sources"] = _wiki_sources(cid, entity)
+    out["pages"] = _entity_pages(cid, entity)
+    return out
 
 
 @app.get("/collections/{cid}/wiki/{page_id}")
@@ -2134,9 +2201,12 @@ def wiki_update(cid: str, page_id: str, req: WikiEditRequest, request: Request,
                 _: None = Depends(enforce_content)) -> dict:
     user, _coll, _role = _guard_collection(cid, request, write=True)
     editor = str((user or {}).get("username") or "")
+    kind = (req.kind or "").strip() or None
+    if kind is not None and kind not in WIKI_KINDS:
+        raise HTTPException(status_code=422, detail="页面类型不在允许范围内")
     page = _library().update_wiki_page(
         cid, page_id, req.title.strip(), req.summary.strip(), req.body,
-        editor=editor, kind=(req.kind or None))
+        editor=editor, kind=kind)
     if page is None:
         raise HTTPException(status_code=404, detail="Wiki 页面不存在")
     _library().rebuild_wiki_links(cid)

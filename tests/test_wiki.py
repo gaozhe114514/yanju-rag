@@ -4,7 +4,8 @@ import json
 import unittest
 
 from kb import Library
-from kb.wiki import WIKI_KINDS, fallback_pages, generate_wiki
+from kb.wiki import (ENTITY_KINDS, WIKI_KINDS, fallback_pages,
+                     generate_entities, generate_wiki)
 
 TEXT_A = "".join(
     "第%d条：员工年假需提前三个工作日在系统提交，由直属主管审批。工作满一年享受五天年假。\n" % i
@@ -91,6 +92,40 @@ class _FakeProvider:
 
     def complete(self, messages, **kw):
         return json.dumps(self.payload, ensure_ascii=False)
+
+
+class WikiEntityTest(unittest.TestCase):
+    def setUp(self):
+        self.lib = Library(mode="bm25")
+        self.cid = self.lib.create_collection("员工手册")["id"]
+        self.doc = self.lib.add_document(self.cid, TEXT_A, title="年假制度")
+        self.chunks = self.lib.collection_chunks(self.cid)
+
+    def test_entities_are_cleaned_and_filtered(self):
+        good = self.chunks[0]["id"]
+        provider = _FakeProvider({"entities": [
+            {"name": "人事部", "kind": "部门", "summary": "负责年假审批",
+             "aliases": ["人事"], "source_chunk_ids": [good]},
+            {"name": "编造实体", "kind": "人物", "summary": "没有来源",
+             "source_chunk_ids": ["chunk-not-exist"]},
+            {"name": "年假制度", "kind": "概念", "summary": "和页面重名",
+             "source_chunk_ids": [good]},
+        ]})
+        rows = generate_entities(provider, self.cid,
+                                 [self.lib.get_document(self.cid, self.doc["id"])],
+                                 self.chunks, exclude_titles=["年假制度"])
+        self.assertEqual([e["name"] for e in rows], ["人事部"])
+        self.assertEqual(rows[0]["kind"], "部门")
+        self.assertIn(rows[0]["kind"], ENTITY_KINDS)
+
+    def test_entity_store_roundtrip(self):
+        good = self.chunks[0]["id"]
+        rows = self.lib.replace_wiki_entities(self.cid, [{
+            "id": "ent-1", "name": "人事部", "kind": "部门",
+            "summary": "负责年假审批", "aliases": ["人事"],
+            "source_doc_ids": [self.doc["id"]], "source_chunk_ids": [good]}])
+        self.assertEqual(rows[0]["name"], "人事部")
+        self.assertEqual(self.lib.wiki_entity(self.cid, "ent-1")["kind"], "部门")
 
 
 class WikiGenerateTest(unittest.TestCase):

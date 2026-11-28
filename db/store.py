@@ -290,6 +290,45 @@ class Store:
                 " ON CONFLICT DO NOTHING",
                 (cid, a, b, e.get("kind") or "related", int(e.get("weight") or 1)))
 
+    def replace_wiki_entities(self, cid: str,
+                              entities: Sequence[Dict]) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM wiki_entities WHERE collection_id = %s",
+                         (cid,))
+            for e in entities:
+                conn.execute(
+                    "INSERT INTO wiki_entities (id, collection_id, name, kind,"
+                    " summary, aliases, source_doc_ids, source_chunk_ids)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+                    " ON CONFLICT (collection_id, name) DO UPDATE SET"
+                    " kind = EXCLUDED.kind, summary = EXCLUDED.summary,"
+                    " aliases = EXCLUDED.aliases,"
+                    " source_doc_ids = EXCLUDED.source_doc_ids,"
+                    " source_chunk_ids = EXCLUDED.source_chunk_ids,"
+                    " updated_at = now()",
+                    (e["id"], cid, e["name"], e.get("kind") or "概念",
+                     e.get("summary") or "", list(e.get("aliases") or []),
+                     list(e.get("source_doc_ids") or []),
+                     list(e.get("source_chunk_ids") or [])))
+            conn.commit()
+
+    def list_wiki_entities(self, cid: str) -> List[Dict]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, kind, summary, aliases, source_doc_ids,"
+                " source_chunk_ids, created_at, updated_at FROM wiki_entities"
+                " WHERE collection_id = %s ORDER BY kind, name", (cid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_wiki_entity(self, cid: str, entity_id: str) -> Optional[Dict]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, collection_id, name, kind, summary, aliases,"
+                " source_doc_ids, source_chunk_ids, created_at, updated_at"
+                " FROM wiki_entities WHERE collection_id = %s AND id = %s",
+                (cid, entity_id)).fetchone()
+        return dict(row) if row else None
+
     def replace_wiki_links(self, cid: str, links: Sequence[Dict]) -> None:
         with self.connect() as conn:
             self._replace_wiki_links(conn, cid, links)
