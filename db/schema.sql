@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS wiki_pages (
     title            text NOT NULL,
     summary          text NOT NULL DEFAULT '',
     body             text NOT NULL DEFAULT '',
+    kind             text NOT NULL DEFAULT '概念',
     aliases          text[] NOT NULL DEFAULT '{}',
     source_doc_ids   text[] NOT NULL DEFAULT '{}',
     source_chunk_ids text[] NOT NULL DEFAULT '{}',
@@ -113,6 +114,8 @@ CREATE TABLE IF NOT EXISTS wiki_pages (
     updated_at       timestamptz NOT NULL DEFAULT now(),
     UNIQUE (collection_id, slug)
 );
+
+ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT '概念';
 
 CREATE INDEX IF NOT EXISTS wiki_pages_coll_idx
     ON wiki_pages (collection_id, updated_at DESC);

@@ -206,8 +206,8 @@ class Store:
     def list_wiki_pages(self, cid: str) -> List[Dict]:
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT id, slug, title, summary, body, aliases, source_doc_ids,"
-                " source_chunk_ids, generated, edited, revision,"
+                "SELECT id, slug, title, summary, body, kind, aliases,"
+                " source_doc_ids, source_chunk_ids, generated, edited, revision,"
                 " created_at, updated_at FROM wiki_pages"
                 " WHERE collection_id = %s ORDER BY title", (cid,)).fetchall()
         return [dict(r) for r in rows]
@@ -215,9 +215,9 @@ class Store:
     def get_wiki_page(self, cid: str, page_id: str) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, collection_id, slug, title, summary, body, aliases,"
-                " source_doc_ids, source_chunk_ids, generated, edited, revision,"
-                " created_at, updated_at FROM wiki_pages"
+                "SELECT id, collection_id, slug, title, summary, body, kind,"
+                " aliases, source_doc_ids, source_chunk_ids, generated, edited,"
+                " revision, created_at, updated_at FROM wiki_pages"
                 " WHERE collection_id = %s AND id = %s",
                 (cid, page_id)).fetchone()
         return dict(row) if row else None
@@ -244,20 +244,34 @@ class Store:
                     "DELETE FROM wiki_pages WHERE collection_id = %s"
                     " AND edited = false", (cid,))
             for p in pages:
+                existing = conn.execute(
+                    "SELECT id, edited FROM wiki_pages"
+                    " WHERE collection_id = %s AND slug = %s",
+                    (cid, p["slug"])).fetchone()
+                if existing is not None:
+                    if existing["edited"]:
+                        continue
+                    conn.execute(
+                        "UPDATE wiki_pages SET title = %s, summary = %s,"
+                        " body = %s, kind = %s, aliases = %s,"
+                        " source_doc_ids = %s, source_chunk_ids = %s,"
+                        " generated = true, updated_at = now()"
+                        " WHERE collection_id = %s AND id = %s"
+                        " AND edited = false",
+                        (p["title"], p.get("summary") or "", p.get("body") or "",
+                         p.get("kind") or "概念", list(p.get("aliases") or []),
+                         list(p.get("source_doc_ids") or []),
+                         list(p.get("source_chunk_ids") or []),
+                         cid, existing["id"]))
+                    continue
                 conn.execute(
                     "INSERT INTO wiki_pages (id, collection_id, slug, title,"
-                    " summary, body, aliases, source_doc_ids, source_chunk_ids,"
-                    " generated, edited, revision)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, true, false, 0)"
-                    " ON CONFLICT (collection_id, slug) DO UPDATE SET"
-                    " title = EXCLUDED.title, summary = EXCLUDED.summary,"
-                    " body = EXCLUDED.body, aliases = EXCLUDED.aliases,"
-                    " source_doc_ids = EXCLUDED.source_doc_ids,"
-                    " source_chunk_ids = EXCLUDED.source_chunk_ids,"
-                    " generated = true, updated_at = now()"
-                    " WHERE wiki_pages.edited = false",
+                    " summary, body, kind, aliases, source_doc_ids,"
+                    " source_chunk_ids, generated, edited, revision)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true, false, 0)",
                     (p["id"], cid, p["slug"], p["title"], p.get("summary") or "",
-                     p.get("body") or "", list(p.get("aliases") or []),
+                     p.get("body") or "", p.get("kind") or "概念",
+                     list(p.get("aliases") or []),
                      list(p.get("source_doc_ids") or []),
                      list(p.get("source_chunk_ids") or [])))
             self._replace_wiki_links(conn, cid, links)
@@ -289,7 +303,8 @@ class Store:
         return [dict(r) for r in rows]
 
     def update_wiki_page(self, cid: str, page_id: str, title: str,
-                         summary: str, body: str, editor: str = "") -> Optional[Dict]:
+                         summary: str, body: str, editor: str = "",
+                         kind: Optional[str] = None) -> Optional[Dict]:
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, title, summary, body FROM wiki_pages"
@@ -304,9 +319,10 @@ class Store:
                  editor or ""))
             conn.execute(
                 "UPDATE wiki_pages SET title = %s, summary = %s, body = %s,"
-                " edited = true, revision = revision + 1, updated_at = now()"
+                " kind = COALESCE(%s, kind), edited = true,"
+                " revision = revision + 1, updated_at = now()"
                 " WHERE collection_id = %s AND id = %s",
-                (title, summary, body, cid, page_id))
+                (title, summary, body, kind, cid, page_id))
             conn.commit()
         return self.get_wiki_page(cid, page_id)
 

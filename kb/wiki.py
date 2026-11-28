@@ -16,6 +16,22 @@ MAX_PAGES = 10
 MAX_CHUNK_CHARS = 700
 MAX_PROMPT_CHUNKS = 36
 MAX_SOURCE_CHUNKS = 4
+WIKI_KINDS = ("制度", "流程", "概念", "人物", "部门", "产品", "其他")
+
+
+def infer_kind(title: str, body: str = "") -> str:
+    text = (title or "") + " " + (body or "")[:200]
+    if any(k in text for k in ("流程", "申请", "审批", "步骤")):
+        return "流程"
+    if any(k in text for k in ("制度", "规定", "标准", "报销", "年假", "考勤")):
+        return "制度"
+    if any(k in text for k in ("部门", "团队", "组织")):
+        return "部门"
+    if any(k in text for k in ("产品", "功能", "系统")):
+        return "产品"
+    if any(k in text for k in ("负责人", "经理", "员工", "主管")):
+        return "人物"
+    return "概念"
 
 
 def wiki_id(cid: str, slug: str) -> str:
@@ -25,10 +41,12 @@ def wiki_id(cid: str, slug: str) -> str:
 
 WIKI_SYSTEM = """你在整理一个公司知识库的 Wiki。只依据用户给出的资料片段，不要编造。
 输出严格 JSON，格式：
-{"pages":[{"title":"页面标题","aliases":["别名"],"summary":"一句话摘要",
-"body":"Markdown 正文","source_chunk_ids":["片段 id"]}]}
+{"pages":[{"title":"页面标题","kind":"制度|流程|概念|人物|部门|产品|其他",
+"aliases":["别名"],"summary":"一句话摘要","body":"Markdown 正文",
+"source_chunk_ids":["片段 id"]}]}
 要求：
-1. 6–10 个页面；页面是一个概念、流程、制度、产品或人物，不要把一篇文档原样抄成页面。
+1. 8–14 个页面；页面是一个概念、流程、制度、产品或人物，不要把一篇文档原样抄成页面；
+   kind 必须从「制度 / 流程 / 概念 / 人物 / 部门 / 产品 / 其他」里选一个。
 2. 每个页面必须引用 1–4 个真实存在的 source_chunk_ids，不能引用不存在的 id。
 3. 正文 400–1000 字。第一段先给一句话定义，然后用二级标题分节（##），多用列表；
    有工龄/天数、费用标准、时限等对照数据时，用 Markdown 表格呈现。
@@ -110,9 +128,13 @@ def _clean_page(cid: str, item: Dict, chunk_map: Dict[str, Dict],
         if a and a != title and a not in aliases:
             aliases.append(a)
     summary = " ".join(str(item.get("summary") or "").split())[:160]
+    kind = str(item.get("kind") or "").strip()
+    if kind not in WIKI_KINDS:
+        kind = infer_kind(title, body)
     slug = wiki_slug(title)
     return {
         "id": wiki_id(cid, slug), "slug": slug, "title": title,
+        "kind": kind,
         "summary": summary or body.split("\n")[0][:120],
         "body": body[:6000], "aliases": aliases[:5],
         "source_doc_ids": doc_ids, "source_chunk_ids": sources,
@@ -182,6 +204,7 @@ def fallback_pages(cid: str, docs: Sequence[Dict],
         plain = re.sub(r"^#{1,6}\s*", "", text)
         pages.append({
             "id": wiki_id(cid, slug), "slug": slug, "title": title,
+            "kind": infer_kind(title, body),
             "summary": " ".join(plain.split())[:120],
             "body": body, "aliases": [],
             "source_doc_ids": [d["id"]], "source_chunk_ids": source,

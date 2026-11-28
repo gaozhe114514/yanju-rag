@@ -158,6 +158,7 @@ class WikiEditRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=40)
     summary: str = Field("", max_length=200)
     body: str = Field(..., min_length=1, max_length=20000)
+    kind: Optional[str] = Field(None, max_length=8)
 
 
 class CollectionMemberRequest(BaseModel):
@@ -1995,6 +1996,21 @@ def _wiki_payload(cid: str, page: Dict) -> Dict:
     out = dict(page)
     out["sources"] = _wiki_sources(cid, page)
     out["source_count"] = len(out["sources"])
+    # 反向链接：哪些页面提到了这一页
+    lib = _library()
+    titles = {p["id"]: p.get("title") or ""
+              for p in lib.wiki_pages(cid)}
+    backlinks = []
+    seen_back = set()
+    for e in lib.wiki_links(cid):
+        src = e.get("from_page") or ""
+        if e.get("to_page") == page.get("id") and src in titles and src not in seen_back:
+            seen_back.add(src)
+            backlinks.append({
+                "id": src, "title": titles[src],
+                "kind": e.get("kind") or "related",
+            })
+    out["backlinks"] = backlinks[:8]
     return out
 
 
@@ -2014,7 +2030,7 @@ def wiki_list(cid: str, request: Request,
         items.append({
             "id": p["id"], "slug": p.get("slug") or "",
             "title": p.get("title") or "", "summary": p.get("summary") or "",
-            "folder": folder,
+            "kind": p.get("kind") or "概念", "folder": folder,
             "edited": bool(p.get("edited")), "revision": int(p.get("revision") or 0),
             "source_count": len(p.get("source_chunk_ids") or []),
             "updated_at": p.get("updated_at") or "",
@@ -2066,7 +2082,8 @@ def wiki_graph(cid: str, request: Request,
         folders = [doc_folders.get(did, "")
                    for did in (p.get("source_doc_ids") or [])]
         nodes.append({
-            "id": p["id"], "kind": "page", "title": p.get("title") or "",
+            "id": p["id"], "kind": "page", "type": p.get("kind") or "概念",
+            "title": p.get("title") or "",
             "summary": p.get("summary") or "",
             "folder": next((f for f in folders if f), ""),
             "edited": bool(p.get("edited")),
@@ -2080,7 +2097,7 @@ def wiki_graph(cid: str, request: Request,
         if row is None:
             continue
         nodes.append({
-            "id": "doc:" + did, "kind": "document",
+            "id": "doc:" + did, "kind": "document", "type": "资料",
             "title": row.get("title") or "资料",
             "summary": "", "folder": row.get("folder") or "",
             "edited": False,
@@ -2119,7 +2136,7 @@ def wiki_update(cid: str, page_id: str, req: WikiEditRequest, request: Request,
     editor = str((user or {}).get("username") or "")
     page = _library().update_wiki_page(
         cid, page_id, req.title.strip(), req.summary.strip(), req.body,
-        editor=editor)
+        editor=editor, kind=(req.kind or None))
     if page is None:
         raise HTTPException(status_code=404, detail="Wiki 页面不存在")
     _library().rebuild_wiki_links(cid)
@@ -2147,6 +2164,18 @@ def wiki_versions(cid: str, page_id: str, request: Request, limit: int = 20,
     _guard_collection(cid, request, write=False)
     items = _library().wiki_versions(cid, page_id, limit=limit)
     return {"items": items, "total": len(items)}
+
+
+@app.get("/collections/{cid}/wiki/{page_id}/versions/{version_id}")
+def wiki_version_detail(cid: str, page_id: str, version_id: int,
+                        request: Request,
+                        _: None = Depends(enforce_content)) -> dict:
+    _guard_collection(cid, request, write=False)
+    items = _library().wiki_versions(cid, page_id, limit=100)
+    row = next((v for v in items if int(v.get("id") or 0) == int(version_id)), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="历史版本不存在")
+    return row
 
 
 @app.post("/collections/{cid}/wiki/{page_id}/versions/{version_id}/restore")

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e0d1a">
   <!-- 前端版本写在这里，设置页会拿它和后端 /version 对照 -->
-  <meta name="app-version" content="0.84.1">
+  <meta name="app-version" content="0.85.0">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='22' fill='%23b0501e'/%3E%3Crect x='12' y='12' width='72' height='72' rx='16' fill='none' stroke='%23fff' stroke-opacity='.55' stroke-width='3'/%3E%3Ctext x='48' y='64' text-anchor='middle' font-family='Georgia,Songti%20SC,SimSun,serif' font-size='44' font-weight='700' fill='%23fff'%3E%E8%A8%80%3C/text%3E%3C/svg%3E">
   <title>言据 · 可引用知识库</title>
   <script>
@@ -1670,6 +1670,16 @@
       padding: 1px 5px; border-radius: 5px; background: var(--muted-surface);
       font-family: var(--mono, monospace); font-size: 12.5px;
     }
+    .kb-diff {
+      max-height: 62vh; overflow: auto; border: 1px solid var(--line);
+      border-radius: 10px; background: var(--card);
+      font-family: var(--mono, monospace); font-size: 12px; line-height: 1.7;
+    }
+    .kb-diff-row { display: flex; gap: 8px; padding: 1px 9px; white-space: pre-wrap; word-break: break-word; }
+    .kb-diff-row.add { background: var(--ok-surface); color: var(--ok); }
+    .kb-diff-row.del { background: var(--danger-surface); color: var(--danger); }
+    .kb-diff-sign { flex: none; width: 10px; opacity: .8; }
+    .kb-diff-text { flex: 1; min-width: 0; }
     .kb-wiki-sources { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
     .kb-wiki-sources-title { color: var(--ink-3); font-size: 11.5px; font-weight: 600; margin-bottom: 8px; }
     .kb-wiki-source-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1700,6 +1710,18 @@
       padding: 8px 10px 4px;
     }
     .kb-graph-toolbar .grow { flex: 1; min-width: 0; color: var(--muted); font-size: 11px; }
+    .kb-graph-filters {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+      padding: 8px 10px 2px;
+    }
+    .kb-filter-chip {
+      padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px;
+      background: var(--card); color: var(--muted); font-size: 10.5px; cursor: pointer;
+    }
+    .kb-filter-chip:hover { border-color: var(--line-strong); color: var(--ink); }
+    .kb-filter-chip.active { background: var(--wash); border-color: var(--brand); color: var(--brand-dark); font-weight: 600; }
+    .kb-hop { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: 10.5px; }
+    .kb-hop select { height: 26px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--ink-2); font-size: 10.5px; }
     .kb-graph-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px 4px 6px; }
     .kb-graph-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
     .kb-graph-shape { color: var(--muted); font-size: 11px; }
@@ -2007,6 +2029,22 @@
 
     /* ---------- 资料编辑器：Markdown / 预览 / 历史（v0.71） ---------- */
     .modal-card.modal-wide { width: min(1080px, 100%); max-height: min(90vh, 920px); }
+    .modal-card.modal-fullscreen {
+      width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh;
+      border-radius: 0; padding: 10px 18px;
+    }
+    .modal-card.modal-fullscreen #modal-body { height: calc(100vh - 76px); overflow: hidden; }
+    .modal-card.modal-fullscreen .kb-graph-modal { height: 100%; }
+    .modal-card.modal-fullscreen .kb-graph-wrap {
+      display: flex; flex-direction: column; height: calc(100vh - 140px);
+      overflow: hidden;
+    }
+    .modal-card.modal-fullscreen .kb-graph-filters,
+    .modal-card.modal-fullscreen .kb-graph-toolbar,
+    .modal-card.modal-fullscreen .kb-graph-legend { flex: none; }
+    .modal-card.modal-fullscreen .kb-graph-wrap svg {
+      flex: 1; min-height: 0; width: 100%; height: 100%;
+    }
     .doc-editor {
       display: flex; flex-direction: column; gap: 12px;
       height: min(70vh, 640px);
@@ -4905,6 +4943,8 @@
     wikiQuery: '',
     wikiOpen: {},
     wikiGraph: null,
+    wikiType: 'all',
+    wikiHops: 'all',
     chatCollection: loadJSON(COLLECTION_KEY, '') || '',
     chatPersonaId: ''
   };
@@ -6439,6 +6479,8 @@
     const routeId = state.modalId;
     state.modalId = '';
     $('#modal').hidden = true;
+    const card = $('#modal').querySelector('.modal-card');
+    if (card) card.classList.remove('modal-fullscreen');
     document.body.style.overflow = '';
     // 关闭详情时把地址栏退回当前页；用 replace 避免多出一条历史记录
     if (routeId && !silent) {
@@ -7184,6 +7226,10 @@
     api('/collections/' + encodeURIComponent(c.id) + '/wiki')
       .then(out => {
         state.wikiPages = (out && out.items) || [];
+        if (state.wikiType !== 'all' &&
+            !state.wikiPages.some(p => (p.kind || '概念') === state.wikiType)) {
+          state.wikiType = 'all';
+        }
         const meta = $('#kb-wiki-meta');
         if (meta) {
           meta.textContent = state.wikiPages.length
@@ -7336,11 +7382,12 @@
     main.replaceChildren();
     const doc = el('div', 'kb-wiki-doc');
     doc.appendChild(el('div', 'kb-wiki-kicker',
-      page.edited ? '手动编辑 · WIKI' : '自动整理 · WIKI'));
+      (page.edited ? '手动编辑 · WIKI' : '自动整理 · WIKI') +
+      ' · ' + (page.kind || '概念')));
     const head = el('div', 'kb-wiki-head');
     const headMain = el('div', 'kb-wiki-head-main');
     headMain.appendChild(el('h2', 'kb-wiki-title', page.title || '未命名页面'));
-    const metaBits = [page.edited ? '第 ' + (page.revision || 1) + ' 版'
+    const metaBits = [page.kind || '概念', page.edited ? '第 ' + (page.revision || 1) + ' 版'
       : '来自本库资料', (page.source_count || 0) + ' 段来源'];
     if (page.updated_at) metaBits.push('更新 ' +
       String(page.updated_at).replace('T', ' ').replace(/\..*$/, '').slice(0, 16));
@@ -7395,6 +7442,22 @@
       box.appendChild(chips);
       doc.appendChild(box);
     }
+    if ((page.backlinks || []).length) {
+      const box = el('div', 'kb-wiki-sources');
+      box.appendChild(el('div', 'kb-wiki-sources-title',
+        '被这些页面引用 · ' + page.backlinks.length));
+      const chips = el('div', 'kb-wiki-source-chips');
+      page.backlinks.forEach(link => {
+        const chip = el('button', 'kb-wiki-source-chip');
+        chip.type = 'button';
+        chip.appendChild(el('span', '', '←'));
+        chip.appendChild(el('span', '', link.title || '页面'));
+        chip.addEventListener('click', () => selectWikiPage(c, link.id));
+        chips.appendChild(chip);
+      });
+      box.appendChild(chips);
+      doc.appendChild(box);
+    }
     main.appendChild(doc);
   }
 
@@ -7403,6 +7466,13 @@
     const title = el('input');
     title.value = page.title || '';
     title.maxLength = 40;
+    const kind = el('select', 'select');
+    ['制度', '流程', '概念', '人物', '部门', '产品', '其他'].forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k; opt.textContent = k;
+      if ((page.kind || '概念') === k) opt.selected = true;
+      kind.appendChild(opt);
+    });
     const summary = el('input');
     summary.value = page.summary || '';
     summary.maxLength = 200;
@@ -7410,6 +7480,7 @@
     body.value = page.body || '';
     body.style.minHeight = '240px';
     wrap.appendChild(field('页面标题', title));
+    wrap.appendChild(field('类型', kind, '用于图谱筛选：制度 / 流程 / 概念 / 人物 / 部门 / 产品 / 其他。'));
     wrap.appendChild(field('一句话摘要', summary));
     wrap.appendChild(field('正文（Markdown，提到别的页面用 [[页面标题]]）', body));
     const acts = el('div', 'form-actions');
@@ -7426,7 +7497,7 @@
         encodeURIComponent(page.id), {
         method: 'PATCH',
         body: {title: title.value.trim(), summary: summary.value.trim(),
-          body: body.value}
+          kind: kind.value, body: body.value}
       }).then(out => {
         closeModal();
         toast('Wiki 页面已保存，旧版本已留档');
@@ -7468,6 +7539,9 @@
           (v.editor || '未知') + ' · ' + String(v.created_at || '')
             .replace('T', ' ').replace(/\..*$/, '')));
         row.appendChild(main);
+        const compare = el('button', 'row-btn', '对比');
+        compare.addEventListener('click', () => openWikiDiff(page, v));
+        row.appendChild(compare);
         const restore = el('button', 'row-btn', '恢复');
         restore.addEventListener('click', () => {
           restore.disabled = true;
@@ -7491,6 +7565,56 @@
     });
   }
 
+  function wikiDiffLines(oldText, newText) {
+    const a = String(oldText || '').split(/\r?\n/);
+    const b = String(newText || '').split(/\r?\n/);
+    if (a.length * b.length > 160000) {
+      return [{type: '-', text: a.join('\n')}, {type: '+', text: b.join('\n')}];
+    }
+    const dp = [];
+    for (let i = 0; i <= a.length; i += 1) dp.push(new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i -= 1) {
+      for (let j = b.length - 1; j >= 0; j -= 1) {
+        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1
+          : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const out = [];
+    let i = 0, j = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { out.push({type: ' ', text: a[i]}); i += 1; j += 1; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({type: '-', text: a[i]}); i += 1; }
+      else { out.push({type: '+', text: b[j]}); j += 1; }
+    }
+    while (i < a.length) { out.push({type: '-', text: a[i]}); i += 1; }
+    while (j < b.length) { out.push({type: '+', text: b[j]}); j += 1; }
+    return out;
+  }
+
+  function openWikiDiff(page, version) {
+    const wrap = el('div', 'stack');
+    wrap.appendChild(el('div', 'chunk-note',
+      '旧版（' + String(version.created_at || '').replace('T', ' ')
+        .replace(/\..*$/, '') + ' · ' + (version.editor || '未知') +
+      '）→ 当前版本。绿色是新增，红色是删除。'));
+    const diff = el('div', 'kb-diff');
+    const rows = wikiDiffLines(version.body || '', page.body || '');
+    const changed = rows.filter(x => x.type !== ' ').length;
+    if (!changed) {
+      diff.appendChild(el('div', 'chunk-note', '正文没有变化。'));
+    } else {
+      rows.forEach(x => {
+        const row = el('div', 'kb-diff-row' + (x.type === '+' ? ' add'
+          : (x.type === '-' ? ' del' : '')));
+        row.appendChild(el('span', 'kb-diff-sign', x.type === ' ' ? '' : x.type));
+        row.appendChild(el('span', 'kb-diff-text', x.text || ' '));
+        diff.appendChild(row);
+      });
+    }
+    wrap.appendChild(diff);
+    openModal('版本对比 · ' + (page.title || ''), wrap, {wide: true});
+  }
+
   function deleteKbWikiPage(c, page) {
     if (!window.confirm('删除 Wiki 页面「' + (page.title || '') + '」？来源资料不会被删除。')) return;
     api('/collections/' + encodeURIComponent(c.id) + '/wiki/' +
@@ -7512,6 +7636,8 @@
       method: 'POST'
     }).then(out => {
       if (btn) { btn.disabled = false; btn.textContent = '生成 Wiki'; }
+      state.wikiType = 'all';
+      state.wikiHops = 'all';
       toast('已生成 ' + out.pages + ' 页、' + out.links + ' 条关系' +
         (String(out.source || '').indexOf('fallback') >= 0 ? '（按文档建页）' : ''));
       state.wikiPageId = '';
@@ -7620,10 +7746,46 @@
     host.replaceChildren();
     const showDocs = !!(opts && opts.showDocs);
     const allNodes = (data.nodes || []).map(n => Object.assign({}, n));
-    const nodes = showDocs ? allNodes : allNodes.filter(n => n.kind !== 'document');
+    const allEdges = (data.edges || []).map(e => Object.assign({}, e));
+    let pageNodes = allNodes.filter(n => n.kind !== 'document');
+    const type = state.wikiType || 'all';
+    if (type !== 'all') pageNodes = pageNodes.filter(n => (n.type || '概念') === type);
+    const pageIds = {};
+    pageNodes.forEach(n => { pageIds[n.id] = true; });
+    // 跳数：以当前页面为中心，只保留 N 跳内的页面
+    const hops = state.wikiHops || 'all';
+    if (hops !== 'all' && state.wikiPageId && pageIds[state.wikiPageId]) {
+      const adj = {};
+      allNodes.filter(n => n.kind !== 'document').forEach(n => { adj[n.id] = []; });
+      allEdges.forEach(e => {
+        if (adj[e.from] && adj[e.to]) { adj[e.from].push(e.to); adj[e.to].push(e.from); }
+      });
+      const seen = {[state.wikiPageId]: 0};
+      let frontier = [state.wikiPageId];
+      for (let d = 0; d < Number(hops); d += 1) {
+        const next = [];
+        frontier.forEach(id => (adj[id] || []).forEach(to => {
+          if (seen[to] === undefined) { seen[to] = d + 1; next.push(to); }
+        }));
+        frontier = next;
+      }
+      pageNodes = pageNodes.filter(n => seen[n.id] !== undefined);
+    }
+    const keptPageIds = {};
+    pageNodes.forEach(n => { keptPageIds[n.id] = true; });
+    const nodes = pageNodes.slice();
+    if (showDocs) {
+      const docIds = {};
+      allEdges.forEach(e => {
+        if (keptPageIds[e.from] && String(e.to).indexOf('doc:') === 0) docIds[e.to] = true;
+        if (keptPageIds[e.to] && String(e.from).indexOf('doc:') === 0) docIds[e.from] = true;
+      });
+      allNodes.filter(n => n.kind === 'document' && docIds[n.id])
+        .forEach(n => nodes.push(n));
+    }
     const validIds = {};
     nodes.forEach(n => { validIds[n.id] = true; });
-    const edges = (data.edges || []).filter(e => validIds[e.from] && validIds[e.to]);
+    const edges = allEdges.filter(e => validIds[e.from] && validIds[e.to]);
     if (!nodes.length) {
       host.appendChild(el('div', 'empty-panel', '还没有 Wiki 页面。'));
       return;
@@ -7640,12 +7802,57 @@
     });
 
     const wrap = el('div', 'kb-graph-wrap');
+    const filters = el('div', 'kb-graph-filters');
+    const typeCounts = {};
+    allNodes.filter(n => n.kind !== 'document').forEach(n => {
+      const t = n.type || '概念';
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    const typeList = ['all'].concat(Object.keys(typeCounts).sort());
+    const totalPages = allNodes.filter(n => n.kind !== 'document').length;
+    typeList.forEach(t => {
+      const chip = el('button', 'kb-filter-chip' + (type === t ? ' active' : ''),
+        (t === 'all' ? '全部' : t) + ' ' + (t === 'all' ? totalPages : typeCounts[t]));
+      chip.type = 'button';
+      chip.addEventListener('click', () => { state.wikiType = t; drawWikiGraph(host, c, data, size, opts); });
+      filters.appendChild(chip);
+    });
+    if (state.wikiPageId) {
+      const hopWrap = el('label', 'kb-hop');
+      hopWrap.appendChild(document.createTextNode('范围 '));
+      const sel = document.createElement('select');
+      [['all', '全部'], ['1', '1 跳'], ['2', '2 跳']].forEach(([v, label]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = label;
+        if ((state.wikiHops || 'all') === v) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => {
+        state.wikiHops = sel.value;
+        drawWikiGraph(host, c, data, size, opts);
+      });
+      hopWrap.appendChild(sel);
+      filters.appendChild(hopWrap);
+    }
+    wrap.appendChild(filters);
+
     const bar = el('div', 'kb-graph-toolbar');
     const hint = el('span', 'grow', '拖动平移 · 滚轮缩放 · 点节点打开页面');
     bar.appendChild(hint);
     const fit = el('button', 'row-btn', '复位');
     fit.type = 'button';
     bar.appendChild(fit);
+    if (opts && opts.fullscreen) {
+      const full = el('button', 'row-btn', '全屏');
+      full.type = 'button';
+      full.addEventListener('click', () => {
+        const card = $('#modal').querySelector('.modal-card');
+        if (!card) return;
+        card.classList.toggle('modal-fullscreen');
+        full.textContent = card.classList.contains('modal-fullscreen') ? '退出全屏' : '全屏';
+      });
+      bar.appendChild(full);
+    }
     wrap.appendChild(bar);
 
     const legend = el('div', 'kb-graph-legend');
@@ -7829,7 +8036,7 @@
     const data = state.wikiGraph || {nodes: [], edges: [], total: 0};
     const wrap = el('div', 'kb-graph-modal');
     openModal('Wiki 关系图 · ' + (c.name || ''), wrap, {wide: true});
-    drawWikiGraph(wrap, c, data, {width: 1040, height: 640}, {showDocs: true});
+    drawWikiGraph(wrap, c, data, {width: 1040, height: 640}, {showDocs: true, fullscreen: true});
   }
 
   function loadKbActivity(c) {
@@ -8340,6 +8547,8 @@
       state.wikiView = 'page';
       state.wikiQuery = '';
       state.wikiOpen = {};
+      state.wikiType = 'all';
+      state.wikiHops = 'all';
     }
     state.collectionId = id;
     const docQueryInput = $('#lib-doc-q');

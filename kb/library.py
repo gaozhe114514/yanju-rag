@@ -459,6 +459,7 @@ class Library:
                 "id": (exist or {}).get("id") or p["id"],
                 "collection_id": cid, "slug": p["slug"], "title": p["title"],
                 "summary": p.get("summary") or "", "body": p.get("body") or "",
+                "kind": p.get("kind") or "概念",
                 "aliases": list(p.get("aliases") or []),
                 "source_doc_ids": list(p.get("source_doc_ids") or []),
                 "source_chunk_ids": list(p.get("source_chunk_ids") or []),
@@ -511,10 +512,10 @@ class Library:
 
     def update_wiki_page(self, cid: str, page_id: str, title: str,
                          summary: str, body: str,
-                         editor: str = "") -> Optional[Dict]:
+                         editor: str = "", kind: Optional[str] = None) -> Optional[Dict]:
         if self.store is not None:
             return self.store.update_wiki_page(cid, page_id, title, summary,
-                                               body, editor)
+                                               body, editor, kind)
         row = next((p for p in self._mem.setdefault("wiki_pages", [])
                     if p.get("collection_id") == cid
                     and p.get("id") == page_id), None)
@@ -527,6 +528,7 @@ class Library:
             "body": row.get("body") or "", "editor": editor or "",
             "created_at": _now()})
         row.update({"title": title, "summary": summary, "body": body,
+                    "kind": kind or row.get("kind") or "概念",
                     "edited": True, "revision": int(row.get("revision") or 0) + 1,
                     "updated_at": _now()})
         self._save_state()

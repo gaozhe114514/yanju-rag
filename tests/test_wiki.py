@@ -4,7 +4,7 @@ import json
 import unittest
 
 from kb import Library
-from kb.wiki import fallback_pages, generate_wiki
+from kb.wiki import WIKI_KINDS, fallback_pages, generate_wiki
 
 TEXT_A = "".join(
     "第%d条：员工年假需提前三个工作日在系统提交，由直属主管审批。工作满一年享受五天年假。\n" % i
@@ -34,6 +34,7 @@ class WikiLibraryTest(unittest.TestCase):
         for p in pages:
             self.assertTrue(p["source_chunk_ids"])
             self.assertTrue(p["source_doc_ids"])
+            self.assertIn(p["kind"], WIKI_KINDS)
 
     def test_replace_keeps_manual_pages_and_links(self):
         docs = [self.lib.get_document(self.cid, self.doc_a["id"])]
@@ -102,7 +103,7 @@ class WikiGenerateTest(unittest.TestCase):
     def test_llm_pages_with_invalid_sources_are_dropped(self):
         good_id = self.chunks[0]["id"]
         provider = _FakeProvider({"pages": [
-            {"title": "年假申请", "summary": "申请流程",
+            {"title": "年假申请", "kind": "流程", "summary": "申请流程",
              "body": "年假需要提前三个工作日提交，由主管审批。",
              "source_chunk_ids": [good_id]},
             {"title": "编造页", "summary": "没有来源",
@@ -115,6 +116,7 @@ class WikiGenerateTest(unittest.TestCase):
         self.assertEqual(source, "llm")
         self.assertEqual([p["title"] for p in pages], ["年假申请"])
         self.assertEqual(pages[0]["source_chunk_ids"], [good_id])
+        self.assertEqual(pages[0]["kind"], "流程")
 
     def test_llm_failure_falls_back_to_documents(self):
         class Broken:
